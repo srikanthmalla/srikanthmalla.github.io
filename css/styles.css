@@ -1,0 +1,36 @@
+.sutitlesborder {
+    border-style: solid;
+    border-width: 2px;
+    height:8%;
+    width:100%;
+    border-color: #BBC2BA;
+	background-color:#FFFFF3;
+}
+.meaningsborder {
+    border-style: solid;
+    border-width: 2px;
+    width:100%;
+    height:60%;
+    border-color: #BBC2BA;
+	background-color:#FFFFF3;
+}
+.headercolor {
+	background-color: lightblue;
+	text-align: center;
+}
+
+ #overlay {
+  position: absolute; 
+  top: 100px; 
+  color: #FFF; 
+  text-align: center;
+  font-size: 20px;
+  background-color: rgba(221, 221, 221, 0.3);
+  width: 100%;
+  padding: 10px 0;
+  z-index: 2147483647;
+}
+
+#v {
+  z-index: 1;
+}
