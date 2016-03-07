@@ -1,4 +1,3 @@
-//youtube popup
 /*!
  * Bootstrap YouTube Popup Player Plugin
  * http://lab.abhinayrathore.com/bootstrap-youtube/
@@ -67,6 +66,7 @@
 
             //Setup YouTube Modal
             var YouTubeURL = getYouTubeUrl(youtubeId, options);
+            // YouTubeURL = "www.youtube.com/embed/4eYSpIz2FjU";
             var YouTubePlayerIframe = getYouTubePlayer(YouTubeURL, options.width, options.height);
             setModalBody(YouTubePlayerIframe);
             $YouTubeModal.modal('show');
@@ -103,10 +103,13 @@
   }
 
   function getYouTubeUrl(youtubeId, options) {
-    return ["//www.youtube.com/embed/", youtubeId, "?rel=0&showsearch=0&autohide=", options.autohide,
+    var abc =  ["http://www.youtube.com/embed/", youtubeId, "?rel=0&showsearch=0&autohide=", options.autohide,
       "&autoplay=", options.autoplay, "&controls=", options.controls, "&fs=", options.fs, "&loop=", options.loop,
       "&showinfo=", options.showinfo, "&color=", options.color, "&theme=", options.theme, "&wmode=transparent"
     ].join('');
+    // alert(abc);
+    return abc;
+
   }
 
   function getYouTubePlayer(URL, width, height) {
