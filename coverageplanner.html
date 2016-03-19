@@ -9,8 +9,10 @@
 	<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.2.0/jquery.min.js"></script>
 	<script src="js/bootstrap.min.js"></script> 	
 	<script src="js/main.js"></script>
+  <link href="css/matlab-highlighter.css" rel="stylesheet" type="text/css">
+  <script src="js/matlab-highlighter.min.js"></script>
 </head>
-<body>
+<body onload="highlightMATLABCode();">
 <nav class="navbar navbar-default">
   <div class="container-fluid">
     <!-- Brand and toggle get grouped for better mobile display -->
@@ -64,56 +66,55 @@
 <div class="row">
   <div class="col-sm-12">
     <div class="row">
-      <div class="col-md-1">
+      <div class="col-md-2">
       </div>
-      <div class="col-md-10">
+      <div class="col-md-8">
         <h1> Boustrophedon Decomposition<h1>
         <h4>Boustrophedon_decompostion is cell decomposition of known map and create right to left and left to right path for each subcell and connect all the cells in shortest distance fashion. And the decomposition is done by finding the obstacle (critical points) where the free space is divides into more regions or combines and forms less regions.</h4>
         <div class="well">
-          <!-- 
-		  <h4 class="text-primary"><span class="label label-primary pull-right">201</span> Sales </h4>
-		<h4 class="text-success"><span class="label label-success pull-right">+ 3%</span> Returning </h4>
-          <h4 class="text-success"><span class="label label-success pull-right">- 9%</span> New Users </h4> -->
-          <h4 class="text-primary"> https://bitbucket.org/srikanthmalla/boustrophedon_decomposition </h4> 
-        </div>
-        <div class="well"><h4 class="text-success"> 
-			function [path,A]=boustrophedon(polygon_image)<br>
-			%% intro<br>
-			%boustrophedon means moving left to right and right to left<br>
-			%give any irregular polygon then it decomposes into sub poygons by finding<br>
-			% the critical points<br>
-			%input- image of irregular polygon<br>
-			%output- coverage path  <br>
+            <!-- 
+  		    <h4 class="text-primary"><span class="label label-primary pull-right">201</span> Sales </h4>
+  		    <h4 class="text-success"><span class="label label-success pull-right">+ 3%</span> Returning </h4>
+            <h4 class="text-success"><span class="label label-success pull-right">- 9%</span> New Users </h4> -->
+            <h4 class="text-primary"> <a href="https://bitbucket.org/srikanthmalla/boustrophedon_decomposition">https://bitbucket.org/srikanthmalla/boustrophedon_decomposition</a> </h4> 
+          </div>
+          <pre class="matlab-code">
+  			function [path,A]=boustrophedon(polygon_image)
+  			%% intro
+  			%boustrophedon means moving left to right and right to left
+  			%give any irregular polygon then it decomposes into sub poygons by finding
+  			% the critical points
+  			%input- image of irregular polygon
+  			%output- coverage path  
 
-			% there should be continuity in the free space (which will make<br>
-			% connectivity between subcells<br>
-			%% code<br>
-			A= imread(polygon_image);<br>
-			A=im2bw(A);<br>
-			x=zeros(size(A,1),1);<br>
-			idy=[];obstacle_points=[];critical_points=[];<br>
-			for i=1:size(A,1)<br>
-			    [x(i),idy]=no_of_lines(A(i,:));<br>
-			    obstacle_points=[obstacle_points;[i*ones(size(idy,1),1),idy]];<br>
-			end<br>
-			[idx,no_of_cells]=find_boundary_ids(x,A)<br>
-			for i=1:size(idx,1)<br>
-			    critical_points=[critical_points;obstacle_points(find(idx(i)==(obstacle_points(:,1))),:)];<br>
-			end<br>
-			dist=9;<br>
-			path=make_path(A,x,dist,no_of_cells,idx);<br>
-			A(idx,:)=0;<br>
-			% A=create_boundaries(A,critical_points);<br>
-			imshow(A);<br>
-			hold on;<br>
-			plot(critical_points(:,2),critical_points(:,1),'r*');<br>
+  			% there should be continuity in the free space (which will make
+  			% connectivity between subcells
+  			%% code
+  			A= imread(polygon_image);
+  			A=im2bw(A);
+  			x=zeros(size(A,1),1);
+  			idy=[];obstacle_points=[];critical_points=[];
+  			for i=1:size(A,1)
+  			    [x(i),idy]=no_of_lines(A(i,:));
+  			    obstacle_points=[obstacle_points;[i*ones(size(idy,1),1),idy]];
+  			end
+  			[idx,no_of_cells]=find_boundary_ids(x,A)
+  			for i=1:size(idx,1)
+  			    critical_points=[critical_points;obstacle_points(find(idx(i)==(obstacle_points(:,1))),:)];
+  			end
+  			dist=9;
+  			path=make_path(A,x,dist,no_of_cells,idx);
+  			A(idx,:)=0;
+  			% A=create_boundaries(A,critical_points);
+  			imshow(A);
+  			hold on;
+  			plot(critical_points(:,2),critical_points(:,1),'r*');
 
-			for i=1:no_of_cells<br>
-			    plot(path{i}(:,1),path{i}(:,2),'b--');<br>
-			end<br>
-			end<br>
-			</h4>
-        </div>
+  			for i=1:no_of_cells
+  			    plot(path{i}(:,1),path{i}(:,2),'b--');
+  			end
+  			end
+        </pre>
       </div>
     </div><!--/row-->    
   </div><!--/col-12-->
