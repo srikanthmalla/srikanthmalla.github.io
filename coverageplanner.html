@@ -1,15 +1,14 @@
 <html>
 <head>
 	<title>
-		Planning
+		Coverage planner | Srikanth Malla
 	</title>
 	<!-- <link rel="stylesheet" type="text/css" href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css"> -->
 	<link rel="stylesheet" type="text/css" href="css/bootstrap.css">
 	<link rel="stylesheet" type="text/css" href="css/styles.css">
 	<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.2.0/jquery.min.js"></script>
-	<script src="js/bootstrap.min.js"></script>
- 	<script src="js/main.js"></script>
- 	
+	<script src="js/bootstrap.min.js"></script> 	
+	<script src="js/main.js"></script>
 </head>
 <body>
 <nav class="navbar navbar-default">
@@ -60,40 +59,65 @@
     </div><!-- /.navbar-collapse -->
   </div><!-- /.container-fluid -->
 </nav>
-<font size="4" color="black" align="left">
-<div container>
-  <div class="row">
-    <div class="col-md-1">
-    </div>
-    <div class="col-md-1">
-    1.
-    </div>
-    <div class="col-md-5">
-    Sampling Based Planners
-    </div>
-  </div>
-  <div class="row">
-    <div class="col-md-1">
-    </div>
-    <div class="col-md-1">
-    2.
-    </div>
-    <div class="col-md-5">
-    Search Based Planners
-    </div>
-  </div>
-  <div class="row">
-    <div class="col-md-1">
-    </div>
-    <div class="col-md-1">
-    3.
-    </div>
-    <div class="col-md-5">
-    <a href="coverageplanner.html">Coverage Planning Techniques<span class="sr-only">(current)</span></a>
-    </div>
-  </div>
-</div>
-</font>
-<script src="js/main.js"></script>
 
-</body>
+<div container>
+<div class="row">
+  <div class="col-sm-12">
+    <div class="row">
+      <div class="col-md-1">
+      </div>
+      <div class="col-md-10">
+        <h1> Boustrophedon Decomposition<h1>
+        <h4>Boustrophedon_decompostion is cell decomposition of known map and create right to left and left to right path for each subcell and connect all the cells in shortest distance fashion. And the decomposition is done by finding the obstacle (critical points) where the free space is divides into more regions or combines and forms less regions.</h4>
+        <div class="well">
+          <!-- 
+		  <h4 class="text-primary"><span class="label label-primary pull-right">201</span> Sales </h4>
+		<h4 class="text-success"><span class="label label-success pull-right">+ 3%</span> Returning </h4>
+          <h4 class="text-success"><span class="label label-success pull-right">- 9%</span> New Users </h4> -->
+          <h4 class="text-primary"> https://bitbucket.org/srikanthmalla/boustrophedon_decomposition </h4> 
+        </div>
+        <div class="well"><h4 class="text-success"> 
+			function [path,A]=boustrophedon(polygon_image)<br>
+			%% intro<br>
+			%boustrophedon means moving left to right and right to left<br>
+			%give any irregular polygon then it decomposes into sub poygons by finding<br>
+			% the critical points<br>
+			%input- image of irregular polygon<br>
+			%output- coverage path  <br>
+
+			% there should be continuity in the free space (which will make<br>
+			% connectivity between subcells<br>
+			%% code<br>
+			A= imread(polygon_image);<br>
+			A=im2bw(A);<br>
+			x=zeros(size(A,1),1);<br>
+			idy=[];obstacle_points=[];critical_points=[];<br>
+			for i=1:size(A,1)<br>
+			    [x(i),idy]=no_of_lines(A(i,:));<br>
+			    obstacle_points=[obstacle_points;[i*ones(size(idy,1),1),idy]];<br>
+			end<br>
+			[idx,no_of_cells]=find_boundary_ids(x,A)<br>
+			for i=1:size(idx,1)<br>
+			    critical_points=[critical_points;obstacle_points(find(idx(i)==(obstacle_points(:,1))),:)];<br>
+			end<br>
+			dist=9;<br>
+			path=make_path(A,x,dist,no_of_cells,idx);<br>
+			A(idx,:)=0;<br>
+			% A=create_boundaries(A,critical_points);<br>
+			imshow(A);<br>
+			hold on;<br>
+			plot(critical_points(:,2),critical_points(:,1),'r*');<br>
+
+			for i=1:no_of_cells<br>
+			    plot(path{i}(:,1),path{i}(:,2),'b--');<br>
+			end<br>
+			end<br>
+			</h4>
+        </div>
+      </div>
+    </div><!--/row-->    
+  </div><!--/col-12-->
+</div><!--/row-->
+</div>
+</body> 
+</html>
