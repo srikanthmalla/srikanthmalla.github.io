@@ -40,4 +40,7 @@
   margin-top: 60px;
 }
 
-
+.fixed_bottom{
+  position: fixed;
+  bottom: 0px;
+}
