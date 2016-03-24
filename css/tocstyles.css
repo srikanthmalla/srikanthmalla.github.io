@@ -2,7 +2,7 @@ body {
 	margin: 0 auto;
 	font-family: Georgia, 'Times New Roman', serif;
 	font-size: 20px;
-	color: #343434;
+	background-color: #343434;
 	background: #ebddba;
 	background: -webkit-linear-gradient(#ebddba, #f9f1dd, #ebddba);
 	background: -moz-linear-gradient(#ebddba, #f9f1dd, #ebddba);
