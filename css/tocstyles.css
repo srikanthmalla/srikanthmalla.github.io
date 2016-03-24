@@ -2,13 +2,13 @@ body {
 	margin: 0 auto;
 	font-family: Georgia, 'Times New Roman', serif;
 	font-size: 20px;
-	background-color: #343434;
-	background: #ebddba;
+	color: #343434;
+/*	background: #ebddba;
 	background: -webkit-linear-gradient(#ebddba, #f9f1dd, #ebddba);
 	background: -moz-linear-gradient(#ebddba, #f9f1dd, #ebddba);
 	background: -o-linear-gradient(#ebddba, #f9f1dd, #ebddba);
 	background: -ms-linear-gradient(#ebddba, #f9f1dd, #ebddba);
-	background: linear-gradient(#ebddba, #f9f1dd, #ebddba);
+	background: linear-gradient(#ebddba, #f9f1dd, #ebddba);*/
 	overflow-x: hidden;
 }
 
