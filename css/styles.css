@@ -34,3 +34,10 @@
 #v {
   z-index: 1;
 }
+
+.toc-holder {
+  position: fixed;
+  margin-top: 60px;
+}
+
+

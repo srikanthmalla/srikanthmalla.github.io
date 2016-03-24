@@ -6,14 +6,20 @@
 	<!-- <link rel="stylesheet" type="text/css" href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css"> -->
 	<link rel="stylesheet" type="text/css" href="css/bootstrap.css">
 	<link rel="stylesheet" type="text/css" href="css/styles.css">
-	<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.2.0/jquery.min.js"></script>
+  
+  <link rel="stylesheet" href="css/tocstyles.css?v=1.1">
+
+
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.2.0/jquery.min.js"></script>
 	<script src="js/bootstrap.min.js"></script> 	
 	<script src="js/main.js"></script>
   <link href="css/matlab-highlighter.css" rel="stylesheet" type="text/css">
   <script src="js/matlab-highlighter.min.js"></script>
 </head>
+
+
 <body onload="highlightMATLABCode();">
-<nav class="navbar navbar-default">
+<nav class="navbar navbar-default navbar-fixed-top">
   <div class="container-fluid">
     <!-- Brand and toggle get grouped for better mobile display -->
     <div class="navbar-header">
@@ -67,9 +73,22 @@
   <div class="col-sm-12">
     <div class="row">
       <div class="col-md-2">
+         <div id="toc-holder" class="toc-holder" style="width: 17%;">
+            <a href="#" class="toc-link" id="toc-link"><span>&#9660;</span>Go to section   </a>
+            <ul id="toc" class="toc">
+            <div class="toc-h1"><a href="#section1">Coverage Planners</a>
+              <ul class="toc-sub closed">
+                <a href="#section1-1">1. Boustrophedon Decomposition </a>
+                <a href="#section1-2">2. Circumambulate</a>
+              </ul>
+            </div>
+          </ul>
+          </div>
       </div>
       <div class="col-md-8">
-        <h1> Boustrophedon Decomposition<h1>
+        <!-- <section1> -->
+        <br><br>
+        <h1 id="section1-1"> Boustrophedon Decomposition<h1>
         <h4>Boustrophedon_decompostion is cell decomposition of known map and create right to left and left to right path for each subcell and connect all the cells in shortest distance fashion. And the decomposition is done by finding the obstacle (critical points) where the free space is divides into more regions or combines and forms less regions.</h4>
         <div class="well">
             <!-- 
@@ -116,9 +135,24 @@
   			end
         </pre>
       </div>
+
     </div><!--/row-->    
   </div><!--/col-12-->
 </div><!--/row-->
 </div>
+
+<script src="js/jquery.fixedTOC.js?v=3.0"></script>
+<script>
+// call the plugin on the "#toc" element
+$('#toc').fixedTOC({
+  menuOpens: 'click', // or 'mouseenter'
+  scrollSpeed: 1000,
+  menuSpeed: 300,
+  useSubMenus: true,
+  resetSubMenus: true,
+  topLinkWorks: true
+});
+</script>
+
 </body> 
 </html>
