@@ -1,0 +1,221 @@
+<html>
+<head>
+	<title>
+		Coverage planner | Srikanth Malla
+	</title>
+	<!-- <link rel="stylesheet" type="text/css" href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css"> -->
+	<link rel="stylesheet" type="text/css" href="css/bootstrap.css">
+	<link rel="stylesheet" type="text/css" href="css/styles.css">
+  
+  <link rel="stylesheet" href="css/tocstyles.css?v=1.1">
+
+
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.2.0/jquery.min.js"></script>
+	<script src="js/bootstrap.min.js"></script> 	
+	<script src="js/main.js"></script>
+  <link href="css/matlab-highlighter.css" rel="stylesheet" type="text/css">
+  <script src="js/matlab-highlighter.min.js"></script>
+</head>
+
+
+<body onload="highlightMATLABCode();">
+<nav class="navbar navbar-default navbar-fixed-top">
+  <div class="container-fluid">
+    <!-- Brand and toggle get grouped for better mobile display -->
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+        <span class="sr-only">Toggle navigation</span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">Srikanth Malla</a>
+    </div>
+
+    <!-- Collect the nav links, forms, and other content for toggling -->
+    <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
+      <ul class="nav navbar-nav">
+        <li ><a href="aboutme.html">About Me <span class="sr-only">(current)</span></a></li>
+        <li><a href="projects.html">Projects</a></li>
+        <li class="dropdown">
+          <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Learn <span class="caret"></span></a>
+          <ul class="dropdown-menu">
+            <li><a href="planning.html">Planning</a></li>
+            <li><a href="perception.html">Perception</a></li>
+          </ul>
+        </li>
+      </ul>
+      <form class="navbar-form navbar-left" role="search">
+        <div class="form-group">
+          <input type="text" class="form-control" placeholder="Search">
+        </div>
+        <button type="submit" class="btn btn-default">Search</button>
+      </form>
+      <ul class="nav navbar-nav navbar-right">
+        <li><a href="publications.html">Publications</a></li>
+        <li><a href="cv.html">CV</a></li>
+        <li class="dropdown">
+          <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Video Tutorials <span class="caret"></span></a>
+          <ul class="dropdown-menu">
+            <li><a href="rostutorials.html">ROS</a></li>
+            <!-- <li><a href="#">Another action</a></li> -->
+            <!-- <li role="separator" class="divider"></li> -->
+            <!-- <li><a href="#">Separated link</a></li> -->
+          </ul>
+        </li>
+      </ul>
+    </div><!-- /.navbar-collapse -->
+  </div><!-- /.container-fluid -->
+</nav>
+
+<div container>
+<div class="row">
+  <div class="col-sm-12">
+    <div class="row">
+      <div class="col-md-2">
+         <div id="toc-holder" class="toc-holder" style="width: 17%;">
+            <a href="#" class="toc-link" id="toc-link"><span>&#9660;</span>Go to section   </a>
+            <ul id="toc" class="toc">
+            <div class="toc-h1"><a href="#section1">Sampling based planner</a>
+              <ul class="toc-sub closed">
+                <a href="#section1-1">1. RRT </a>
+                <!-- <a href="#section1-2">2. Circumambulate</a> -->
+              </ul>
+            </div>
+          </ul>
+          </div>
+      </div>
+      <div class="col-md-8">
+        <!-- <section1> -->
+        <br><br>
+        <h1 id="section1-1"> RRT (Rapidly-Exploring Random Tree)<h1>
+        <h4>A rapidly exploring random tree (RRT) is an algorithm designed to efficiently search nonconvex, high-dimensional spaces by randomly building a space-filling tree. The tree is constructed incrementally from samples drawn randomly from the search space and is inherently biased to grow towards large unsearched areas of the problem. RRTs were developed by Steven M. LaValle and James J. Kuffner Jr. They easily handle problems with obstacles and differential constraints (nonholonomic and kinodynamic) and have been widely used in autonomous robotic path planning.<br><br>
+        An RRT grows a tree rooted at the starting configuration by using random samples from the search space. As each sample is drawn, a connection is attempted between it and the nearest state in the tree. If the connection is feasible (passes entirely through free space and obeys any constraints), this results in the addition of the new state to the tree. With uniform sampling of the search space, the probability of expanding an existing state is proportional to the size of its Voronoi region. As the largest Voronoi regions belong to the states on the frontier of the search, this means that the tree preferentially expands towards large unsearched areas.<br><br>
+        The length of the connection between the tree and a new state is frequently limited by a growth factor. If the random sample is further from its nearest state in the tree than this limit allows, a new state at the maximum distance from the tree along the line to the random sample is used instead of the random sample itself. The random samples can then be viewed as controlling the direction of the tree growth while the growth factor determines its rate. This maintains the space-filling bias of the RRT while limiting the size of the incremental growth.<br><br>
+        RRT growth can be biased by increasing the probability of sampling states from a specific area. Most practical implementations of RRTs make use of this to guide the search towards the planning problem goals. This is accomplished by introducing a small probability of sampling the goal to the state sampling procedure. The higher this probability, the more greedily the tree grows towards the goal.<br>
+        </h4>
+        
+        <!-- Matlab Simulation Code Repository:
+        <div class="well">
+            <h4 class="text-primary"> <a href="https://bitbucket.org/srikanthmalla/boustrophedon_decomposition">https://bitbucket.org/srikanthmalla/boustrophedon_decomposition</a> </h4> 
+          </div> -->
+
+          <!-- Input:      <img src="files/map2.jpg" height="auto" width="auto"/><br>
+          Output:     <img src="files/output_boustro.PNG" height="auto" width="auto"/> -->
+          <pre class="matlab-code">
+  			% % An example of rapidly-exploring random trees and path planning in 2-D
+% % Ref: "Rapidly-Exploring Random Trees: A New Tool for Path Planning",
+% % Steven M. LaValle, 1998
+%~~~~
+% Code can also be converted to function with input format
+% [tree, path] = RRT(K, xMin, xMax, yMin, yMax, xInit, yInit, xGoal, yGoal, thresh)
+% K is the number of iterations desired.
+% xMin and xMax are the minimum and maximum values of x
+% yMin and yMax are the minimum and maximum values of y
+% xInit and yInit is the starting point of the algorithm
+% xGoal and yGoal are the desired endpoints
+% thresh is the allowed threshold distance between a random point the the
+% goal point.
+% Output is the tree structure containing X and Y vertices and the path
+% found obtained from Init to Goal
+%~~~~ 
+% Written by: Omkar Halbe, Technical University of Munich, 31.10.2015
+%~~~~ 
+
+clear all; close all;
+
+K=2000;
+xMin=0; xMax=100;
+yMin=0; yMax=100;
+
+xInit=0; yInit=0; %initial point for planner
+xGoal=100; yGoal=100; %goal for planner
+thresh=5;           %acceptable threshold for solution
+
+
+tree.vertex(1).x = xInit;
+tree.vertex(1).y = yInit;
+tree.vertex(1).xPrev = xInit;
+tree.vertex(1).yPrev = yInit;
+tree.vertex(1).dist=0;
+tree.vertex(1).ind = 1; tree.vertex(1).indPrev = 0;
+
+xArray=xInit; yArray = yInit;
+
+figure(1); hold on; grid on;
+plot(xInit, yInit, 'ko', 'MarkerSize',10, 'MarkerFaceColor','k');
+plot(xGoal, yGoal, 'go', 'MarkerSize',10, 'MarkerFaceColor','g');
+
+for iter = 2:K
+    xRand = (xMax-xMin)*rand;
+    yRand = (yMax-yMin)*rand;
+    dist = Inf*ones(1,length(tree.vertex));
+    for j = 1:length(tree.vertex)
+        dist(j) = sqrt( (xRand-tree.vertex(j).x)^2 + (yRand-tree.vertex(j).y)^2 );
+    end
+    [val, ind] = min(dist);
+       
+    tree.vertex(iter).x = xRand; tree.vertex(iter).y = yRand;
+    tree.vertex(iter).dist = val;
+    tree.vertex(iter).xPrev = tree.vertex(ind).x;
+    tree.vertex(iter).yPrev = tree.vertex(ind).y;
+    tree.vertex(iter).ind = iter; tree.vertex(iter).indPrev = ind;
+    
+    if sqrt( (xRand-xGoal)^2 + (yRand-yGoal)^2 ) <= thresh
+        plot([tree.vertex(iter).x; tree.vertex(ind).x],[tree.vertex(iter).y; tree.vertex(ind).y], 'r');
+        break
+    end
+    
+    plot([tree.vertex(iter).x; tree.vertex(ind).x],[tree.vertex(iter).y; tree.vertex(ind).y], 'r');
+    pause(0);
+end
+
+if iter < K
+    path.pos(1).x = xGoal; path.pos(1).y = yGoal;
+    path.pos(2).x = tree.vertex(end).x; path.pos(2).y = tree.vertex(end).y;
+    pathIndex = tree.vertex(end).indPrev;
+
+    j=0;
+    while 1
+        path.pos(j+3).x = tree.vertex(pathIndex).x;
+        path.pos(j+3).y = tree.vertex(pathIndex).y;
+        pathIndex = tree.vertex(pathIndex).indPrev;
+        if pathIndex == 1
+            break
+        end
+        j=j+1;
+    end
+
+    path.pos(end+1).x = xInit; path.pos(end).y = yInit;
+
+    for j = 2:length(path.pos)
+        plot([path.pos(j).x; path.pos(j-1).x;], [path.pos(j).y; path.pos(j-1).y], 'b', 'Linewidth', 3);
+    %     plot([tree.vertex(i).x; tree.vertex(ind).x],[tree.vertex(i).y; tree.vertex(ind).y], 'r');
+    %     pause(0);
+    end
+else
+    disp('No path found. Increase number of iterations and retry.');
+end
+        </pre>
+      </div>
+
+    </div><!--/row-->    
+  </div><!--/col-12-->
+</div><!--/row-->
+</div>
+
+<script src="js/jquery.fixedTOC.js?v=3.0"></script>
+<script>
+// call the plugin on the "#toc" element
+$('#toc').fixedTOC({
+  menuOpens: 'click', // or 'mouseenter'
+  scrollSpeed: 1000,
+  menuSpeed: 300,
+  useSubMenus: true,
+  resetSubMenus: true,
+  topLinkWorks: true
+});
+</script>
+
+</body> 
+</html>
