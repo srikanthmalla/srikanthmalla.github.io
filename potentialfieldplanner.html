@@ -1,0 +1,322 @@
+<html>
+<head>
+	<title>
+		Coverage planner | Srikanth Malla
+	</title>
+	<!-- <link rel="stylesheet" type="text/css" href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css"> -->
+	<link rel="stylesheet" type="text/css" href="css/bootstrap.css">
+	<link rel="stylesheet" type="text/css" href="css/styles.css">
+  
+  <link rel="stylesheet" href="css/tocstyles.css?v=1.1">
+
+
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.2.0/jquery.min.js"></script>
+	<script src="js/bootstrap.min.js"></script> 	
+	<script src="js/main.js"></script>
+  <link href="css/matlab-highlighter.css" rel="stylesheet" type="text/css">
+  <script src="js/matlab-highlighter.min.js"></script>
+</head>
+
+
+<body onload="highlightMATLABCode();">
+<nav class="navbar navbar-default navbar-fixed-top">
+  <div class="container-fluid">
+    <!-- Brand and toggle get grouped for better mobile display -->
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+        <span class="sr-only">Toggle navigation</span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">Srikanth Malla</a>
+    </div>
+
+    <!-- Collect the nav links, forms, and other content for toggling -->
+    <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
+      <ul class="nav navbar-nav">
+        <li ><a href="aboutme.html">About Me <span class="sr-only">(current)</span></a></li>
+        <li><a href="projects.html">Projects</a></li>
+        <li class="dropdown">
+          <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Learn <span class="caret"></span></a>
+          <ul class="dropdown-menu">
+            <li><a href="planning.html">Planning</a></li>
+            <li><a href="perception.html">Perception</a></li>
+          </ul>
+        </li>
+      </ul>
+      <form class="navbar-form navbar-left" role="search">
+        <div class="form-group">
+          <input type="text" class="form-control" placeholder="Search">
+        </div>
+        <button type="submit" class="btn btn-default">Search</button>
+      </form>
+      <ul class="nav navbar-nav navbar-right">
+        <li><a href="publications.html">Publications</a></li>
+        <li><a href="cv.html">CV</a></li>
+        <li class="dropdown">
+          <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Video Tutorials <span class="caret"></span></a>
+          <ul class="dropdown-menu">
+            <li><a href="rostutorials.html">ROS</a></li>
+            <!-- <li><a href="#">Another action</a></li> -->
+            <!-- <li role="separator" class="divider"></li> -->
+            <!-- <li><a href="#">Separated link</a></li> -->
+          </ul>
+        </li>
+      </ul>
+    </div><!-- /.navbar-collapse -->
+  </div><!-- /.container-fluid -->
+</nav>
+
+<div container>
+<div class="row">
+  <div class="col-sm-12">
+    <div class="row">
+      <div class="col-md-2">
+         <div id="toc-holder" class="toc-holder" style="width: 17%;">
+            <a href="#" class="toc-link" id="toc-link"><span>&#9660;</span>Go to section   </a>
+            <ul id="toc" class="toc">
+            <div class="toc-h1"><a href="#section1">Potential Field based planner</a>
+              <ul class="toc-sub closed">
+                <a href="#section1-1">1. Potential field based planner </a>
+                <!-- <a href="#section1-2">2. Circumambulate</a> -->
+              </ul>
+            </div>
+          </ul>
+          </div>
+      </div>
+      <div class="col-md-8">
+        <!-- <section1> -->
+        <br><br>
+        <h1 id="section1-1"> Potential field based planner<h1>
+        <h4>One approach is to treat the robot's configuration as a point (usually electron) in a potential field that combines attraction to the goal, and repulsion from obstacles. The resulting trajectory is output as the path. This approach has advantages in that the trajectory is produced with little computation. However, they can become trapped in local minima of the potential field, and fail to find a path. The Artificial potential fields can be achieved by direct equation similar to electrostatic potential fields or can be drive by set of linguistic rules
+        </h4>
+         Input: <img src="files/potentialfield_input.JPG" height="auto" width="auto"/> ----><br>
+         Output: <img src="files/potentialfield_output.JPG" height="auto" width="auto"/><br>
+         Potentials: <img src="files/potential.JPG" height="auto" width="auto"/>
+        <!-- Matlab Simulation Code Repository:
+        <div class="well">
+            <h4 class="text-primary"> <a href="https://bitbucket.org/srikanthmalla/boustrophedon_decomposition">https://bitbucket.org/srikanthmalla/boustrophedon_decomposition</a> </h4> 
+          </div> -->
+
+          <!-- Input:      <img src="files/map2.jpg" height="auto" width="auto"/><br>
+          Output:     <img src="files/output_boustro.PNG" height="auto" width="auto"/> -->
+          <pre class="matlab-code">
+  %
+% PotentialFieldScript.m
+%
+close all, clear all
+%% Generate some points
+
+nrows = 400;
+ncols = 600;
+
+obstacle = false(nrows, ncols);
+
+[x, y] = meshgrid (1:ncols, 1:nrows);
+
+%% Generate some obstacle
+
+obstacle (300:end, 100:250) = true;
+obstacle (150:200, 400:500) = true;
+
+t = ((x - 200).^2 + (y - 50).^2) < 50^2;
+obstacle(t) = true;
+
+t = ((x - 400).^2 + (y - 300).^2) < 100^2;
+obstacle(t) = true;
+
+%% Compute distance transform
+
+d = bwdist(obstacle);
+
+% Rescale and transform distances
+
+d2 = (d/100) + 1;
+
+d0 = 2;
+nu = 800;
+
+repulsive = nu*((1./d2 - 1/d0).^2);
+
+repulsive (d2 > d0) = 0;
+
+
+%% Display repulsive potential
+
+figure(1);
+m = mesh (repulsive);
+m.FaceLighting = 'phong';
+axis equal;
+
+title ('Repulsive Potential');
+
+%% Compute attractive force
+
+goal = [400, 50];
+
+xi = 1/700;
+
+attractive = xi * ( (x - goal(1)).^2 + (y - goal(2)).^2 );
+
+figure(2);
+m = mesh (attractive);
+m.FaceLighting = 'phong';
+axis equal;
+
+title ('Attractive Potential');
+
+%% Display 2D configuration space
+
+figure(3);
+imshow(~obstacle);
+
+hold on;
+plot (goal(1), goal(2), 'r.', 'MarkerSize', 25);
+hold off;
+
+axis ([0 ncols 0 nrows]);
+axis xy;
+axis on;
+
+xlabel ('x');
+ylabel ('y');
+
+title ('Configuration Space');
+
+%% Combine terms
+
+f = attractive + repulsive;
+
+figure(4);
+m = mesh (f);
+m.FaceLighting = 'phong';
+axis equal;
+
+title ('Total Potential');
+
+%% Plan route
+start = [50, 350];
+
+route = GradientBasedPlanner (f, start, goal, 1000);
+
+%% Plot the energy surface
+
+figure(5);
+m = mesh (f);
+axis equal;
+
+%% Plot ball sliding down hill
+
+[sx, sy, sz] = sphere(20);
+
+scale = 20;
+sx = scale*sx;
+sy = scale*sy;
+sz = scale*(sz+1);
+
+hold on;
+p = mesh(sx, sy, sz);
+p.FaceColor = 'red';
+p.EdgeColor = 'none';
+p.FaceLighting = 'phong';
+hold off;
+
+for i = 1:size(route,1)
+    P = round(route(i,:));
+    z = f(P(2), P(1));
+    
+    p.XData = sx + P(1);
+    p.YData = sy + P(2);
+    p.ZData = sz + f(P(2), P(1));
+    
+    drawnow;
+    
+    drawnow;
+    
+end
+
+%% quiver plot
+[gx, gy] = gradient (-f);
+skip = 20;
+
+figure(6);
+
+xidx = 1:skip:ncols;
+yidx = 1:skip:nrows;
+
+quiver (x(yidx,xidx), y(yidx,xidx), gx(yidx,xidx), gy(yidx,xidx), 0.4);
+
+axis ([1 ncols 1 nrows]);
+
+hold on;
+
+ps = plot(start(1), start(2), 'r.', 'MarkerSize', 30);
+pg = plot(goal(1), goal(2), 'g.', 'MarkerSize', 30);
+p3 = plot (route(:,1), route(:,2), 'r', 'LineWidth', 2);
+
+       </pre>
+       <pre class="matlab-code">
+function route = GradientBasedPlanner (f, start_coords, end_coords, max_its)
+% GradientBasedPlanner : This function plans a path through a 2D
+% environment from a start to a destination based on the gradient of the
+% function f which is passed in as a 2D array. The two arguments
+% start_coords and end_coords denote the coordinates of the start and end
+% positions respectively in the array while max_its indicates an upper
+% bound on the number of iterations that the system can use before giving
+% up.
+% The output, route, is an array with 2 columns and n rows where the rows
+% correspond to the coordinates of the robot as it moves along the route.
+% The first column corresponds to the x coordinate and the second to the y coordinate
+
+    [gx, gy] = gradient (-f);
+
+%%% All of your code should be between the two lines of stars.
+% *******************************************************************
+    route = start_coords;
+    pos = start_coords;
+    running = true;
+    i = 0;
+    
+    %route = [start_coords(1), start_coords(2)];
+    while running
+        if (i == max_its) || (norm(end_coords - pos) < 2)
+            running = false;
+            break;
+        end
+%     while (i < max_its) && (f(pos(2),pos(1)) > )
+        
+        Delta = [ gx( round(pos(2)), round(pos(1)) ), ....
+                  gy( round(pos(2)), round(pos(1)) )];
+        pos = pos + Delta/norm(Delta);
+        
+        route = [route; pos];
+        i = i + 0.5;
+    end
+% *******************************************************************
+end
+
+
+       </pre>
+      </div>
+
+    </div><!--/row-->    
+  </div><!--/col-12-->
+</div><!--/row-->
+</div>
+
+<script src="js/jquery.fixedTOC.js?v=3.0"></script>
+<script>
+// call the plugin on the "#toc" element
+$('#toc').fixedTOC({
+  menuOpens: 'click', // or 'mouseenter'
+  scrollSpeed: 1000,
+  menuSpeed: 300,
+  useSubMenus: true,
+  resetSubMenus: true,
+  topLinkWorks: true
+});
+</script>
+
+</body> 
+</html>
