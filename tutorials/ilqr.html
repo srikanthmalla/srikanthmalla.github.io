@@ -1,0 +1,126 @@
+<html>
+<head>
+  <title>
+    Inverse LQR
+  </title>
+  <!-- <link rel="stylesheet" type="text/css" href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css"> -->
+  <link rel="stylesheet" type="text/css" href="../css/bootstrap.css">
+  <link rel="stylesheet" type="text/css" href="../css/styles.css">
+  
+  <link rel="stylesheet" href="../css/tocstyles.css?v=1.1">
+
+
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.2.0/jquery.min.js"></script>
+  <script src="../js/bootstrap.min.js"></script>   
+  <script src="../js/main.js"></script>
+  <link href="../css/matlab-highlighter.css" rel="stylesheet" type="text/css">
+  <script src="../js/matlab-highlighter.min.js"></script>
+</head>
+
+
+<body onload="highlightMATLABCode();">
+<nav class="navbar navbar-default navbar-fixed-top">
+  <div class="container-fluid">
+    <!-- Brand and toggle get grouped for better mobile display -->
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+        <span class="sr-only">Toggle navigation</span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="../index.html">Srikanth Malla</a>
+    </div>
+
+    <!-- Collect the nav links, forms, and other content for toggling -->
+    <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
+      <ul class="nav navbar-nav">
+        <li ><a href="../aboutme.html">About Me <span class="sr-only">(current)</span></a></li>
+        <li><a href="../projects.html">Projects</a></li>
+        <li class="dropdown">
+          <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Learn <span class="caret"></span></a>
+          <ul class="dropdown-menu">
+            <li><a href="../planning.html">Planning</a></li>
+            <li><a href="../control.html">Control</a><li>
+            <li><a href="../perception.html">Perception</a></li>
+            <li><a href="../learning.html">Learning</a></li>
+          </ul>
+        </li>
+        <li><a href="../robots.html">Robots</a></li>
+      </ul>
+      <form class="navbar-form navbar-left" role="search">
+        <div class="form-group">
+          <input type="text" class="form-control" placeholder="Search">
+        </div>
+        <button type="submit" class="btn btn-default">Search</button>
+      </form>
+      <ul class="nav navbar-nav navbar-right">
+        <li><a href="../publications.html">Publications</a></li>
+        <li><a href="../cv.html">CV</a></li>
+        <li class="dropdown">
+          <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Video Tutorials <span class="caret"></span></a>
+          <ul class="dropdown-menu">
+            <li><a href="../rostutorials.html">ROS</a></li>
+            <!-- <li><a href="#">Another action</a></li> -->
+            <!-- <li role="separator" class="divider"></li> -->
+            <!-- <li><a href="#">Separated link</a></li> -->
+          </ul>
+        </li>
+      </ul>
+    </div><!-- /.navbar-collapse -->
+  </div><!-- /.container-fluid -->
+</nav>
+
+<div container>
+<div class="row">
+  <div class="col-sm-12">
+    <div class="row">
+      <div class="col-md-2">
+         <div id="toc-holder" class="toc-holder" style="width: 17%;">
+            <a href="#" class="toc-link" id="toc-link"><span>&#9660;</span>Go to section   </a>
+            <ul id="toc" class="toc">
+            <div class="toc-h1"><a href="#section1">LQR</a>
+              <ul class="toc-sub closed">
+                <a href="#section1-1">1. LQR </a>
+                <!-- <a href="#section1-2">2. Circumambulate</a> -->
+              </ul>
+            </div>
+          </ul>
+          </div>
+      </div>
+      <div class="col-md-8">
+        <!-- <section1> -->
+        <br><br>
+        <p>Before moving on to Inverse Linear Quadratic control, we should know what is LQR, what are its uses and what is the need for iLQR?</p>
+        <p>
+        Let's first look at what is LQR:</p>
+        <h1 id="section1-1">1. Linear Quadratic Control<h1>
+        <h4>
+        
+        </h4>
+      </div>
+    </div><!--/row-->    
+  </div><!--/col-12-->
+</div><!--/row-->
+</div>
+
+<script src="../js/jquery.fixedTOC.js?v=3.0"></script>
+<script>
+// call the plugin on the "#toc" element
+$('#toc').fixedTOC({
+  menuOpens: 'click', // or 'mouseenter'
+  scrollSpeed: 1000,
+  menuSpeed: 300,
+  useSubMenus: true,
+  resetSubMenus: true,
+  topLinkWorks: true
+});
+</script>
+<script type="text/javascript">
+  $(function () {
+    $(".youtube").YouTubeModal({autoplay:0, width:640, height:480});
+  });
+</script>
+<script src="../js/main.js"></script>
+</body> 
+</html>
