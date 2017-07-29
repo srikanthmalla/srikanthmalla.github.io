@@ -22,7 +22,7 @@
 <!-- Navigation Bar -->
 <div container id="nav_bar">
   <script>
-    $( "#nav_bar" ).load( "../nav_bar.html" );
+    $( "#nav_bar" ).load( "nav_bar.html" );
   </script>
 </div>
 
@@ -38,8 +38,10 @@
             <div class="toc-h1"><a href="#section1">Stereo Vision</a>
               <ul class="toc-sub closed">
                 <a href="#section1-0">0. Readings </a>
-                <a href="#section1-1">1. Cameras and calibration </a>
-                <a href="#section1-2">2. Two view geometry</a>
+                <a href="#section1-1">1. Introduction </a>
+                <a href="#section1-2">2. Cameras and Calibration</a>
+                <a href="#section1-3">3. Two view Geometry</a>
+
               </ul>
             </div>
           </ul>
@@ -57,15 +59,20 @@
       <div class="col-md-8"> -->
         <!-- <section1> -->
         <br><br>
-        <h1 id="section1-1">2. Cameras and Calibration<h1>
+        <h1 id="section1-1">2. Introduction<h1>
         <h4>
-        
+        <p>Usually Cameras are considered as passive imaging systems (here it is 3D imaging system), because it is not projecting it's own source of light or other source of electromagnetic radiation (EMR) on a scene. Where as LIDAR system can be considered as active 3D imaging system because they do the opposite, which is projecting it's own source of EMR. With increase in computer processing power and decrease in camera prices, many real world applications of passive 3D imaging systems have been emerging. Stereo refers to multiple images taken simulataneously using two or more cameras, which are collectively called stereo camera. Stereo Vision fuses the images recorded by our two eyes and exploit the differences between them giving us a sense of depth.</p>
+
+        <p>If we can determine same point on two cameras (which is called correspondence problem), then we can project two rays from the two camera planes and see where they are intersecting (called triangulation) to get the 3D information. But we need Camera parameters (which come from camera calibration) to convert 2D image to 3D rays. The difference between the position of left and right image is called Disparity. </p>
+
+        <p>In contrast to stereo vision, structure of motion (SfM) referes to a single moving camera scenario, where image sequence is capture over a period of time. While stereo referes to fixed relative viewpoints with synchronized image capture. In case of SfM, optical flow can be computed, which estimates the
+        motion field from the image sequences, based on the spatial and temporal variations of the image brightness</p>
         </h4>
 <!--       </div>
       <div class="col-md-8">
  -->        <!-- <section1> -->
         <br><br>
-        <h1 id="section1-1">3. Two view geometry<h1>
+        <h1 id="section1-1">3. Cameras and Calibration<h1>
         <h4>
         
         </h4>
