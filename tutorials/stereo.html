@@ -1,7 +1,7 @@
 <html>
 <head>
   <title>
-    Deep Learning-1 (MLP)
+    Stereo Vision
   </title>
   <!-- <link rel="stylesheet" type="text/css" href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css"> -->
   <link rel="stylesheet" type="text/css" href="../css/bootstrap.css">
@@ -60,12 +60,17 @@
         <!-- <section1> -->
         <h2 id="section1-1">2. Introduction<h2>
         <h4>
-        <p>Usually Cameras are considered as passive imaging systems (here it is 3D imaging system), because it is not projecting it's own source of light or other source of electromagnetic radiation (EMR) on a scene. Where as LIDAR system can be considered as active 3D imaging system because they do the opposite, which is projecting it's own source of EMR. With increase in computer processing power and decrease in camera prices, many real world applications of passive 3D imaging systems have been emerging. Stereo refers to multiple images taken simulataneously using two or more cameras, which are collectively called stereo camera. Stereo Vision fuses the images recorded by our two eyes and exploit the differences between them giving us a sense of depth.</p>
-
-        <p>If we can determine same point on two cameras (which is called correspondence problem), then we can project two rays from the two camera planes and see where they are intersecting (called triangulation) to get the 3D information. But we need Camera parameters (which come from camera calibration) to convert 2D image to 3D rays. The difference between the position of left and right image is called Disparity. </p>
-
-        <p>In contrast to stereo vision, structure of motion (SfM) referes to a single moving camera scenario, where image sequence is capture over a period of time. While stereo referes to fixed relative viewpoints with synchronized image capture. In case of SfM, optical flow can be computed, which estimates the
-        motion field from the image sequences, based on the spatial and temporal variations of the image brightness</p>
+        <p>
+        Usually Cameras are considered as passive imaging systems (here it is 3D imaging system), because it is not projecting it's own source of light or other source of electromagnetic radiation (EMR) on a scene. Where as LIDAR system can be considered as active 3D imaging system because they do the opposite, which is projecting it's own source of EMR. With increase in computer processing power and decrease in camera prices, many real world applications of passive 3D imaging systems have been emerging. Stereo refers to multiple images taken simulataneously using two or more cameras, which are collectively called stereo camera. Stereo Vision fuses the images recorded by our two eyes and exploit the differences between them giving us a sense of depth.
+        </p>
+        <p>
+        If we can determine same point on two cameras (which is called correspondence problem), then we can project two rays from the two camera planes and see where they are intersecting (called triangulation) to get the 3D information. But we need Camera parameters (which come from camera calibration) to convert 2D image to 3D rays. The difference between the position of left and right image is called Disparity. 
+        </p>
+    
+        <p>
+        In contrast to stereo vision, structure of motion (SfM) referes to a single moving camera scenario, where image sequence is capture over a period of time. While stereo referes to fixed relative viewpoints with synchronized image capture. In case of SfM, optical flow can be computed, which estimates the
+        motion field from the image sequences, based on the spatial and temporal variations of the image brightness.
+        </p>
         </h4>
 <!--       </div>
       <div class="col-md-8">
@@ -74,13 +79,25 @@
         <h4>
         
         </h4>
-        <h2 id="section1-3">4. Epipolar Geometry<h2>
+        <h2 id="section1-3">4. Epipolar Geometry</h2>
         <h4>
+        <p>
+        Epipolar Geometry establishes the relationship between two camera views. When we have calibrated cameras and we are dealing with metric image coordinates, it is dependent only on relative pose between the cameras. When we have uncalibrated cameras and we are dealing with pixel-based image coordinates, it is additionally dependent on the cameras' instrinsic parameters, however it is independent of the scene. 
+        </p>
+        <p>
           For 3D reconstrunction from an image pair must solve two problems:<br>
-          <b>a. Correspondence problem:</b><br>
-          <b>b. Reconstrunction problem: </b><br> 
+          <b>a. Correspondence problem</b><br>
+          <b>b. Reconstrunction problem </b><br> 
+          Of these two, correspondence is more difficult as it's a search problem whereas stereo camera of known calibrattion, reconstruction to recover the 3D measurements is a simple geometric mechanism (using Triangulation). 
+        </p>
         </h4>
-            
+        <h2 id="section1-4">5. Rectification</h2>
+        <h4>
+          In a stereo-rig, cameras are horizontally displaced and rotated towards each other by an equal amount (verged), in order to overlap their field of views. In this case, epipolar lines lie at a variety of angles across two images, complicating search of correspondences. In contrast, if these cameras had their principal axes parallel to each other (no vergence) and the wo cameras had identical intrinsic parameters, conjugate (corresponding) epipolar lines would lie along the same horizontal scanline. This is called standard rectilinear stereo rig.<br>
+          Rectification can be done either with camera calibration information (ex: typical stereo application) or without calibration information (ex: typical SfM application)
+          <h3 id="section1-4">5.a. Rectification with Calibration Information</h3>
+
+        </h4>    
 
       </div>
 
