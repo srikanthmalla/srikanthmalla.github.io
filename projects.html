@@ -24,6 +24,23 @@ $( "#nav_bar" ).load( "nav_bar.html" );
 <div class="col-md-4">
 </div>
 <h1>Master's Projects</h1>
+  <div class="row">
+    <div class="col-md-1">
+    </div>
+    <div class="col-md-1">
+    </div>
+    <div class="col-md-8">
+      <br>
+      <h3>
+      <img src="http://img.youtube.com/vi/rpTw07datrc/maxresdefault.jpg" height="100px" width="200px"/>
+      <a class="youtube" href="https://www.youtube.com/watch?v=rpTw07datrc" >  Behavior Cloning for Self Driving Car</a> <br>
+      </h3>
+      <a href="https://github.com/srikanthmalla/behavior_cloning"> GitHub Repository Behavior Cloneing for Self Driving Car</a>
+      <br>
+        Behavior Cloning is widely seen Tesla AutoPilot, where the algorithm learns from human driving. Here data of driving a car in simulator is used to train a CNN (modified LeNet Architecture), that could drive the car autonomously. (Input front camera, output steering angles) 
+      <br>
+    </div>
+  </div>
 
   <div class="row">
     <div class="col-md-1">
@@ -34,14 +51,15 @@ $( "#nav_bar" ).load( "nav_bar.html" );
       <br>
       <h3>
       <img src="http://img.youtube.com/vi/Bae0rvgySBg/maxresdefault.jpg" height="100px" width="200px"/>
-      <a class="youtube" href="https://www.youtube.com/watch?v=Bae0rvgySBg" >   Imitation Learning for Baxter using Vicon</a> <br>
+      <a class="youtube" href="https://www.youtube.com/watch?v=Bae0rvgySBg" >  Behavior Cloning for Baxter using Vicon</a> <br>
       </h3>
       <a href="https://github.com/srikanthmalla/malla_baxter"> GitHub Repository Teleoperation Interface</a>
-      </br>
+      <br>
+      Teleoperating a humanoid has wide variety of applications both like nursing, space exploration, etc. Vicon Motion Capture system in animation design and movie making. It is used to track the motion of human and map it onto Baxter robot to perform take like grasping. Virtual headset is also used to get live camera feed from Baxter head camera.
+      <br>
       <a href="https://github.com/srikanthmalla/hmm_lfd_baxter"> GitHub Repository HMM Training</a>
-      </br>
-      Vicon Motion Capture system is used for teleoperating the Baxter Robot and VR Headset is used to remove visual correspondance issue. Hidden Markov Model (HMM) is used to learn different Trajectories for different actions<br>
-      <b>Contribution:</b> Created an interface to remotely teleoperate baxter robot. Collected trajectories using the interface as kinesthetic teaching is hard to move in precise motions. Baxter SDK (by rethink robotics) is used for Torque control. High Level position control is implemented to track the trajectory (runs at 200 Hz). HMM is trained in Matlab using Viterbi Algorithm. Bi-RRT* is used for dynamic replanning.
+      <br>
+      Behavior Cloning for manipulation tasks (like pick and place) for Baxter robot is done, by collecting trajectories and Hidden Markov Model is trained with reduced features (with K-Means clustering). These features are extracted in Configuration space. Bi-RRT* is also used in execution phase to tackle with dynamic obstacles in workspace. 
       <br>
     </div>
   </div>
@@ -59,7 +77,7 @@ $( "#nav_bar" ).load( "nav_bar.html" );
       </h3>
       <a href="https://github.com/srikanthmalla/Kuka_youbot"> GitHub Repository Kuka Youbot Arm</a>
       <br>
-      As part of robotics control course, implemented Inverse Dynamics and Passivity controller both in Matlab (Sim Mechanics) and on Real Robot using ROS. Found the dynamic Model in Euler-Lagrangian Form and used Inverse Dyanmics and Passivity (energy based) controllers to comapare the performance for trajectory following.
+      Robotic Arms are very important for Industrial manufacturing sector. Precision of trajectory tracking and fast convergence defines how good the control algorithm is performing. In this project comparison of Inverse Dynamics controller (which uses feedback linearization) and Passivity Control (energy based controller) for trajectory tracking of 5DOF kuka Youbot arm. Initially the performance of algorithms are tested in Matlab Simulation using Sim Mechanics Toolbox, then Implemented on Hardware using ROS.
       <br>
     </div>
   </div>
@@ -76,7 +94,7 @@ $( "#nav_bar" ).load( "nav_bar.html" );
       <a class="youtube" href="https://www.youtube.com/watch?v=ZJWfk6BsMMo"> Policy Gradients (REINFORCE) on Cart-Pole</a><br>
       </h3>
       <a href="https://github.com/srikanthmalla/policy_gradient"> GitHub Repository Policy Gradients</a><br>
-      Implemented Policy Gradients (Model Free Reinforcement Learning Technique) on cart-pole simulator using OpenAI-gym and TensorFlow is used for training fully connected neural networks (actor and critique networks) which approximate action and value function.
+      Tradition control techniques need system dynamics to design a control. But Artificial Intelligence based Reinforcement Learning has model free control learning technique. It learns by interacting with the environment and getting reward from environment. A Policy Gradient based Reinforcement Learning using Actor Critic technique is simulated on a Cart Pole Environment in OpenAI gym.
       <br>  
     </div>
   </div>
@@ -93,7 +111,24 @@ $( "#nav_bar" ).load( "nav_bar.html" );
       CNN based Traffic sign Classifier<br>
       </h3>
       <a href="https://github.com/srikanthmalla/Traffic_Sign_Classifier"> GitHub Repository CNN Traffic Sign Classifier</a><br>
-      As part of Udacity Self Driving course, implemented a German Traffic Sign Classifier using modified LeNet Architecture. Training Accuracy:99.9%, Validation Accuracy:95.4%,Test Accuracy 94% for 43 classes of signs.
+      Traffic sign classification is one of the important perception module in Self Driving Car Domain. Basic LeNet, traffic sign classifier is built using Tensorflow, providing a validation accuracy of 95.4% and test accuracy of 94% with learning rate = 0.001 for just 100 epochs of training. The model is trained on German Traffic signs Dataset which has 54 traffic signs.
+      <br>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-md-1">
+    </div>
+    <div class="col-md-1">
+    </div>
+    <div class="col-md-8">
+      <br>
+      <h3>
+      <img src="https://raw.githubusercontent.com/srikanthmalla/LaneLinesP1/master/test_images_output/solidWhiteCurve.jpg" width="200px"/>
+      Lane Line Tracking<br>
+      </h3>
+      <a href="https://github.com/srikanthmalla/LaneLinesP1"> GitHub Repository Lane Line Tracking</a><br>
+      Tracking Lane Lines is very important in perception module of Self Driving Car Domain. To perform this the algorithm is tested on several videos of road taken from forward facing camera of a car. Gaussian noise is added for blur effect to the videos. The algorithm uses canny edge detector to detect edges and extra noise like trees from image are removed by selecting Region of Interest (ROI). Hough Transform is used to find lines and those lines are extrapolated to get left and right lane lines.
       <br>
     </div>
   </div>
@@ -110,7 +145,7 @@ $( "#nav_bar" ).load( "nav_bar.html" );
       Inertial Odometry using LSTM<br>
       </h3>
       <a href="https://github.com/srikanthmalla/inertial_odom"> GitHub Repository LSTM RNN Inertial Odometry</a><br>
-      For Drone IMUs play importance in motion estimate, using Recurrent Neural Networks (LSTM)the performance is enhanced than the existing traditional filters (AHRS, Kalman, EKF,..)
+      Estimation of egomotion is very important for Self Driving Cars and UAVs. Existing inertial odometry calculation were not good because they couldn't capture exact noise model. So, Recurrent Neural Network (LSTM) is used to predict relative motion between two camera frames, as some times huge motions couldn't be captured by visual odometry (because of no correspondences in images), then extra sensor like Inertial Measurement Unit (IMU) is used to capture that motion, this gives advantage of predicting better ego motion and could be fused be visual odometry.
       <br>
     </div>
   </div>
@@ -148,10 +183,7 @@ $( "#nav_bar" ).load( "nav_bar.html" );
       <h3>
       <img src="http://img.youtube.com/vi/I4GnatTOZAg/maxresdefault.jpg" height="100px" width="200px"/>
       <a class="youtube" href="https://www.youtube.com/watch?v=I4GnatTOZAg" >Autonomous Infrastructure Inspection</a></h3><br>
-      Used DJI Matrice 100 along with Hukoyu UTM 30 LX Lidar with onboard computer Odroid U3 (1.7Ghz Quad core, 2GB RAM, 64GB EMMC Storage), for the purpose of Infrasture Inspection using UAV. <br>
-      <b>Contribution:</b> Coverage Planner Development and Implementation. Given a 3D point cloud map, a 3D plan automatically generated to inspect full map, considering the parameters like position uncertainty (because of not properly tuned controller, also turbulence and wind effect) and camera instrinsics. This uncertainty is emperically modelled and used to generate the path plan (which includes velocity of the robot, distance from the wall, and 3D Path) to inspect in less flight time with more coverage output. 
-      <br>
-      Real-time monitoring of coverage and replan is generated using RRT (local plan) and Travelling Salesman Problem (global plan with waypoints)
+      Industrial Inspection (like examining cracks in industrial boilers) takes lot of time and money. Using UAVs both of those factors could be cut down effectively. The aim of this project is automating an UAV to do this task. It is equipped with Hukoyu laser scanner (LIDAR), onboard sensors (camera, IMU), controller (DJI Naza M) and computer (Odroid). Mesh is generated automatically from 3D pointcloud map and a initial 3D coverage plan (path and velocities) is generated considering the noise model (empirically calculated controller uncertainty). Raycasting is done to track the covered regions and realtime coverage planner adjusts its path optimizing flight time.
     </div>
   </div>
   <div class="row">
@@ -164,8 +196,7 @@ $( "#nav_bar" ).load( "nav_bar.html" );
       <img src="http://img.youtube.com/vi/jfUT2kzKVFY/maxresdefault.jpg" height="100px" width="200px"/>
       <a class="youtube" href="www.youtube.com/watch?v=jfUT2kzKVFY" >Inventory management robot</a></h3>
       <br>
-      Fully Autonomous Mobile Robot developed from scratch with 3 DOF Robotic Arm implemented with RTAB MAP and ROS Navigation Stack<br>
-      <b>Contribution:</b> Created the robotic arm (3D Modelling and Printing) and Controller Design (PID based Position Control). Used ROS Navigation Stack for motion planning. Tracking an object using color with OpenCV. 
+      UGVs are widely used in warehouse management by Amazon and other companies. But they are mostly limited to moving the platforms but do not perform intelligent pick and place operations. Inspired by this idea an Autonomous Ground Robot equipped with a 3DOF robotic arm to manipulate things is built from scratch using 3D Modeling and Designing. For 3D mapping and Localization with Kinect camera RTABMap is used. A simple PID control is used for 3DOF robotic arm, and also for an extra application of person following in markets. 
     </div>
   </div>
   <div class="row">
@@ -178,9 +209,7 @@ $( "#nav_bar" ).load( "nav_bar.html" );
       <img src="http://img.youtube.com/vi/79WOA--YwtM/maxresdefault.jpg" height="100px" width="200px"/>
       <a class="youtube" href="https://www.youtube.com/watch?v=79WOA--YwtM" >Gesture controlled quadrotor using kinect sensor</a></h3>
       <br>
-      A robust interface for Gesture Control using Neural Networks is developed for controlling UAV and home automation.
-      <br>
-      <b>Contribution:</b> Skeletal Markers Package is used to track the joint positions and for different tasks like (take off, move left, move right, ..) data collected and trained with a neural network (fully connected). Reason for training neural network is classifiying a gesture for a particular time series data as there are more gestures, simple conditioning on hand positions wouldn't work.
+      Controlling robots with gestures could be easier for human if there are many tasks. Kinect Camera is used for Video Games to play with gestures. An interface for ARDrone UAV and Kinect camera is created on ROS Platform for gesture control. Initially tested with 6 different gestures. As number of gestures increases overlap of gesture features (in task space) occurs. To efficiently classify them Artificial Neural Network is trained.
     </div>
   </div>
   <div class="row">
@@ -192,8 +221,7 @@ $( "#nav_bar" ).load( "nav_bar.html" );
       <h3>
       <img src="http://img.youtube.com/vi/SRGF3rqFzak/maxresdefault.jpg" height="100px" width="200px"/>
       <a class="youtube" href="https://www.youtube.com/watch?v=SRGF3rqFzak" >Controlling quadrotor using Leap sensor</a></h3><br> 
-      Developed ROS Package (an interface) for LEAP Sensor to AR Drone and Home Appliances
-      <b>Contribution:</b> Using Leap SDK for Linux, developed a ROS Package for interfacing with ARDrone SDK for controlling ARDrone and arduino for controlling home Appliances.
+      Controlling robots with gestures could be easier for human if there are many tasks. LEAP Sensor is used for Video Games to play with gestures. An interface for ARDrone UAV and LEAP Sensor is created on ROS Platform for gesture control. Initially tested with 6 different gestures. As number of gestures increases overlap of gesture features (in task space) occurs. To efficiently classify them Artificial Neural Network is trained.
       <br>
     </div>
   </div>
@@ -206,7 +234,7 @@ $( "#nav_bar" ).load( "nav_bar.html" );
     <h3>
       <img src="http://img.youtube.com/vi/WTuCiIUA06g/default.jpg" height="100px" width="200px"/>
       <a class="youtube" href="https://www.youtube.com/watch?v=WTuCiIUA06g" >Person following quadrotor</a></h3><br>
-      Pixhawk is used with GPS Module and inbuilt applications of Pixhawk are explored. GPS based tracking is utilized in this project, as vision based tracking from very height was experimented and didn't work well.
+      UAVs are widely used in military and security applications. Tracking a car or person at lower heights with camera can be very hard sometimes as the target goes out of view more often and very fast. To address this problem we utilize a GPS sensor from person or car and track it along with providing live camera feed.
     </div>
   </div>
   <div class="row">
@@ -218,7 +246,7 @@ $( "#nav_bar" ).load( "nav_bar.html" );
     <h3>
       <img src="http://img.youtube.com/vi/U6uITBFgGbw/maxresdefault.jpg" height="100px" width="200px"/>
       <a class="youtube" href="https://www.youtube.com/watch?v=U6uITBFgGbw" >PID tuning of quadrotor</a></h3><br>
-      Manual PID tuning of Quadrotor is done using Arduino Due, as part of control systems course to understand the concepts of feedback systems, underdamping, overdamping . 
+      Even though quadrotor is a non-linear system, it can be approximated as a linear system locally and can be controlled with simple PID controllers for stabilization. Manual PID tuning of Quadrotor is done using Arduino Due, as part of control systems course to understand the concepts of feedback systems, underdamping, overdamping. 
     </div>
   </div>
   <div class="row">
@@ -230,7 +258,7 @@ $( "#nav_bar" ).load( "nav_bar.html" );
     <h3>
       <img src="http://img.youtube.com/vi/RUbfB7_Ai30/maxresdefault.jpg" height="100px" width="200px"/>
       <a class="youtube" title="sphero" href="https://youtu.be/RUbfB7_Ai30">Sphero</a></h3><br>
-      A Sphero 3D Model is designed with compartments of dc motors, micro controller and 3D printed. Using Bluetooth Module HC-05 and Arduino, the sphere robot is controlled from android smart phone.
+      A mobile robot that can work both on Land and water is expensive to built because of electronics on the robot. A simple spherical shell is 3D printed and all the electronics and motors (which control the motion) are kept inside safeguarding from water by shell. Also, it is wirelessly controlled with an android application from smartphone 
     </div>  
   </div>
   <div class="row">
@@ -242,7 +270,7 @@ $( "#nav_bar" ).load( "nav_bar.html" );
     <h3>
       <img src="http://img.youtube.com/vi/LLG-RPcdhic/default.jpg" height="100px" width="200px"/>
       <a class="youtube" href="https://www.youtube.com/watch?v=LLG-RPcdhic" >Fixed Wing UAV</a></h3><br>
-      Fixed wing is developed using foam and is automated with pixhawk Ardupilot.
+      Fixed Wing UAV are more efficient in flight time (consuming less battery) compared to quadrotors. A fixed wing UAV is made with foam. Pixhawk is used along with mission planner for auto surveillance and 3D mapping application (using agisoft)
     </div>
   </div>
 
@@ -255,7 +283,7 @@ $( "#nav_bar" ).load( "nav_bar.html" );
     <h3>
       <img src="http://img.youtube.com/vi/ZEGprHH0Yb8/maxresdefault.jpg" height="100px" width="200px"/>
       <a class="youtube" href="https://www.youtube.com/watch?v=ZEGprHH0Yb8" >Ground Robot using Leap gestures</a></h3><br>
-      Leap Sensor is used along with the custom developed ROS Package (interface between LEAP SDK and Arduino) to control ground robot and home appliances.
+      Long range ground robot control has wide variety of applications like remote sensing application in mines, nuclear sites. As a prototype for this application, zigbee communication is used for long range. Also, with gesture control with a LEAP Sensor.
     </div>
   </div>
   <div class="row">
@@ -267,7 +295,19 @@ $( "#nav_bar" ).load( "nav_bar.html" );
     <h3>
       <img src="http://img.youtube.com/vi/w4EZg31-CCg/maxresdefault.jpg" height="100px" width="200px"/>
       <a class="youtube" href="https://www.youtube.com/watch?v=w4EZg31-CCg" >Path Tracing Robot</a></h3><br>
-      Stores the path travelled (using servo motors, wheel odometry is stored) and traces its path back to intial position.
+      In fire fighting applications, robots that record it's path travelled and coming back when visual feeback is not clear will be useful. For this application a mobile robot is developed that stores the path travelled (using servo motors, wheel odometry is stored) and traces its path back to intial position.
+    </div>
+  </div>
+  <div class="row">
+    <div class="col-md-1">
+    </div>
+    <div class="col-md-1">
+    </div>
+    <div class="col-md-8">
+    <h3>
+      <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/f/f2/WTPC_Oscilloscope-1.jpg/220px-WTPC_Oscilloscope-1.jpg" height="100px" width="200px"/>
+      Android based Digital Signal Oscilloscope</a></h3><br>
+      Digital Oscilloscopes are costly and are not portable. Smart phones has capability of data visualization and computation. A simple module that measure analog signal with in a range and digitized using ADC. Bluetooth communication is used to send the data to a phone. It has limitations because of ADC conversion and Bluetooth communication frequency.
     </div>
   </div>
 </ol>
