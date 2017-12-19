@@ -1,9 +1,13 @@
+.navbar-center {
+  display:inline-block;
+  text-align:center;
+}
 .sutitlesborder {
-    border-style: solid;
-    border-width: 2px;
-    height:8%;
-    width:100%;
-    border-color: #BBC2BA;
+  border-style: solid;
+  border-width: 2px;
+  height:8%;
+  width:100%;
+  border-color: #BBC2BA;
 	background-color:#FFFFF3;
 }
 .meaningsborder {
