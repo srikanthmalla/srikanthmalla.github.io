@@ -72,6 +72,43 @@ $( "#nav_bar" ).load( "nav_bar.html" );
     <div class="col-md-8">
       <br>
       <h3>
+      <img src="files/gaussian.png" height="100px" width="200px"/>
+      Sensor Fusion for Autonomous Cars<br>
+      </h3>
+      <a href="https://github.com/srikanthmalla/EKF"> GitHub Repository EKF</a><br>            
+      <a href="https://github.com/srikanthmalla/UKF"> GitHub Repository UKF</a>
+      <br>
+      Extended Kalman Filter and Unscented Kalman Filter based fusion of sensor data (Lidar and Radar) has been implemented on Udacity Simulator for Autonomous Cars. EKF linearizes the non-linear (radar observations to state space transfer) function by first order approximation. But since this approximation is not a good idea, UKF overcomes the problem by generating sigma points and transfering them and fitting gaussian. This procedure is repeated and the non linear function is used as it is without approximations. 
+      <br>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-md-1">
+    </div>
+    <div class="col-md-1">
+    </div>
+    <div class="col-md-8">
+      <br>
+      <h3>
+      <img src="files/particlefilter.jpg" height="100px" width="200px"/>
+      Particle Filter based Localization for Autonomous Cars<br>
+      </h3>
+      <a href="https://github.com/srikanthmalla/EKF"> GitHub Repository EKF</a><br>            
+      <br>
+      Particle Filter can fit multi model estimate instead of Gaussian. Since if there are two similar rooms, gaussian might have to choose between one of the them but particle filter assumes it is in both (if there is no prior as of then). This is more robust, but computationally intensive with more particles.
+      <br>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-md-1">
+    </div>
+    <div class="col-md-1">
+    </div>
+    <div class="col-md-8">
+      <br>
+      <h3>
       <img src="https://static.generation-robots.com/5045/kuka-youbot-robot-mobile-omni-directionel-avec-bras.jpg" height="100px" width="200px"/>
       Inverse Dynamics and Passivity based Controller implementation on Kuka Youbot Arm<br>
       </h3>
