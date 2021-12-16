@@ -1,0 +1,6 @@
+@article{malla2019nemo,
+  title={Nemo: Future object localization using noisy ego priors},
+  author={Malla, Srikanth and Dwivedi, Isht and Dariush, Behzad and Choi, Chiho},
+  journal={arXiv preprint arXiv:1909.08150},
+  year={2019}
+}

@@ -1,0 +1,9 @@
+@article{vaegae2016development,
+  title={Development of an intelligent pressure measuring technique for bellows using radial basis function neural network},
+  author={Vaegae, Naveen Kumar and Komanapalli, Venkata Lakshmi Narayana and Malla, Srikanth},
+  journal={Sensors and Actuators A: Physical},
+  volume={238},
+  pages={240--248},
+  year={2016},
+  publisher={Elsevier}
+}

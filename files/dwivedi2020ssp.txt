@@ -1,0 +1,8 @@
+@inproceedings{dwivedi2020ssp,
+  title={Ssp: Single shot future trajectory prediction},
+  author={Dwivedi, Isht and Malla, Srikanth and Dariush, Behzad and Choi, Chiho},
+  booktitle={2020 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)},
+  pages={2211--2218},
+  year={2020},
+  organization={IEEE}
+}

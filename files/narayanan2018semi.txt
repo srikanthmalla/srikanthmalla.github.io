@@ -1,0 +1,6 @@
+@article{narayanan2018semi,
+  title={Semi-supervised Learning: Fusion of Self-supervised, Supervised Learning, and Multimodal Cues for Tactical Driver Behavior Detection},
+  author={Narayanan, Athma and Chen, Yi-Ting and Malla, Srikanth},
+  journal={arXiv preprint arXiv:1807.00864},
+  year={2018}
+}

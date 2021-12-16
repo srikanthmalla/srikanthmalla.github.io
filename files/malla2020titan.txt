@@ -1,0 +1,7 @@
+@inproceedings{malla2020titan,
+  title={Titan: Future forecast using action priors},
+  author={Malla, Srikanth and Dariush, Behzad and Choi, Chiho},
+  booktitle={Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition},
+  pages={11186--11196},
+  year={2020}
+}

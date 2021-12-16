@@ -1,0 +1,7 @@
+@inproceedings{girase2021loki,
+  title={LOKI: Long Term and Key Intentions for Trajectory Prediction},
+  author={Girase, Harshayu and Gang, Haiming and Malla, Srikanth and Li, Jiachen and Kanehara, Akira and Mangalam, Karttikeya and Choi, Chiho},
+  booktitle={Proceedings of the IEEE/CVF International Conference on Computer Vision},
+  pages={9803--9812},
+  year={2021}
+}

@@ -1,0 +1,6 @@
+@article{choi2019drogon,
+  title={DROGON: A trajectory prediction model based on intention-conditioned behavior reasoning},
+  author={Choi, Chiho and Malla, Srikanth and Patil, Abhishek and Choi, Joon Hee},
+  journal={arXiv preprint arXiv:1908.00024},
+  year={2019}
+}

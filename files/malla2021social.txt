@@ -1,0 +1,8 @@
+@inproceedings{malla2021social,
+  title={Social-STAGE: Spatio-Temporal Multi-Modal Future Trajectory Forecast},
+  author={Malla, Srikanth and Choi, Chiho and Dariush, Behzad},
+  booktitle={2021 IEEE International Conference on Robotics and Automation (ICRA)},
+  pages={13938--13944},
+  year={2021},
+  organization={IEEE}
+}

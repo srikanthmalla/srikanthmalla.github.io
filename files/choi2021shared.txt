@@ -1,0 +1,7 @@
+@inproceedings{choi2021shared,
+  title={Shared cross-modal trajectory prediction for autonomous driving},
+  author={Choi, Chiho and Choi, Joon Hee and Li, Jiachen and Malla, Srikanth},
+  booktitle={Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition},
+  pages={244--253},
+  year={2021}
+}

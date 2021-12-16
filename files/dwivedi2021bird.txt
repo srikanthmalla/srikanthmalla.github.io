@@ -1,0 +1,5 @@
+@article{dwivedi2021bird,
+  title={Bird’s Eye View Segmentation Using Lifted 2D Semantic Features},
+  author={Dwivedi, Isht and Malla, Srikanth and Chen, Yi-Ting and Dariush, Behzad},
+  year={2021}
+}

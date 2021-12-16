@@ -1,0 +1,7 @@
+@inproceedings{li2021rain,
+  title={Rain: Reinforced hybrid attention inference network for motion forecasting},
+  author={Li, Jiachen and Yang, Fan and Ma, Hengbo and Malla, Srikanth and Tomizuka, Masayoshi and Choi, Chiho},
+  booktitle={Proceedings of the IEEE/CVF International Conference on Computer Vision},
+  pages={16096--16106},
+  year={2021}
+}

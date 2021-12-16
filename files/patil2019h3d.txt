@@ -1,0 +1,8 @@
+@inproceedings{patil2019h3d,
+  title={The h3d dataset for full-surround 3d multi-object detection and tracking in crowded urban scenes},
+  author={Patil, Abhishek and Malla, Srikanth and Gang, Haiming and Chen, Yi-Ting},
+  booktitle={2019 International Conference on Robotics and Automation (ICRA)},
+  pages={9552--9557},
+  year={2019},
+  organization={IEEE}
+}
