@@ -1,0 +1,7 @@
+@inproceedings{malla2023drama,
+  title={DRAMA: Joint Risk Localization and Captioning in Driving},
+  author={Malla, Srikanth and Choi, Chiho and Dwivedi, Isht and Choi, Joon Hee and Li, Jiachen},
+  booktitle={Proceedings of the IEEE/CVF Winter Conference on Applications of Computer Vision},
+  pages={1043--1052},
+  year={2023}
+}
