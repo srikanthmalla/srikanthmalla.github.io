@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workout App</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        
+	.container { max-width: 600px; }
+        .circuit-name { font-weight: bold; font-size: 1.2em; margin-top: 20px; }
+        .set-number { font-weight: bold; }
+        #workoutStatus, #workoutTimer { font-size: 1.5em; margin-top: 20px; background-color: #fff; padding: 10px; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,.2); }
+        .exercise-input { width: calc(50% - 12px); display: inline-block; }
+        .set { margin-bottom: 10px; }
+        .btn { margin-top: 10px; }
+        .btn-secondary { margin-left: 5px; }
+        .status-info { font-size: 1.1em; font-weight: bold; color: #333; }
+        .remove-btn { margin-left: 10px; cursor: pointer; color: #dc3545; }
+        .remove-circuit, .remove-set {
+            margin-left: 10px;
+            cursor: pointer;
+            color: #dc3545;
+            background: transparent;
+            border: none;
+        }
+
+        .remove-circuit:hover, .remove-set:hover {
+            color: #fff;
+            background-color: #dc3545;
+        } 
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center mt-5">Workout App</h1>
+
+        <div class="mt-4">
+            <label for="numCycles">Number of Cycles:</label>
+            <input type="number" id="numCycles" class="form-control" placeholder="Enter number of cycles">
+
+            <label for="exerciseDuration">Duration of Each Exercise (seconds):</label>
+            <input type="number" id="exerciseDuration" class="form-control" placeholder="Enter duration for each exercise">
+
+            <label for="breakDuration">Break Duration (seconds):</label>
+            <input type="number" id="breakDuration" class="form-control" placeholder="Enter break duration">
+
+            <div id="circuitsContainer"></div>
+            <button class="btn btn-secondary" onclick="addCircuit()">Add Circuit</button>
+        </div>
+
+        <button class="btn btn-primary" onclick="startCustomWorkout()">Start Custom Workout</button>
+        <button class="btn btn-secondary" onclick="loadDefaultWorkout()">Load Default Workout</button>
+        <button class="btn btn-info" onclick="pauseWorkout()">Pause/Resume</button>
+        <button class="btn btn-danger" onclick="stopWorkout()">Stop</button>
+        <div id="workoutTimer" class="text-center">Remaining Time: 00:00</div>
+        <div id="workoutStatus" class="text-center"></div>    
+    </div>
+    
+    <script>
+        let workoutInterval, totalWorkoutTime = 0, remainingWorkoutTime = 0, isPaused = false;
+        let currentTimeouts = [], currentStatusInterval, currentExercise, timeLeftInCurrentExercise;
+
+        function speak(text) {
+            let utterance = new SpeechSynthesisUtterance(text);
+            speechSynthesis.speak(utterance);
+        }
+
+        function addCircuit() {
+            let circuitsContainer = document.getElementById("circuitsContainer");
+            let circuitDiv = document.createElement("div");
+            circuitDiv.className = "circuit mt-3";
+            let circuitNumber = document.querySelectorAll(".circuit").length + 1;
+            circuitDiv.innerHTML = `
+                <div class="circuit-name">Circuit ${circuitNumber}: <input type="text" class="form-control mb-2" placeholder="Enter circuit name"></div>
+                <div class="setsContainer"></div>
+                <button class="btn btn-secondary btn-sm" onclick="addSet(this)">Add Set</button>
+                <button class="btn btn-danger btn-sm remove-circuit" onclick="removeCircuit(this)">Remove Circuit</button>
+            `;
+            circuitsContainer.appendChild(circuitDiv);
+        }
+
+        function addSet(button) {
+            let setsContainer = button.previousElementSibling;
+            let setNumber = setsContainer.querySelectorAll(".set").length + 1;
+            let setDiv = document.createElement("div");
+            setDiv.className = "set mt-2";
+            setDiv.innerHTML = `
+                <div class="set-number">Set ${setNumber}:</div>
+                <input type="text" class="form-control exercise-input" placeholder="Enter exercise 1">
+                <input type="text" class="form-control exercise-input" placeholder="Enter exercise 2">
+                <button class="btn btn-danger btn-sm remove-set" onclick="removeSet(this)">Remove Set</button>
+            `;
+            setsContainer.appendChild(setDiv);
+        }
+
+        function startCustomWorkout() {
+            currentTimeouts.forEach(clearTimeout);
+            clearInterval(workoutInterval);
+            currentTimeouts = [];
+            totalWorkoutTime = 0;
+            remainingWorkoutTime = 0;
+
+            const numCycles = document.getElementById("numCycles").value;
+            const exerciseDuration = document.getElementById("exerciseDuration").value;
+            const breakDuration = document.getElementById("breakDuration").value;
+            const circuits = document.querySelectorAll(".circuit");
+            let totalTime = 0;
+
+            circuits.forEach((circuit, circuitIndex) => {
+                const sets = circuit.querySelectorAll(".set");
+                sets.forEach((set, setIndex) => {
+                    for (let cycle = 0; cycle < numCycles; cycle++) {
+                        const exercise1 = set.children[1].value;
+                        const exercise2 = set.children[2].value;
+
+                        // Exercise 1
+                        let timeout1 = setTimeout(() => {
+                            updateStatus("Circuit " + (circuitIndex + 1) + " - Set " + (setIndex + 1) + " - Cycle " + (cycle + 1) + ": " + exercise1, exerciseDuration);
+                        }, totalTime);
+                        currentTimeouts.push(timeout1);
+                        totalTime += exerciseDuration * 1000;
+
+                        // Exercise 2
+                        let timeout2 = setTimeout(() => {
+                            updateStatus("Circuit " + (circuitIndex + 1) + " - Set " + (setIndex + 1) + " - Cycle " + (cycle + 1) + ": " + exercise2, exerciseDuration);
+                        }, totalTime);
+                        currentTimeouts.push(timeout2);
+                        totalTime += exerciseDuration * 1000;
+
+                        // Break (after last cycle of each set)
+                        if (cycle === numCycles - 1) {
+                            let breakTimeout = setTimeout(() => {
+                                updateStatus("Break", breakDuration);
+                            }, totalTime);
+                            currentTimeouts.push(breakTimeout);
+                            totalTime += breakDuration * 1000;
+                        }
+                    }
+                });
+            });
+
+            totalWorkoutTime = totalTime / 1000;
+            remainingWorkoutTime = totalWorkoutTime;
+            startCountdown(remainingWorkoutTime);
+            // Reset the workout status
+            document.getElementById("workoutStatus").innerText = "";        
+	}
+	
+        function updateStatus(text, duration) {
+            currentExercise = { text, duration };
+            document.getElementById("workoutStatus").innerText = text;
+            speak(text.split(":")[1].trim());
+            let countdown = duration;
+
+            // Clear previous status interval
+            clearInterval(currentStatusInterval);
+
+            currentStatusInterval = setInterval(() => {
+                countdown--;
+                timeLeftInCurrentExercise = countdown;
+                if (countdown <= 0) {
+                    clearInterval(currentStatusInterval);
+                } else {
+                    document.getElementById("workoutStatus").innerText = text + " - " + countdown + " seconds";
+                }
+            }, 1000);
+        }
+
+        function pauseWorkout() {
+            if (!isPaused) {
+                currentTimeouts.forEach(clearTimeout);
+                clearInterval(workoutInterval);
+                clearInterval(currentStatusInterval);
+                isPaused = true;
+            } else {
+                startCountdown(remainingWorkoutTime);
+                if (currentExercise) {
+                    updateStatus(currentExercise.text, timeLeftInCurrentExercise);
+                }
+                isPaused = false;
+            }
+        }
+        function stopWorkout() {
+            currentTimeouts.forEach(clearTimeout);
+            clearInterval(workoutInterval);
+            clearInterval(currentStatusInterval);
+            totalWorkoutTime = 0;
+            remainingWorkoutTime = 0;
+            updateRemainingTime();
+            document.getElementById("workoutStatus").innerText = "Workout stopped";
+        }
+
+        function removeCircuit(button) {
+            button.closest(".circuit").remove();
+        }
+
+        function removeSet(button) {
+            button.closest(".set").remove();
+        }
+
+
+        function loadDefaultWorkout() {
+            document.getElementById("numCycles").value = 3;
+            document.getElementById("exerciseDuration").value = 45;
+            document.getElementById("breakDuration").value = 15;
+
+            // Clear existing circuits
+            document.getElementById("circuitsContainer").innerHTML = "";
+
+            // Add default workout circuits and sets
+            addCircuitWithSets("Warm-up", [
+                ["Jumping Jack", "Squat"],
+                ["Mountain Climbers (Legs)", "Crunches"],
+                ["Mountain Climbers (Hands)", "Flutter Kicks"]
+            ]);
+
+            addCircuitWithSets("Main Workout", [
+                ["JCHU", "Lunge Hops"],
+                ["Alternate Ts", "Shoulder to Shoulder Push-up"],
+                ["CHCU", "Burpees"],
+                ["Freestyle", "High Knees"]
+            ]);
+
+            addCircuitWithSets("Core", [
+                ["Leg Raises/Hip Thrust", "Plank"],
+                ["Plank Rotation", "Toe Touch"],
+                ["Side Plank", "Bicycles"]
+            ]);
+        }
+
+        function addCircuitWithSets(circuitName, sets) {
+            let circuitsContainer = document.getElementById("circuitsContainer");
+            let circuitDiv = document.createElement("div");
+            circuitDiv.className = "circuit mt-3";
+            circuitDiv.innerHTML = `
+                <div class="circuit-name">${circuitName}: <input type="text" class="form-control mb-2" value="${circuitName}" readonly></div>
+                <div class="setsContainer"></div>
+            `;
+            circuitsContainer.appendChild(circuitDiv);
+
+            let setsContainer = circuitDiv.querySelector(".setsContainer");
+            sets.forEach((set, index) => {
+                let setDiv = document.createElement("div");
+                setDiv.className = "set mt-2";
+                setDiv.innerHTML = `
+                    <div class="set-number">Set ${index + 1}:</div>
+                    <input type="text" class="form-control exercise-input" value="${set[0]}" readonly>
+                    <input type="text" class="form-control exercise-input" value="${set[1]}" readonly>
+                `;
+                setsContainer.appendChild(setDiv);
+            });
+        }
+
+
+        function startCountdown(duration) {
+            remainingWorkoutTime = duration;
+            updateRemainingTime();
+            workoutInterval = setInterval(() => {
+                remainingWorkoutTime--;
+                if (remainingWorkoutTime <= 0) {
+                    clearInterval(workoutInterval);
+                } else {
+                    updateRemainingTime();
+                }
+            }, 1000);
+        }
+
+        function updateRemainingTime() {
+            let minutes = Math.floor(remainingWorkoutTime / 60);
+            let seconds = remainingWorkoutTime % 60;
+            document.getElementById("workoutTimer").innerText = `Remaining Time: ${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+    </script>
+</body>
+</html>
