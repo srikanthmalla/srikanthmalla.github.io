@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Workout App</title>
+    <title>Workout App </title>
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body { background-color: #f8f9fa; }
@@ -34,7 +34,7 @@
 </head>
 <body>
     <div class="container">
-        <h1 class="text-center mt-5">Workout App</h1>
+        <h1 class="text-center mt-5"> 화이팅 \ 頑張って</h1>
 
         <div class="mt-4">
             <label for="numCycles">Number of Cycles:</label>
@@ -59,8 +59,10 @@
     </div>
     
     <script>
+
         let workoutInterval, totalWorkoutTime = 0, remainingWorkoutTime = 0, isPaused = false;
         let currentTimeouts = [], currentStatusInterval, currentExercise, timeLeftInCurrentExercise;
+        let pausedExercise, pausedTimeLeft;
 
         function speak(text) {
             let utterance = new SpeechSynthesisUtterance(text);
@@ -94,62 +96,135 @@
             `;
             setsContainer.appendChild(setDiv);
         }
+	function startCustomWorkout(startTimeOffset = 0) {
+	    currentTimeouts.forEach(clearTimeout);
+	    clearInterval(workoutInterval);
+	    currentTimeouts = [];
+	    totalWorkoutTime = 0;
+	    remainingWorkoutTime = 0;
 
-        function startCustomWorkout() {
-            currentTimeouts.forEach(clearTimeout);
-            clearInterval(workoutInterval);
-            currentTimeouts = [];
-            totalWorkoutTime = 0;
-            remainingWorkoutTime = 0;
+	    const numCycles = parseInt(document.getElementById("numCycles").value, 10);
+	    const exerciseDuration = parseInt(document.getElementById("exerciseDuration").value, 10) * 1000;
+	    const breakDuration = parseInt(document.getElementById("breakDuration").value, 10) * 1000;
+	    const circuits = document.querySelectorAll(".circuit");
 
-            const numCycles = document.getElementById("numCycles").value;
-            const exerciseDuration = document.getElementById("exerciseDuration").value;
-            const breakDuration = document.getElementById("breakDuration").value;
-            const circuits = document.querySelectorAll(".circuit");
-            let totalTime = 0;
+	    let totalTime = 0;
 
-            circuits.forEach((circuit, circuitIndex) => {
-                const sets = circuit.querySelectorAll(".set");
-                sets.forEach((set, setIndex) => {
-                    for (let cycle = 0; cycle < numCycles; cycle++) {
-                        const exercise1 = set.children[1].value;
-                        const exercise2 = set.children[2].value;
+	    circuits.forEach((circuit, circuitIndex) => {
+		const sets = circuit.querySelectorAll(".set");
+		sets.forEach((set, setIndex) => {
+		    for (let cycle = 0; cycle < numCycles; cycle++) {
+			const exercise1 = set.children[1].value;
+			const exercise2 = set.children[2].value;
 
-                        // Exercise 1
-                        let timeout1 = setTimeout(() => {
-                            updateStatus("Circuit " + (circuitIndex + 1) + " - Set " + (setIndex + 1) + " - Cycle " + (cycle + 1) + ": " + exercise1, exerciseDuration);
-                        }, totalTime);
-                        currentTimeouts.push(timeout1);
-                        totalTime += exerciseDuration * 1000;
+			// Schedule Exercise 1
+			if (totalTime >= startTimeOffset) {
+			    let timeout1 = setTimeout(() => {
+				updateStatus("Circuit " + (circuitIndex + 1) + " - Set " + (setIndex + 1) + " - Cycle " + (cycle + 1) + ": " + exercise1, exerciseDuration / 1000);
+			    }, totalTime - startTimeOffset);
+			    currentTimeouts.push(timeout1);
+			}
+			totalTime += exerciseDuration;
 
-                        // Exercise 2
-                        let timeout2 = setTimeout(() => {
-                            updateStatus("Circuit " + (circuitIndex + 1) + " - Set " + (setIndex + 1) + " - Cycle " + (cycle + 1) + ": " + exercise2, exerciseDuration);
-                        }, totalTime);
-                        currentTimeouts.push(timeout2);
-                        totalTime += exerciseDuration * 1000;
+			// Schedule Exercise 2
+			if (totalTime >= startTimeOffset) {
+			    let timeout2 = setTimeout(() => {
+				updateStatus("Circuit " + (circuitIndex + 1) + " - Set " + (setIndex + 1) + " - Cycle " + (cycle + 1) + ": " + exercise2, exerciseDuration / 1000);
+			    }, totalTime - startTimeOffset);
+			    currentTimeouts.push(timeout2);
+			}
+			totalTime += exerciseDuration;
 
-                        // Break (after last cycle of each set)
-                        if (cycle === numCycles - 1) {
-                            let breakTimeout = setTimeout(() => {
-                                updateStatus("Break", breakDuration);
-                            }, totalTime);
-                            currentTimeouts.push(breakTimeout);
-                            totalTime += breakDuration * 1000;
-                        }
-                    }
-                });
-            });
+			// Schedule Break
+			if (cycle < numCycles - 1 && totalTime >= startTimeOffset) {
+			    let breakTimeout = setTimeout(() => {
+				updateStatus("Break", breakDuration / 1000);
+			    }, totalTime - startTimeOffset);
+			    currentTimeouts.push(breakTimeout);
+			}
+			totalTime += breakDuration;
+		    }
+		});
+	    });
 
-            totalWorkoutTime = totalTime / 1000;
-            remainingWorkoutTime = totalWorkoutTime;
-            startCountdown(remainingWorkoutTime);
-            // Reset the workout status
-            document.getElementById("workoutStatus").innerText = "";        
+	    totalWorkoutTime = totalTime / 1000;
+	    remainingWorkoutTime = totalWorkoutTime - (startTimeOffset / 1000);
+	    startCountdown(remainingWorkoutTime);
 	}
-	
-        function updateStatus(text, duration) {
-            currentExercise = { text, duration };
+	function resumeWorkout(elapsedTime) {
+	    currentTimeouts.forEach(clearTimeout);
+	    clearInterval(workoutInterval);
+	    currentTimeouts = [];
+
+	    const numCycles = parseInt(document.getElementById("numCycles").value, 10);
+	    const exerciseDuration = parseInt(document.getElementById("exerciseDuration").value, 10) * 1000;
+	    const breakDuration = parseInt(document.getElementById("breakDuration").value, 10) * 1000;
+	    const circuits = document.querySelectorAll(".circuit");
+
+	    let totalTime = 0;
+	    let isExerciseResumed = false;
+
+	    for (let circuitIndex = 0; circuitIndex < circuits.length; circuitIndex++) {
+		const sets = circuits[circuitIndex].querySelectorAll(".set");
+		for (let setIndex = 0; setIndex < sets.length; setIndex++) {
+		    for (let cycle = 0; cycle < numCycles; cycle++) {
+			const exercise1 = sets[setIndex].children[1].value;
+			const exercise2 = sets[setIndex].children[2].value;
+
+			// Check and resume from Exercise 1
+			if (!isExerciseResumed && totalTime + exerciseDuration > elapsedTime) {
+			    let remainingTime = (totalTime + exerciseDuration) - elapsedTime;
+			    updateStatus("Circuit " + (circuitIndex + 1) + " - Set " + (setIndex + 1) + " - Cycle " + (cycle + 1) + ": " + exercise1, remainingTime / 1000);
+			    isExerciseResumed = true;
+			} else if (isExerciseResumed) {
+			    let timeout1 = setTimeout(() => {
+				updateStatus("Circuit " + (circuitIndex + 1) + " - Set " + (setIndex + 1) + " - Cycle " + (cycle + 1) + ": " + exercise1, exerciseDuration / 1000);
+			    }, totalTime - elapsedTime);
+			    currentTimeouts.push(timeout1);
+			}
+			totalTime += exerciseDuration;
+
+			// Check and resume from Exercise 2
+			if (!isExerciseResumed && totalTime + exerciseDuration > elapsedTime) {
+			    let remainingTime = (totalTime + exerciseDuration) - elapsedTime;
+			    updateStatus("Circuit " + (circuitIndex + 1) + " - Set " + (setIndex + 1) + " - Cycle " + (cycle + 1) + ": " + exercise2, remainingTime / 1000);
+			    isExerciseResumed = true;
+			} else if (isExerciseResumed) {
+			    let timeout2 = setTimeout(() => {
+				updateStatus("Circuit " + (circuitIndex + 1) + " - Set " + (setIndex + 1) + " - Cycle " + (cycle + 1) + ": " + exercise2, exerciseDuration / 1000);
+			    }, totalTime - elapsedTime);
+			    currentTimeouts.push(timeout2);
+			}
+			totalTime += exerciseDuration;
+
+			// Handle break scheduling
+			if (cycle < numCycles - 1) {
+			    if (!isExerciseResumed && totalTime + breakDuration > elapsedTime) {
+				let remainingTime = (totalTime + breakDuration) - elapsedTime;
+				updateStatus("Break", remainingTime / 1000);
+				isExerciseResumed = true;
+			    } else if (isExerciseResumed) {
+				let breakTimeout = setTimeout(() => {
+				    updateStatus("Break", breakDuration / 1000);
+				}, totalTime - elapsedTime);
+				currentTimeouts.push(breakTimeout);
+			    }
+			    totalTime += breakDuration;
+			}
+		    }
+		}
+	    }
+
+	    // Update the remaining workout time
+	    remainingWorkoutTime = totalWorkoutTime - (elapsedTime / 1000);
+
+	    // Start the countdown with the updated remaining time
+	    startCountdown(remainingWorkoutTime);
+	}
+ 
+	function updateStatus(text, duration) {
+            currentExercise = text;
+            timeLeftInCurrentExercise = duration;
             document.getElementById("workoutStatus").innerText = text;
             speak(text.split(":")[1].trim());
             let countdown = duration;
@@ -167,22 +242,26 @@
                 }
             }, 1000);
         }
+	// Modified pauseWorkout function
+	function pauseWorkout() {
+	    if (!isPaused) {
+		// Pause the workout
+		currentTimeouts.forEach(clearTimeout);
+		clearInterval(workoutInterval);
+		clearInterval(currentStatusInterval);
+		pausedExercise = currentExercise;
+		pausedTimeLeft = timeLeftInCurrentExercise;
+		isPaused = true;
+	    } else {
+		// Calculate the time elapsed since the workout started
+		let elapsedWorkoutTime = totalWorkoutTime * 1000 - remainingWorkoutTime * 1000;
 
-        function pauseWorkout() {
-            if (!isPaused) {
-                currentTimeouts.forEach(clearTimeout);
-                clearInterval(workoutInterval);
-                clearInterval(currentStatusInterval);
-                isPaused = true;
-            } else {
-                startCountdown(remainingWorkoutTime);
-                if (currentExercise) {
-                    updateStatus(currentExercise.text, timeLeftInCurrentExercise);
-                }
-                isPaused = false;
-            }
-        }
-        function stopWorkout() {
+		// Resume the workout
+		resumeWorkout(elapsedWorkoutTime);
+		isPaused = false;
+	    }
+	}	
+	function stopWorkout() {
             currentTimeouts.forEach(clearTimeout);
             clearInterval(workoutInterval);
             clearInterval(currentStatusInterval);
