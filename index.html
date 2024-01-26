@@ -26,17 +26,46 @@ color: #f09228;
 text-decoration:none;
 }
 body,td,th {
-	font-size: 14px;
-	line-height: 1.5em;
-	font-family: Verdana, Helvetica, Arial, sans-serif;
-	color: #666;
-	}
+	    font-family: 'Arial', sans-serif;
+	    background-color: #f8f8f8;
+	    color: #333;
+	    margin: 0;
+	    padding: 0;
+}
+
 td {
 	padding: 1em;
 }
 p {
 	font-size: 15px;
 }
+	.profile-pic {
+	    float: right;
+	    margin-left: 20px;
+	    border-radius: 10px;
+	}
+	.header {{
+            text-align: center;
+            padding: 20px 0;
+        }}
+        .header h1 {{
+            margin: 0;
+            font-size: 2.5em;
+        }}
+        .navigation {{
+            text-align: center;
+            margin: 20px 0;
+        }}
+        .navigation img {{
+            height: 40px;
+            margin: 0 10px;
+        }}
+	.footer {{
+            text-align: center;
+            padding: 20px 0;
+            margin-top: 40px;
+            background-color: #ddd;
+        }}
 </style>
 
 
@@ -45,20 +74,10 @@ p {
 <center>
 <table border="0" cellpadding="0" cellspacing="0" width="950">
 <td valign="top">
-
-
-<table style="width:100%" >
-<tr>
-	<th>
-	<p>
-	<font size="+3">
-		Srikanth Malla
-	</font>
-		<!-- A Machine Learning Researcher -->
-	</p>
-
-	</th>
-	<th>
+        <div class="header">
+            <h1>Srikanth Malla</h1>
+        </div>
+        <div class="navigation">
 	<a href="files/SrikanthMalla_Resume.pdf" target="_blank"><img  src="files/resume_icon.png"  height=40 title="Resume"></a>
 	<p>Resume</p>
 	</th>
@@ -77,8 +96,7 @@ p {
 	<th >
 	<a href="https://github.com/srikanthmalla/" target="_blank"><img  src="files/github.png"  height=40 title="Github"></a>
 	<p>Github</p>
-	</th>
-</table><br>
+	</div>
 
 <table border="0" cellpadding="0" cellspacing=â€œ10" width="100%">
 <!-- <td valign="top"> -->
@@ -95,7 +113,7 @@ A Machine Learning Researcher
 <hr class="solid">
 
 <p style = "text-align: left" >
-<img src="files/profile_pic.jpg" width=170px border=0 align="right" hspace="5" vspace="5"></a>
+<img src="files/profile_pic.jpg" class="profile-pic" width=170px border=0 align="right" hspace="5" vspace="5"></a>
 <b>I am currently working as Staff AI ML Engineer at Samsung Semiconductor US.</b> Prior to that I worked as Research Engineer at Honda Research Institute (HRI), USA and Kinetic Automation (startup). I believe in intelligent robots that will coexist and help humans someday in near future. I am working to make that happen. I completed my Master's in Robotics Engineering from Worcester Polytechnic Institute (WPI) in September 2018. I am interested in problems related to Computer Vision and Machine Learning.
 <br><br>
 <!-- <strong>Contact: srikanth.m@samsung.com</strong> -->
@@ -411,16 +429,8 @@ Naveen Kumar Vaegae, Venkata Lakshmi Narayana, <u>Srikanth Malla</u>
 	</p>
 
 <hr class="solid">
-<!--  <h3>Blogs</h3>
- <p>
-	日本語オン：　<a href="https://nihongoon.blogspot.com">https://nihongoon.blogspot.com</a>
- </p> -->
-</center>
-<!-- <script type="text/javascript">
-	$(function () {
-		$(".youtube").YouTubeModal({autoplay:0, width:640, height:480});
-	});
-</script>
-<script src="js/main.js"></script> -->
+<div class="footer">
+    <p>© 2024 Srikanth Malla. All rights reserved.</p>
+</div>
 </BODY>
 </HTML>
