@@ -138,7 +138,7 @@
 			// Schedule Break
 			if (cycle < numCycles - 1 && totalTime >= startTimeOffset) {
 			    let breakTimeout = setTimeout(() => {
-				updateStatus("Break", breakDuration / 1000);
+				updateStatus(":Break", breakDuration / 1000);
 			    }, totalTime - startTimeOffset);
 			    currentTimeouts.push(breakTimeout);
 			}
@@ -201,11 +201,11 @@
 			if (cycle < numCycles - 1) {
 			    if (!isExerciseResumed && totalTime + breakDuration > elapsedTime) {
 				let remainingTime = (totalTime + breakDuration) - elapsedTime;
-				updateStatus("Break", remainingTime / 1000);
+				updateStatus(":Break", remainingTime / 1000);
 				isExerciseResumed = true;
 			    } else if (isExerciseResumed) {
 				let breakTimeout = setTimeout(() => {
-				    updateStatus("Break", breakDuration / 1000);
+				    updateStatus(":Break", breakDuration / 1000);
 				}, totalTime - elapsedTime);
 				currentTimeouts.push(breakTimeout);
 			    }
