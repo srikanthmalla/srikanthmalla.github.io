@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>PDF Viewer with Search</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.12.313/pdf.min.js"></script>
+    <style>
+        #pdf-render { width: 100%; height: auto; }
+        .search-results { max-height: 500px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+
+<div class="container-fluid mt-3">
+    <div class="row">
+        <!-- PDF Selection and Display Column -->
+        <div class="col-md-8">
+            <select id="pdfSelector" class="form-control mb-3">
+                <option value="N2.pdf">N2</option>
+                <option value="N3.pdf">N3</option>
+            </select>
+            <canvas id="pdf-render"></canvas>
+            <div class="navigation mt-3">
+                <button id="prevPage" class="btn btn-primary">Previous Page</button>
+                <span id="pageInfo"></span>
+                <button id="nextPage" class="btn btn-primary">Next Page</button>
+            </div>
+        </div>
+
+        <!-- Search Column -->
+        <div class="col-md-4">
+            <div class="input-group mb-3">
+                <input type="text" id="searchQuery" class="form-control" placeholder="Search in PDF">
+                <div class="input-group-append">
+                    <button id="searchBtn" class="btn btn-outline-secondary" type="button">Search</button>
+                </div>
+            </div>
+            <div class="search-results" id="searchResults">
+                <!-- Search results will be appended here -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.12.313/pdf.worker.min.js';
+    let currentPdf = null;
+    let currentPageNumber = 1;
+
+    function renderPage(pageNumber) {
+        currentPdf.getPage(pageNumber).then(function(page) {
+            let canvas = document.getElementById('pdf-render');
+            let ctx = canvas.getContext('2d');
+            let viewport = page.getViewport({scale: 1.5});
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+
+            let renderContext = {
+                canvasContext: ctx,
+                viewport: viewport
+            };
+            page.render(renderContext);
+            document.getElementById('pageInfo').textContent = `Page ${pageNumber} of ${currentPdf.numPages}`;
+        });
+    }
+
+    function loadPdf(pdfPath) {
+        pdfjsLib.getDocument(pdfPath).promise.then(function(pdfDoc) {
+            currentPdf = pdfDoc;
+            currentPageNumber = 1;
+            renderPage(currentPageNumber);
+        });
+    }
+
+    document.getElementById('pdfSelector').addEventListener('change', function() {
+        loadPdf(this.value);
+    });
+
+    document.getElementById('prevPage').addEventListener('click', function() {
+        if (currentPageNumber > 1) {
+            currentPageNumber--;
+            renderPage(currentPageNumber);
+        }
+    });
+
+    document.getElementById('nextPage').addEventListener('click', function() {
+        if (currentPageNumber < currentPdf.numPages) {
+            currentPageNumber++;
+            renderPage(currentPageNumber);
+        }
+    });
+
+    // Simplified search functionality
+    document.getElementById('searchBtn').addEventListener('click', function() {
+        let query = document.getElementById('searchQuery').value.trim().toLowerCase();
+        if (!query) return;
+
+        let searchResults = document.getElementById('searchResults');
+        searchResults.innerHTML = ''; // Clear previous results
+        let totalPages = currentPdf.numPages;
+        let matchesFound = 0;
+
+        for (let i = 1; i <= totalPages; i++) {
+            currentPdf.getPage(i).then(page => {
+                page.getTextContent().then(textContent => {
+                    let textStr = textContent.items.map(item => item.str).join(' ').toLowerCase();
+                    if (textStr.includes(query)) {
+                        matchesFound++;
+                        let resultItem = document.createElement('p');
+                        resultItem.textContent = `Match found on page ${i}`;
+                        searchResults.appendChild(resultItem);
+                    }
+                    if (i === totalPages && matchesFound === 0) {
+                        searchResults.textContent = 'No matches found.';
+                    }
+                });
+            });
+        }
+    });
+
+    // Initial load
+    loadPdf(document.getElementById('pdfSelector').value);
+</script>
+
+</body>
+</html>
