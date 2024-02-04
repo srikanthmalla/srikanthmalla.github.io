@@ -2,125 +2,245 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>PDF Viewer with Search</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <title>Elegant PDF Viewer with Search</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.12.313/pdf.min.js"></script>
-    <style>
-        #pdf-render { width: 100%; height: auto; }
-        .search-results { max-height: 500px; overflow-y: auto; }
+    
+<style>
+body { padding-top: 20px; font-family: Arial, sans-serif; background-color: #f9f9f9; }
+.container { max-width: 1200px; }
+#pdf-render { width: 100%; background-color: #fff; border: 1px solid #ddd; box-shadow: 0 2px 4px rgba(0,0,0,.1); }
+.navigation, .pdf-selector, #searchQuery, #searchBtn { margin-top: 10px; }
+.page-input { text-align: center; margin: auto; display: block; }
+.floating-nav { 
+    position: fixed; 
+    top: 50%; 
+    transform: translateY(-50%); 
+    z-index: 1000; 
+    cursor: pointer; 
+    background-color: rgba(0, 123, 255, 0.7); /* Bootstrap primary color with transparency */
+    color: white; /* Text color */
+    border: none; /* Remove default border */
+    border-radius: 5px; /* Rounded corners for a modern look */
+    padding: 10px 15px; /* Larger padding for bigger button size */
+    font-size: 20px; /* Larger font size */
+    box-shadow: 0 2px 4px rgba(0,0,0,0.5); /* Subtle shadow for depth */
+    transition: background-color 0.3s ease; /* Smooth transition for hover effect */
+}
+
+.floating-nav:hover {
+    background-color: rgba(0, 123, 255, 0.9); /* Slightly darker on hover */
+}
+
+/* You might want to add specific classes or IDs for left and right buttons if you want different styles or behaviors */
+/* Position the search results container just below the search button */
+.search-results {
+    position: absolute; /* Change from fixed to absolute for positioning relative to its parent */
+    right: 15px; /* Adjust according to your layout */
+    top: 100%; /* Position it right below the search button */
+    width: calc(100% - 30px); /* Adjust width as needed, ensuring no horizontal overflow */
+    background-color: rgba(255, 255, 255, 0.98); /* Use solid color or slight transparency */
+    margin-top: 10px; /* Space between the search button and the results container */
+    padding: 10px;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* Soft shadow for a floating effect */
+    max-height: 400px; /* Limit height to prevent it from becoming too tall */
+    overflow-y: auto; /* Allow vertical scrolling within the container */
+    overflow-x: hidden; /* Prevent horizontal scrolling */
+    z-index: 1050; /* High z-index to ensure it's on top */
+}
+
+/* Style each search result to look like floating messages */
+.search-result-item {
+    background-color: #f8f9fa;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 20px; /* Rounded corners for the "message bubble" effect */
+    margin-bottom: 10px;
+    cursor: pointer;
+    display: block; /* Ensure it takes the full width available */
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05); /* Subtle shadow for depth */
+}
+
+.search-result-item:hover {
+    background-color: #e2e6ea; /* Slightly darker on hover for feedback */
+}
+
+.occurrences-badge {
+    background-color: #007bff; /* Bootstrap primary color */
+    color: white;
+    padding: 5px 10px;
+    border-radius: 15px;
+    font-size: 0.8em;
+    margin-left: 10px;
+}
+
     </style>
 </head>
 <body>
-
-<div class="container-fluid mt-3">
+<div class="container">
     <div class="row">
-        <!-- PDF Selection and Display Column -->
-        <div class="col-md-8">
-            <select id="pdfSelector" class="form-control mb-3">
+        <div class="col-md-9">
+            <select id="pdfSelector" class="form-control mb-2">
                 <option value="N2.pdf">N2</option>
                 <option value="N3.pdf">N3</option>
             </select>
             <canvas id="pdf-render"></canvas>
-            <div class="navigation mt-3">
-                <button id="prevPage" class="btn btn-primary">Previous Page</button>
-                <span id="pageInfo"></span>
-                <button id="nextPage" class="btn btn-primary">Next Page</button>
+<button class="floating-nav left-arrow" id="prevPage">
+    <i class="fas fa-chevron-left"></i> <!-- FontAwesome icon, ensure you include FontAwesome if you use this -->
+</button>
+<button class="floating-nav right-arrow" id="nextPage">
+    <i class="fas fa-chevron-right"></i> <!-- FontAwesome icon -->
+</button>
+            <div class="navigation">
+                <input type="number" id="currentPageInput" class="page-input" value="1" min="1" style="width: 60px;">
             </div>
         </div>
+        <div class="col-md-3">
+<div class="search-area" style="position: relative;"> <!-- Positioned parent -->
+    <input type="text" id="searchQuery" class="form-control" placeholder="Search in PDF">
+    <button id="searchBtn" class="btn btn-primary btn-block">Search</button>
+    <div id="searchResults" class="search-results"></div>
+</div>
 
-        <!-- Search Column -->
-        <div class="col-md-4">
-            <div class="input-group mb-3">
-                <input type="text" id="searchQuery" class="form-control" placeholder="Search in PDF">
-                <div class="input-group-append">
-                    <button id="searchBtn" class="btn btn-outline-secondary" type="button">Search</button>
-                </div>
-            </div>
-            <div class="search-results" id="searchResults">
-                <!-- Search results will be appended here -->
-            </div>
         </div>
     </div>
 </div>
-
 <script>
+
+document.addEventListener('DOMContentLoaded', function() {
+    const pdfjsLib = window['pdfjs-dist/build/pdf'];
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.12.313/pdf.worker.min.js';
+
     let currentPdf = null;
     let currentPageNumber = 1;
+    const pdfPaths = ['N2.pdf', 'N3.pdf'];
+async function loadPdf(pdfPath, pageNumber = 1) {
+    try {
+        const pdfDoc = await pdfjsLib.getDocument(pdfPath).promise;
+        currentPdf = pdfDoc;
+        currentPageNumber = pageNumber; // Use the pageNumber argument
+        document.getElementById('currentPageInput').value = pageNumber;
+        renderPage(currentPageNumber); // Render the specified page
+    } catch (error) {
+        console.error("Error loading PDF: ", error);
+    }
+}
 
-    function renderPage(pageNumber) {
-        currentPdf.getPage(pageNumber).then(function(page) {
-            let canvas = document.getElementById('pdf-render');
-            let ctx = canvas.getContext('2d');
-            let viewport = page.getViewport({scale: 1.5});
-            canvas.height = viewport.height;
-            canvas.width = viewport.width;
+	function adjustFloatingButtons() {
+	    const canvas = document.getElementById('pdf-render');
+	    const leftButton = document.getElementById('prevPage');
+	    const rightButton = document.getElementById('nextPage');
+	    const canvasRect = canvas.getBoundingClientRect();
 
-            let renderContext = {
-                canvasContext: ctx,
-                viewport: viewport
-            };
-            page.render(renderContext);
-            document.getElementById('pageInfo').textContent = `Page ${pageNumber} of ${currentPdf.numPages}`;
-        });
+	    // Positioning left button
+	    leftButton.style.left = `${canvasRect.left - leftButton.offsetWidth - 10}px`; // 10px away from the canvas left edge
+
+	    // Positioning right button
+	    rightButton.style.left = `${canvasRect.right + 10}px`; // 10px away from the canvas right edge
+	}
+    async function renderPage(pageNumber) {
+        const page = await currentPdf.getPage(pageNumber);
+        const canvas = document.getElementById('pdf-render');
+        const ctx = canvas.getContext('2d');
+        const viewport = page.getViewport({scale: 1.5});
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+
+        const renderContext = {
+            canvasContext: ctx,
+            viewport: viewport
+        };
+        page.render(renderContext);
+	adjustFloatingButtons(); 
+    }
+async function searchAcrossPdfs(query) {
+    const searchResultsDiv = document.getElementById('searchResults');
+    searchResultsDiv.innerHTML = ''; // Clear previous results
+    let queryLower = query.toLowerCase();
+    let allResults = []; // Array to store all results along with their counts
+
+    async function findTextInPage(pdf, pageNum, pdfPath) {
+        const page = await pdf.getPage(pageNum);
+        const textContent = await page.getTextContent();
+        let fullPageText = textContent.items.map(item => item.str).join(' ');
+        let lowerCasePageText = fullPageText.toLowerCase();
+        
+        // Count occurrences of the query in the page text
+        let count = (lowerCasePageText.match(new RegExp(queryLower, 'g')) || []).length;
+
+        if (count > 0) { // If there are occurrences
+            let start = Math.max(lowerCasePageText.indexOf(queryLower) - 30, 0);
+            let end = Math.min(start + queryLower.length + 60, fullPageText.length); // Show more context
+            let snippet = fullPageText.substring(start, end);
+
+            allResults.push({pdfPath, pageNum, snippet, count}); // Store result with count
+        }
     }
 
-    function loadPdf(pdfPath) {
-        pdfjsLib.getDocument(pdfPath).promise.then(function(pdfDoc) {
-            currentPdf = pdfDoc;
-            currentPageNumber = 1;
-            renderPage(currentPageNumber);
-        });
+    async function searchInPdf(pdfPath) {
+        const pdf = await pdfjsLib.getDocument(pdfPath).promise;
+        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+            await findTextInPage(pdf, pageNum, pdfPath);
+        }
     }
+
+    for (let pdfPath of pdfPaths) {
+        await searchInPdf(pdfPath); // Wait for each PDF to be searched
+    }
+
+    // Sort the results based on count (descending order)
+    allResults.sort((a, b) => b.count - a.count);
+allResults.forEach(({pdfPath, pageNum, snippet, count}) => {
+    let resultItem = document.createElement('div');
+    resultItem.className = 'search-result-item';
+    resultItem.innerHTML = `
+    <strong>${pdfPath} - Page ${pageNum}</strong><br>
+        <span class="occurrences-badge">${count} ${count > 1 ? 'occurrences' : 'occurrence'}</span>
+        : ...${snippet}...`;
+    resultItem.onclick = function() { loadPdf(pdfPath, pageNum); };
+    searchResultsDiv.appendChild(resultItem);
+});
+
+} 
+
+    document.getElementById('prevPage').addEventListener('click', function() {
+        if (currentPageNumber > 1) {
+            renderPage(--currentPageNumber);
+        }
+    });
+
+    document.getElementById('nextPage').addEventListener('click', function() {
+        if (currentPdf && currentPageNumber < currentPdf.numPages) {
+            renderPage(++currentPageNumber);
+        }
+    });
+
+    document.getElementById('currentPageInput').addEventListener('change', function() {
+        const num = parseInt(this.value);
+        if (num >= 1 && num <= currentPdf.numPages) {
+            currentPageNumber = num;
+            renderPage(num);
+        } else {
+            this.value = currentPageNumber;
+        }
+    });
 
     document.getElementById('pdfSelector').addEventListener('change', function() {
         loadPdf(this.value);
     });
 
-    document.getElementById('prevPage').addEventListener('click', function() {
-        if (currentPageNumber > 1) {
-            currentPageNumber--;
-            renderPage(currentPageNumber);
-        }
-    });
+	document.getElementById('searchBtn').addEventListener('click', () => {
+	    const query = document.getElementById('searchQuery').value.trim().toLowerCase();
+	    if (!query) return;
+	    searchAcrossPdfs(query);
+	});
+// Also, call adjustFloatingButtons on window resize to maintain positioning
+window.addEventListener('resize', adjustFloatingButtons);
+    loadPdf(pdfPaths[0]);
+});
 
-    document.getElementById('nextPage').addEventListener('click', function() {
-        if (currentPageNumber < currentPdf.numPages) {
-            currentPageNumber++;
-            renderPage(currentPageNumber);
-        }
-    });
-
-    // Simplified search functionality
-    document.getElementById('searchBtn').addEventListener('click', function() {
-        let query = document.getElementById('searchQuery').value.trim().toLowerCase();
-        if (!query) return;
-
-        let searchResults = document.getElementById('searchResults');
-        searchResults.innerHTML = ''; // Clear previous results
-        let totalPages = currentPdf.numPages;
-        let matchesFound = 0;
-
-        for (let i = 1; i <= totalPages; i++) {
-            currentPdf.getPage(i).then(page => {
-                page.getTextContent().then(textContent => {
-                    let textStr = textContent.items.map(item => item.str).join(' ').toLowerCase();
-                    if (textStr.includes(query)) {
-                        matchesFound++;
-                        let resultItem = document.createElement('p');
-                        resultItem.textContent = `Match found on page ${i}`;
-                        searchResults.appendChild(resultItem);
-                    }
-                    if (i === totalPages && matchesFound === 0) {
-                        searchResults.textContent = 'No matches found.';
-                    }
-                });
-            });
-        }
-    });
-
-    // Initial load
-    loadPdf(document.getElementById('pdfSelector').value);
 </script>
 
 </body>
