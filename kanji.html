@@ -10,28 +10,9 @@
 <style>
 body { padding-top: 20px; font-family: Arial, sans-serif; background-color: #f9f9f9; }
 .container { max-width: 1200px; }
-#pdf-render { width: 100%; background-color: #fff; border: 1px solid #ddd; box-shadow: 0 2px 4px rgba(0,0,0,.1); }
+#pdf-render { height: 100%; background-color: #fff; border: 1px solid #ddd; box-shadow: 0 2px 4px rgba(0,0,0,.1); }
 .navigation, .pdf-selector, #searchQuery, #searchBtn { margin-top: 10px; }
 .page-input { text-align: center; margin: auto; display: block; }
-.floating-nav { 
-    position: fixed; 
-    top: 50%; 
-    transform: translateY(-50%); 
-    z-index: 1000; 
-    cursor: pointer; 
-    background-color: rgba(0, 123, 255, 0.7); /* Bootstrap primary color with transparency */
-    color: white; /* Text color */
-    border: none; /* Remove default border */
-    border-radius: 5px; /* Rounded corners for a modern look */
-    padding: 10px 15px; /* Larger padding for bigger button size */
-    font-size: 20px; /* Larger font size */
-    box-shadow: 0 2px 4px rgba(0,0,0,0.5); /* Subtle shadow for depth */
-    transition: background-color 0.3s ease; /* Smooth transition for hover effect */
-}
-
-.floating-nav:hover {
-    background-color: rgba(0, 123, 255, 0.9); /* Slightly darker on hover */
-}
 
 /* You might want to add specific classes or IDs for left and right buttons if you want different styles or behaviors */
 /* Position the search results container just below the search button */
@@ -66,7 +47,6 @@ body { padding-top: 20px; font-family: Arial, sans-serif; background-color: #f9f
 .search-result-item:hover {
     background-color: #e2e6ea; /* Slightly darker on hover for feedback */
 }
-
 .occurrences-badge {
     background-color: #007bff; /* Bootstrap primary color */
     color: white;
@@ -75,34 +55,52 @@ body { padding-top: 20px; font-family: Arial, sans-serif; background-color: #f9f
     font-size: 0.8em;
     margin-left: 10px;
 }
+.pdf-navigation {
+    display: flex;
+    align-items: center; /* Vertically center all items in the flex container */
+    gap: 10px; /* Optional: adds space between items */
+    margin-bottom: 10px;
+}
+
+/* Adjust button and input field styles to ensure consistent height and alignment */
+.pdf-navigation button, .pdf-navigation input {
+    height: 38px; /* Adjust based on your design needs */
+    padding: 0.375rem 0.75rem; /* Bootstrap's default padding for buttons, adjust if necessary */
+}
+#pdfSelector {
+    width: 150px; /* Make the PDF selector narrower */
+    margin-right: 10px; /* Add some space between the selectors */
+}
+
+#currentPageInput {
+    width: 150px; /* Make the page selector slightly wider */
+}
 
     </style>
 </head>
 <body>
 <div class="container">
     <div class="row">
-        <div class="col-md-9">
-            <select id="pdfSelector" class="form-control mb-2">
-                <option value="N2.pdf">N2</option>
-                <option value="N3.pdf">N3</option>
-            </select>
+       <div class="col-md-9">
+            <div class="pdf-navigation d-flex align-items-center mb-2"> <!-- Flex container for alignment -->
+                <select id="pdfSelector" class="form-control me-2">
+                    <option value="N2.pdf">N2</option>
+                    <option value="N3.pdf">N3</option>
+                </select>
+        	<button class="btn btn-outline-secondary btn-navigation" id="prevPage"><i class="fas fa-chevron-left"></i></button>
+		<input type="number" id="currentPageInput" class="form-control" value="1" min="1" >
+		<button class="btn btn-outline-secondary btn-navigation" id="nextPage"><i class="fas fa-chevron-right"></i></button>
+
+		</div>
             <canvas id="pdf-render"></canvas>
-<button class="floating-nav left-arrow" id="prevPage">
-    <i class="fas fa-chevron-left"></i> <!-- FontAwesome icon, ensure you include FontAwesome if you use this -->
-</button>
-<button class="floating-nav right-arrow" id="nextPage">
-    <i class="fas fa-chevron-right"></i> <!-- FontAwesome icon -->
-</button>
-            <div class="navigation">
-                <input type="number" id="currentPageInput" class="page-input" value="1" min="1" style="width: 60px;">
-            </div>
         </div>
-        <div class="col-md-3">
-<div class="search-area" style="position: relative;"> <!-- Positioned parent -->
-    <input type="text" id="searchQuery" class="form-control" placeholder="Search in PDF">
-    <button id="searchBtn" class="btn btn-primary btn-block">Search</button>
-    <div id="searchResults" class="search-results"></div>
-</div>
+ 
+	    <div class="col-md-3">
+		<div class="search-area" style="position: relative;"> <!-- Positioned parent -->
+		    <input type="text" id="searchQuery" class="form-control" placeholder="Search in PDF">
+		    <button id="searchBtn" class="btn btn-primary btn-block">Search</button>
+		    <div id="searchResults" class="search-results"></div>
+		</div>
 
         </div>
     </div>
@@ -155,6 +153,13 @@ async function loadPdf(pdfPath, pageNumber = 1) {
         page.render(renderContext);
 	adjustFloatingButtons(); 
     }
+
+const pdfColors = {
+	'N2.pdf': '#ffcccc', // Light red
+	'N3.pdf': '#ccffcc', // Light green
+	// Add more mappings as needed
+};
+
 async function searchAcrossPdfs(query) {
     const searchResultsDiv = document.getElementById('searchResults');
     searchResultsDiv.innerHTML = ''; // Clear previous results
@@ -192,9 +197,13 @@ async function searchAcrossPdfs(query) {
 
     // Sort the results based on count (descending order)
     allResults.sort((a, b) => b.count - a.count);
+
+
 allResults.forEach(({pdfPath, pageNum, snippet, count}) => {
     let resultItem = document.createElement('div');
     resultItem.className = 'search-result-item';
+    // Use the mapping to set the color
+    resultItem.style.backgroundColor = pdfColors[pdfPath] || '#f2f2f2'; // Default color if PDF not in mapping
     resultItem.innerHTML = `
     <strong>${pdfPath} - Page ${pageNum}</strong><br>
         <span class="occurrences-badge">${count} ${count > 1 ? 'occurrences' : 'occurrence'}</span>
@@ -204,18 +213,24 @@ allResults.forEach(({pdfPath, pageNum, snippet, count}) => {
 });
 
 } 
+document.getElementById('prevPage').addEventListener('click', function() {
+    if (currentPageNumber > 1) {
+        currentPageNumber -= 1; // Decrement currentPageNumber only if it's greater than 1
+        renderPage(currentPageNumber).then(() => {
+            document.getElementById('currentPageInput').value = currentPageNumber; // Update input field after page has been rendered
+        });
+    }
+});
 
-    document.getElementById('prevPage').addEventListener('click', function() {
-        if (currentPageNumber > 1) {
-            renderPage(--currentPageNumber);
-        }
-    });
+document.getElementById('nextPage').addEventListener('click', function() {
+    if (currentPdf && currentPageNumber < currentPdf.numPages) {
+        currentPageNumber += 1; // Increment currentPageNumber only if it's less than total number of pages
+        renderPage(currentPageNumber).then(() => {
+            document.getElementById('currentPageInput').value = currentPageNumber; // Update input field after page has been rendered
+        });
+    }
+});
 
-    document.getElementById('nextPage').addEventListener('click', function() {
-        if (currentPdf && currentPageNumber < currentPdf.numPages) {
-            renderPage(++currentPageNumber);
-        }
-    });
 
     document.getElementById('currentPageInput').addEventListener('change', function() {
         const num = parseInt(this.value);
@@ -245,3 +260,4 @@ window.addEventListener('resize', adjustFloatingButtons);
 
 </body>
 </html>
+
