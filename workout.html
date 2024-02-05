@@ -314,7 +314,7 @@
             let circuitDiv = document.createElement("div");
             circuitDiv.className = "circuit mt-3";
             circuitDiv.innerHTML = `
-                <div class="circuit-name">${circuitName}: <input type="text" class="form-control mb-2" value="${circuitName}" readonly></div>
+                <div class="circuit-name">${circuitName}: <input type="text" class="form-control mb-2" value="${circuitName}"></div>
                 <div class="setsContainer"></div>
             `;
             circuitsContainer.appendChild(circuitDiv);
@@ -325,8 +325,8 @@
                 setDiv.className = "set mt-2";
                 setDiv.innerHTML = `
                     <div class="set-number">Set ${index + 1}:</div>
-                    <input type="text" class="form-control exercise-input" value="${set[0]}" readonly>
-                    <input type="text" class="form-control exercise-input" value="${set[1]}" readonly>
+                    <input type="text" class="form-control exercise-input" value="${set[0]}">
+                    <input type="text" class="form-control exercise-input" value="${set[1]}">
                 `;
                 setsContainer.appendChild(setDiv);
             });
