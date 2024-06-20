@@ -1,0 +1,6 @@
+@article{malla2024copal,
+  title={COPAL: Continual Pruning in Large Language Generative Models},
+  author={Malla, Srikanth and Choi, Joon Hee and Choi, Chiho},
+  journal={arXiv preprint arXiv:2405.02347},
+  year={2024}
+}
