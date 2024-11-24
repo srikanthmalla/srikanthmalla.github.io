@@ -8,25 +8,56 @@
         body {
             font-family: Arial, sans-serif;
             margin: 20px;
+            text-align: center;
         }
         .hierarchy {
-            margin: 20px 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
-        .hierarchy-item {
-            margin-bottom: 10px;
+        .hierarchy button {
+            margin: 10px;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            color: white;
+            width: 50%;
         }
-        .topics {
-            margin-left: 20px;
+        .hierarchy button.active {
+            outline: 3px solid #000;
         }
-        a {
-            color: blue;
-            text-decoration: none;
+        .hierarchy button.empty {
+            background-color: gray;
+            cursor: not-allowed;
         }
-        a:hover {
-            text-decoration: underline;
+        .hierarchy button:not(.empty):hover {
+            opacity: 0.8;
         }
-        .empty {
-            color: gray;
+        .hierarchy button.problem { background-color: #ff5722; }
+        .hierarchy button.algorithm { background-color: #4caf50; }
+        .hierarchy button.program { background-color: #9c27b0; }
+        .hierarchy button.system { background-color: #2196f3; }
+        .hierarchy button.interface { background-color: #ff9800; }
+        .hierarchy button.micro { background-color: #607d8b; }
+        .hierarchy button.logic { background-color: #3f51b5; }
+        .hierarchy button.devices { background-color: #795548; }
+        .hierarchy button.electrons { background-color: #009688; }
+        .content {
+            display: none;
+            margin-top: 10px;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            width: 60%;
+            margin-left: auto;
+            margin-right: auto;
+            background-color: #f9f9f9;
+            text-align: left;
+        }
+        .content.active {
+            display: block;
         }
     </style>
 </head>
@@ -34,55 +65,53 @@
     <h1>The Transformation Hierarchy - Learning Resources</h1>
 
     <div class="hierarchy">
-        <div class="hierarchy-item">
-            <h2>Problem <span class="empty">(No content available yet)</span></h2>
+        <button class="problem empty">Problem (No Content)</button>
+        <button class="algorithm">Algorithm</button>
+        <div id="algorithm-content" class="content">
+            <p><strong>Large-Scale Convex Optimization:</strong> <a href="https://youtube.com/playlist?list=PL78FHFrrKomKUjQcRjfarU1FnuGZtseib&feature=shared" target="_blank">YouTube Playlist</a></p>
         </div>
 
-        <div class="hierarchy-item">
-            <h2>Algorithm</h2>
-            <div class="topics">
-                <p><strong>Large-Scale Convex Optimization:</strong> <a href="https://youtube.com/playlist?list=PL78FHFrrKomKUjQcRjfarU1FnuGZtseib&feature=shared" target="_blank">YouTube Playlist</a></p>
-            </div>
+        <button class="program empty">Program/Language (No Content)</button>
+
+        <button class="system">System Software</button>
+        <div id="system-content" class="content">
+            <p><strong>GPU System Software:</strong> <a href="https://youtube.com/@gpumode?feature=shared" target="_blank">YouTube Channel</a></p>
         </div>
 
-        <div class="hierarchy-item">
-            <h2>Program/Language <span class="empty">(No content available yet)</span></h2>
+        <button class="interface">SW/HW Interface</button>
+        <div id="interface-content" class="content">
+            <p><strong>General:</strong> <a href="https://youtube.com/playlist?list=PL0oekSefhQVJdk0hSRu6sZ2teWM740NtL&feature=shared" target="_blank">YouTube Playlist</a></p>
+            <p><strong>Compilers:</strong> <a href="https://youtube.com/playlist?list=PL0300FE43396456C1&feature=shared" target="_blank">YouTube Playlist</a></p>
+            <p><strong>Operating Systems:</strong> <a href="https://youtube.com/playlist?list=PLF2K2xZjNEf97A_uBCwEl61sdxWVP7VWC&feature=shared" target="_blank">YouTube Playlist</a></p>
         </div>
 
-        <div class="hierarchy-item">
-            <h2>System Software</h2>
-            <div class="topics">
-                <p><strong>GPU System Software:</strong> <a href="https://youtube.com/@gpumode?feature=shared" target="_blank">YouTube Channel</a></p>
-            </div>
+        <button class="micro empty">Micro-architecture (No Content)</button>
+
+        <button class="logic">Logic</button>
+        <div id="logic-content" class="content">
+            <p><strong>Digital Design:</strong> <a href="https://youtube.com/playlist?list=PL5Q2soXY2Zi9UFWwfRtSjpKX_IRF0lPSe&feature=shared" target="_blank">YouTube Playlist</a></p>
         </div>
 
-        <div class="hierarchy-item">
-            <h2>SW/HW Interface</h2>
-            <div class="topics">
-                <p><strong>General:</strong> <a href="https://youtube.com/playlist?list=PL0oekSefhQVJdk0hSRu6sZ2teWM740NtL&feature=shared" target="_blank">YouTube Playlist</a></p>
-                <p><strong>Compilers:</strong> <a href="https://youtube.com/playlist?list=PL0300FE43396456C1&feature=shared" target="_blank">YouTube Playlist</a></p>
-                <p><strong>Operating Systems:</strong> <a href="https://youtube.com/playlist?list=PLF2K2xZjNEf97A_uBCwEl61sdxWVP7VWC&feature=shared" target="_blank">YouTube Playlist</a></p>
-            </div>
-        </div>
-
-        <div class="hierarchy-item">
-            <h2>Micro-architecture <span class="empty">(No content available yet)</span></h2>
-        </div>
-
-        <div class="hierarchy-item">
-            <h2>Logic</h2>
-            <div class="topics">
-                <p><strong>Digital Design:</strong> <a href="https://youtube.com/playlist?list=PL5Q2soXY2Zi9UFWwfRtSjpKX_IRF0lPSe&feature=shared" target="_blank">YouTube Playlist</a></p>
-            </div>
-        </div>
-
-        <div class="hierarchy-item">
-            <h2>Devices <span class="empty">(No content available yet)</span></h2>
-        </div>
-
-        <div class="hierarchy-item">
-            <h2>Electrons <span class="empty">(No content available yet)</span></h2>
-        </div>
+        <button class="devices empty">Devices (No Content)</button>
+        <button class="electrons empty">Electrons (No Content)</button>
     </div>
+
+    <script>
+        const buttons = document.querySelectorAll('.hierarchy button:not(.empty)');
+        const contents = document.querySelectorAll('.content');
+
+        buttons.forEach(button => {
+            button.addEventListener('click', () => {
+                // Close all other contents
+                contents.forEach(content => content.classList.remove('active'));
+                buttons.forEach(btn => btn.classList.remove('active'));
+
+                // Show the clicked button's content
+                const contentId = button.className.split(' ')[0] + '-content';
+                document.getElementById(contentId)?.classList.add('active');
+                button.classList.add('active');
+            });
+        });
+    </script>
 </body>
 </html>
