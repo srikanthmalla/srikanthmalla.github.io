@@ -62,7 +62,7 @@
     </style>
 </head>
 <body>
-    <h1>The Transformation Hierarchy - Learning Resources</h1>
+    <h1>Learning Resources</h1>
 
     <div class="hierarchy">
         <button class="problem empty">Problem (No Content)</button>
@@ -93,9 +93,11 @@
         </div>
 
         <button class="devices empty">Devices (No Content)</button>
-        <button class="electrons empty">Electrons (No Content)</button>
+        <button class="electrons">Electrons </button>
+        <div id="electrons-content" class="content">
+            <p><strong>History of Physics:</strong><a href="https://youtube.com/playlist?list=PLUl4u3cNGP63bAfjGas3TuA4ZCPUtN6Xf&feature=shared" target="_blank"> Youtube Playlist </a> </p>
+        </div>
     </div>
-
     <script>
         const buttons = document.querySelectorAll('.hierarchy button:not(.empty)');
         const contents = document.querySelectorAll('.content');
