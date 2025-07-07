@@ -1,0 +1,5 @@
+@article{gagnon2025bitweaver,
+  title={BitWeaver: Read-Time Truncation in Memory},
+  author={Gagnon, Garrett and Malla, Srikanth and Kang, Yangwook and Liu, Liu},
+  year={2025}
+}
