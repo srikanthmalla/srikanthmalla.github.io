@@ -200,6 +200,7 @@ th {
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-error-bars@3.1.0/build/index.umd.min.js"></script>
 
   <script>
     let mainChart, netChart, cumulativeChart;
@@ -401,8 +402,46 @@ data: categories.map(cat => {
 
 
       const netData = months.map(m => net[m] || 0);
+// Calculate best/worst based on previous real month's variability
+let bestNet = [...netData];
+let worstNet = [...netData];
+
+const projectedIndexes = months
+  .map((m, i) => ({ m, i }))
+  .filter(({ m }) => m > lastRealMonth);
+
+if (projectedIndexes.length) {
+  const lastMonth = months.find(m => m === lastRealMonth);
+  const realValues = rawData
+    .filter(r => r.month === lastMonth && r.type !== 'Reserve')
+    .map(r => r.type === 'Income' ? r.amount : -r.amount);
+
+  const max = Math.max(...realValues);
+  const min = Math.min(...realValues);
+  const avg = realValues.reduce((a, b) => a + b, 0) / realValues.length;
+
+  projectedIndexes.forEach(({ i }) => {
+    bestNet[i] = netData[i] + Math.abs(max - avg);
+    worstNet[i] = netData[i] - Math.abs(avg - min);
+  });
+}
+
+
       const cumulativeData = months.map(m => cumulative[m] || 0);
       const isProjected = months.map(m => m > lastRealMonth);
+
+let cumulativeBest = [], cumulativeWorst = [];
+let cumBest = 0, cumWorst = 0;
+months.forEach((m, i) => {
+  if (i === 0 && rawData.find(r => r.type === 'Reserve' && r.month === m)) {
+    const reserve = rawData.find(r => r.type === 'Reserve' && r.month === m).amount;
+    cumBest = cumWorst = reserve;
+  }
+  cumBest += bestNet[i] || 0;
+  cumWorst += worstNet[i] || 0;
+  cumulativeBest.push(isProjected[i] ? cumBest : null);
+  cumulativeWorst.push(isProjected[i] ? cumWorst : null);
+});
 
       if (mainChart) mainChart.destroy();
       if (netChart) netChart.destroy();
@@ -435,25 +474,49 @@ mainChart = new Chart(document.getElementById('mainChart').getContext('2d'), {
 });
 
 
-      netChart = new Chart(document.getElementById('netChart').getContext('2d'), {
-        type: 'bar',
-        data: {
-          labels: months,
-          datasets: [{
-            label: 'Monthly Net',
-            data: netData,
-backgroundColor: netData.map((val, i) => {
-  if (isProjected[i]) return '#cccccc';
-  if (filteredMonth && months[i] === filteredMonth) return '#3b82f6'; // highlight
-  return val >= 0 ? '#a0e0a0' : '#e0a0a0';
-})
+netChart = new Chart(document.getElementById('netChart').getContext('2d'), {
+  type: 'barWithErrorBars', // this is the special chart type
+  data: {
+    datasets: [{
+      label: 'Monthly Net',
+      type: 'barWithErrorBars',
+      data: months.map((m, i) => ({
+        x: m,
+        y: net[m] || 0,
+        yMin: isProjected[i] ? worstNet[i] : undefined,
+        yMax: isProjected[i] ? bestNet[i] : undefined
+      })),
+      backgroundColor: months.map((m, i) => {
+        if (isProjected[i]) return '#cccccc';
+        if (filteredMonth && m === filteredMonth) return '#3b82f6';
+        return (net[m] || 0) >= 0 ? '#a0e0a0' : '#e0a0a0';
+      }),
+      borderColor: '#666',
+      borderWidth: 1,
+      errorBarWhiskerColor: '#333',
+      errorBarWhiskerWidth: 1.5,
+    }]
+  },
+  options: {
+    plugins: {
+      title: {
+        display: true,
+        text: 'Net Position per Month (with Best/Worst Projection Error Bars)'
+      }
+    },
+    scales: {
+      x: {
+        type: 'category',
+        title: { display: true, text: 'Month' }
+      },
+      y: {
+        beginAtZero: true,
+        title: { display: true, text: 'Amount' }
+      }
+    }
+  }
+});
 
-          }]
-        },
-        options: {
-          plugins: { title: { display: true, text: 'Net Position per Month' } }
-        }
-      });
 
       const actualCumulative = {
         label: 'Cumulative Net (Actual)',
@@ -474,7 +537,27 @@ backgroundColor: netData.map((val, i) => {
         type: 'line',
         data: {
           labels: months,
-          datasets: [actualCumulative, projectedCumulative]
+          datasets: [actualCumulative, projectedCumulative,
+{
+  label: 'Best Case (Cumulative)',
+  data: cumulativeBest,
+  borderColor: 'green',
+  borderDash: [2, 2],
+	borderWidth: 1,
+  fill: false,
+  tension: 0.1
+},
+{
+  label: 'Worst Case (Cumulative)',
+  data: cumulativeWorst,
+  borderColor: 'red',
+  borderDash: [2, 2],
+	borderWidth: 1,
+
+  fill: false,
+  tension: 0.1
+}
+]
         },
         options: {
           plugins: { title: { display: true, text: 'Cumulative Net with Projections' } }
@@ -490,18 +573,28 @@ backgroundColor: netData.map((val, i) => {
       btn.closest('tr').remove();
     }
 
-    function exportCSV() {
-      const data = getDataFromTable();
-      const csv = ['Type,Month,Category,Amount'];
-      data.forEach(row => {
-        csv.push(`${row.type},${row.month},${row.category},${row.amount}`);
-      });
-      const blob = new Blob([csv.join('\n')], { type: 'text/csv' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = 'finance_data.csv';
-      link.click();
-    }
+function exportCSV() {
+  const data = getDataFromTable();
+  const csv = ['Type,Month,Category,Amount,IsProjection'];
+
+  // Real rows
+  data.forEach(row => {
+    csv.push(`${row.type},${row.month},${row.category},${row.amount},false`);
+  });
+
+  // Projected rows
+  Object.values(projectedData).forEach(rows => {
+    rows.forEach(row => {
+      csv.push(`${row.type},${row.month},${row.category},${row.amount},true`);
+    });
+  });
+
+  const blob = new Blob([csv.join('\n')], { type: 'text/csv' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = 'finance_data.csv';
+  link.click();
+}
 
     document.getElementById('csvUpload').addEventListener('change', function (e) {
       const file = e.target.files[0];
@@ -509,24 +602,43 @@ backgroundColor: netData.map((val, i) => {
       errorMsg.textContent = '';
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = function (event) {
-        try {
-          const lines = event.target.result.trim().split('\n');
-          if (!lines[0].includes('Type') || !lines[0].includes('Month')) {
-            throw new Error("Invalid CSV format. Expected headers: Type, Month, Category, Amount");
-          }
-          document.querySelector('#financeTable tbody').innerHTML = '';
-          lines.slice(1).forEach(line => {
-            const [type, month, category, amount] = line.split(',');
-            if (type && month && category && amount) {
-              createRow([type, month, category, parseFloat(amount)]);
-            }
-          });
-          updateChart();
-        } catch (err) {
-          errorMsg.textContent = err.message;
+reader.onload = function (event) {
+  try {
+    const lines = event.target.result.trim().split('\n');
+    const headers = lines[0].split(',').map(h => h.trim());
+    const hasProjectionCol = headers.includes('IsProjection');
+
+    if (!headers.includes('Type') || !headers.includes('Month') || !headers.includes('Category') || !headers.includes('Amount')) {
+      throw new Error("Invalid CSV format. Expected headers: Type,Month,Category,Amount[,IsProjection]");
+    }
+
+    document.querySelector('#financeTable tbody').innerHTML = '';
+    projectedData = {};
+
+    lines.slice(1).forEach(line => {
+      const parts = line.split(',');
+      const type = parts[0];
+      const month = parts[1];
+      const category = parts[2];
+      const amount = parseFloat(parts[3]);
+      const isProjection = hasProjectionCol ? parts[4]?.trim().toLowerCase() === 'true' : false;
+
+      if (type && month && category && !isNaN(amount)) {
+        if (isProjection) {
+          if (!projectedData[month]) projectedData[month] = [];
+          projectedData[month].push({ type, month, category, amount });
+        } else {
+          createRow([type, month, category, amount]);
         }
-      };
+      }
+    });
+
+    updateChart();
+  } catch (err) {
+    errorMsg.textContent = err.message;
+  }
+};
+
       reader.onerror = () => {
         errorMsg.textContent = "Failed to read the file.";
       };
