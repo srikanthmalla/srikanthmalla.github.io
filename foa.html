@@ -128,12 +128,7 @@
       });
 
       let sortedMonths = Array.from(months).sort();
-      let cumSum = 0;
-      sortedMonths.forEach(m => {
-        cumSum = (cumulative[m] !== undefined ? cumSum : (reserves[m] || 0)) + (net[m] || 0);
-        cumulative[m] = cumSum;
-      });
-
+      const allMonths = [...sortedMonths];
       const last = sortedMonths.slice(-1);
       if (last.length === 1) {
         const lastNet = net[last[0]] || 0;
@@ -141,17 +136,29 @@
         const next2 = nextMonthStr(next1);
         net[next1] = lastNet;
         net[next2] = lastNet;
-        cumulative[next1] = cumSum + net[next1];
-        cumulative[next2] = cumulative[next1] + net[next2];
-        sortedMonths.push(next1, next2);
+        allMonths.push(next1, next2);
       }
 
-      return { grouped, net, cumulative, months: sortedMonths, categories: Array.from(categories), lastRealMonth: last[0] };
+      let cumSum = 0;
+      for (let m of allMonths) {
+        if (reserves[m]) cumSum = reserves[m];
+        cumSum += net[m] || 0;
+        cumulative[m] = cumSum;
+      }
+
+      return {
+        grouped,
+        net,
+        cumulative,
+        months: allMonths,
+        categories: Array.from(categories),
+        lastRealMonth: sortedMonths.at(-1)
+      };
     }
 
     function nextMonthStr(monthStr) {
       const [y, m] = monthStr.split('-').map(Number);
-      const date = new Date(y, m - 1 + 1, 1);
+      const date = new Date(y, m, 1);
       return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
     }
 
@@ -209,7 +216,7 @@
             data: cumulativeData,
             borderColor: '#333',
             fill: false,
-            borderDash: isProjected.map(p => p ? [5, 5] : [])
+            borderDash: isProjected.map(p => p ? [5, 5] : [0, 0])
           }]
         },
         options: {
