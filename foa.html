@@ -11,9 +11,13 @@
     h1 {
       text-align: center;
     }
+    .controls {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
     button {
-      margin: 1rem auto;
-      display: block;
       padding: 0.5rem 1rem;
     }
     canvas {
@@ -39,24 +43,52 @@
     td[contenteditable] {
       background-color: #fffbe7;
     }
+    .delete-btn {
+      color: red;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
   <h1>Multi-Month Finance Editor</h1>
-  <button onclick="addRow()">Add Row</button>
+  <div class="controls">
+    <button onclick="addRow()">Add Row</button>
+    <button onclick="updateChart()">Update Chart</button>
+  </div>
   <table id="financeTable">
     <thead>
       <tr>
         <th>Month (YYYY-MM)</th>
         <th>Category</th>
         <th>Amount</th>
+        <th>Delete</th>
       </tr>
     </thead>
-    <tbody contenteditable="true">
-      <tr><td contenteditable>2025-06</td><td contenteditable>Rent</td><td contenteditable>1200</td></tr>
-      <tr><td contenteditable>2025-06</td><td contenteditable>Groceries</td><td contenteditable>320</td></tr>
-      <tr><td contenteditable>2025-07</td><td contenteditable>Rent</td><td contenteditable>1200</td></tr>
-      <tr><td contenteditable>2025-07</td><td contenteditable>Groceries</td><td contenteditable>300</td></tr>
+    <tbody>
+      <tr>
+        <td contenteditable>2025-06</td>
+        <td contenteditable>Rent</td>
+        <td contenteditable>1200</td>
+        <td><span class="delete-btn" onclick="deleteRow(this)">&#10060;</span></td>
+      </tr>
+      <tr>
+        <td contenteditable>2025-06</td>
+        <td contenteditable>Groceries</td>
+        <td contenteditable>320</td>
+        <td><span class="delete-btn" onclick="deleteRow(this)">&#10060;</span></td>
+      </tr>
+      <tr>
+        <td contenteditable>2025-07</td>
+        <td contenteditable>Rent</td>
+        <td contenteditable>1200</td>
+        <td><span class="delete-btn" onclick="deleteRow(this)">&#10060;</span></td>
+      </tr>
+      <tr>
+        <td contenteditable>2025-07</td>
+        <td contenteditable>Groceries</td>
+        <td contenteditable>300</td>
+        <td><span class="delete-btn" onclick="deleteRow(this)">&#10060;</span></td>
+      </tr>
     </tbody>
   </table><canvas id="chart" width="800" height="400"></canvas>
 
@@ -69,7 +101,7 @@
       const data = [];
       rows.forEach(row => {
         const cells = row.querySelectorAll('td');
-        if (cells.length === 3) {
+        if (cells.length >= 3) {
           const month = cells[0].innerText.trim();
           const category = cells[1].innerText.trim();
           const amount = parseFloat(cells[2].innerText.trim());
@@ -135,17 +167,15 @@
         <td contenteditable>2025-08</td>
         <td contenteditable>New Category</td>
         <td contenteditable>0</td>
+        <td><span class="delete-btn" onclick="deleteRow(this)">&#10060;</span></td>
       `;
       tbody.appendChild(row);
-      row.querySelectorAll('td').forEach(td => {
-        td.addEventListener('blur', updateChart);
-      });
-      updateChart();
     }
 
-    document.querySelectorAll('#financeTable td').forEach(td => {
-      td.addEventListener('blur', updateChart);
-    });
+    function deleteRow(btn) {
+      const row = btn.closest('tr');
+      row.remove();
+    }
 
     updateChart();
   </script></body>
