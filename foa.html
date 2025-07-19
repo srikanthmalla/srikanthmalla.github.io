@@ -55,6 +55,7 @@
     }
     .income-cell { background-color: #e0ffe0; }
     .expense-cell { background-color: #ffe0e0; }
+    .reserve-cell { background-color: #e0e0ff; }
   </style>
 </head>
 <body>
@@ -80,6 +81,7 @@
         <tr><td contenteditable class="income-cell">Income</td><td contenteditable>2025-07</td><td contenteditable>Salary</td><td contenteditable>5200</td><td><span class="delete-btn" onclick="deleteRow(this)">&#10060;</span></td></tr>
         <tr><td contenteditable class="expense-cell">Expenditure</td><td contenteditable>2025-07</td><td contenteditable>Rent</td><td contenteditable>1200</td><td><span class="delete-btn" onclick="deleteRow(this)">&#10060;</span></td></tr>
         <tr><td contenteditable class="expense-cell">Expenditure</td><td contenteditable>2025-07</td><td contenteditable>Utilities</td><td contenteditable>350</td><td><span class="delete-btn" onclick="deleteRow(this)">&#10060;</span></td></tr>
+        <tr><td contenteditable class="reserve-cell">Reserve</td><td contenteditable>2025-06</td><td contenteditable>Opening</td><td contenteditable>2000</td><td><span class="delete-btn" onclick="deleteRow(this)">&#10060;</span></td></tr>
       </tbody>
     </table>
   </div><canvas id="mainChart" width="800" height="300"></canvas> <canvas id="netChart" width="800" height="200"></canvas> <canvas id="cumulativeChart" width="800" height="200"></canvas>
@@ -100,8 +102,9 @@
           if (type.toLowerCase() === 'expenditure') amount = -Math.abs(amount);
           else amount = Math.abs(amount);
           if (month && category && !isNaN(amount)) {
-            data.push({ month, category, amount });
-            cells[0].className = type.toLowerCase() === 'income' ? 'income-cell' : 'expense-cell';
+            data.push({ type, month, category, amount });
+            cells[0].className = type.toLowerCase() === 'income' ? 'income-cell' :
+                                 type.toLowerCase() === 'expenditure' ? 'expense-cell' : 'reserve-cell';
           }
         }
       });
@@ -109,44 +112,46 @@
     }
 
     function groupData(data) {
-      const grouped = {}, net = {}, cumulative = {};
+      const grouped = {}, net = {}, cumulative = {}, reserves = {};
       const months = new Set(), categories = new Set();
 
       data.forEach(item => {
         months.add(item.month);
         categories.add(item.category);
-        if (!grouped[item.month]) grouped[item.month] = {};
-        grouped[item.month][item.category] = (grouped[item.month][item.category] || 0) + item.amount;
-        net[item.month] = (net[item.month] || 0) + item.amount;
+        if (item.type.toLowerCase() === 'reserve') {
+          reserves[item.month] = (reserves[item.month] || 0) + item.amount;
+        } else {
+          if (!grouped[item.month]) grouped[item.month] = {};
+          grouped[item.month][item.category] = (grouped[item.month][item.category] || 0) + item.amount;
+          net[item.month] = (net[item.month] || 0) + item.amount;
+        }
       });
 
       let sortedMonths = Array.from(months).sort();
       let cumSum = 0;
       sortedMonths.forEach(m => {
-        cumSum += net[m] || 0;
+        cumSum = (cumulative[m] !== undefined ? cumSum : (reserves[m] || 0)) + (net[m] || 0);
         cumulative[m] = cumSum;
       });
 
-      const last = sortedMonths.slice(-2);
-      if (last.length === 2) {
-        const m1 = net[last[0]], m2 = net[last[1]];
-        const next1 = nextMonthStr(last[1]);
+      const last = sortedMonths.slice(-1);
+      if (last.length === 1) {
+        const lastNet = net[last[0]] || 0;
+        const next1 = nextMonthStr(last[0]);
         const next2 = nextMonthStr(next1);
-        const proj1 = m2 + (m2 - m1);
-        const proj2 = proj1 + (proj1 - m2);
-        net[next1] = proj1;
-        net[next2] = proj2;
-        cumulative[next1] = cumSum + proj1;
-        cumulative[next2] = cumulative[next1] + proj2;
+        net[next1] = lastNet;
+        net[next2] = lastNet;
+        cumulative[next1] = cumSum + net[next1];
+        cumulative[next2] = cumulative[next1] + net[next2];
         sortedMonths.push(next1, next2);
       }
 
-      return { grouped, net, cumulative, months: sortedMonths, categories: Array.from(categories), lastRealMonth: last[1] };
+      return { grouped, net, cumulative, months: sortedMonths, categories: Array.from(categories), lastRealMonth: last[0] };
     }
 
     function nextMonthStr(monthStr) {
       const [y, m] = monthStr.split('-').map(Number);
-      const date = new Date(y, m, 1);
+      const date = new Date(y, m - 1 + 1, 1);
       return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
     }
 
@@ -154,7 +159,7 @@
       const rawData = getDataFromTable();
       const { grouped, net, cumulative, months, categories, lastRealMonth } = groupData(rawData);
 
-      const mainDatasets = [lastRealMonth].map(month => ({
+      const mainDatasets = months.filter(m => m <= lastRealMonth).map(month => ({
         label: month,
         data: categories.map(cat => (grouped[month]?.[cat] || 0)),
         fill: false,
@@ -171,8 +176,13 @@
 
       mainChart = new Chart(document.getElementById('mainChart').getContext('2d'), {
         type: 'line',
-        data: { labels: categories, datasets: mainDatasets },
-        options: { plugins: { title: { display: true, text: 'Latest Month Finance by Category' } } }
+        data: {
+          labels: categories,
+          datasets: mainDatasets
+        },
+        options: {
+          plugins: { title: { display: true, text: 'Monthly Finance by Category' } }
+        }
       });
 
       netChart = new Chart(document.getElementById('netChart').getContext('2d'), {
@@ -182,7 +192,7 @@
           datasets: [{
             label: 'Monthly Net',
             data: netData,
-            backgroundColor: isProjected.map(p => p ? '#cccccc' : (netData[isProjected.indexOf(p)] >= 0 ? '#a0e0a0' : '#e0a0a0'))
+            backgroundColor: isProjected.map(p => p ? '#cccccc' : '#a0e0a0')
           }]
         },
         options: {
@@ -199,7 +209,7 @@
             data: cumulativeData,
             borderColor: '#333',
             fill: false,
-            borderDash: months.map(m => m > lastRealMonth ? [5, 5] : []).flat()
+            borderDash: isProjected.map(p => p ? [5, 5] : [])
           }]
         },
         options: {
