@@ -1,34 +1,49 @@
-<!DOCTYPE html><html lang="en">
+<!DOCTYPE html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <title>Editable Finance Chart</title>
   <style>
     body {
-      font-family: Arial, sans-serif;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       margin: 2rem;
-      background: #f0f2f5;
+      background: #f9fafb;
+      color: #333;
     }
     h1 {
       text-align: center;
+      color: #444;
     }
     .controls {
       display: flex;
+      flex-wrap: wrap;
       justify-content: center;
       gap: 1rem;
       margin-bottom: 1rem;
     }
-    button {
-      padding: 0.5rem 1rem;
+    button, input[type="file"] {
+      padding: 0.6rem 1.2rem;
+      font-size: 1rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      background: #4f46e5;
+      color: white;
+      transition: background 0.3s;
+    }
+    button:hover, input[type="file"]:hover {
+      background: #4338ca;
     }
     input[type="file"] {
-      display: block;
-      margin: 1rem auto;
+      background: #10b981;
     }
     canvas {
       background: white;
       border: 1px solid #ccc;
       display: block;
       margin: 2rem auto;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     .table-container {
       max-height: 300px;
@@ -37,18 +52,20 @@
       margin: 1rem auto;
       border: 1px solid #ccc;
       background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
     }
     table {
       width: 100%;
       border-collapse: collapse;
     }
     th, td {
-      border: 1px solid #ccc;
+      border: 1px solid #e5e7eb;
       padding: 0.5rem;
       text-align: center;
     }
     th {
-      background: #eee;
+      background: #f3f4f6;
     }
     td[contenteditable] {
       background-color: #fffbe7;
@@ -56,9 +73,12 @@
     .delete-btn {
       color: red;
       cursor: pointer;
+      font-weight: bold;
     }
     select.type-select {
       width: 100%;
+      padding: 0.3rem;
+      border-radius: 4px;
     }
     .income-cell { background-color: #e0ffe0; }
     .expense-cell { background-color: #ffe0e0; }
@@ -71,8 +91,10 @@
     <button onclick="addRow()">Add Row</button>
     <button onclick="updateChart()">Update Chart</button>
     <button onclick="exportCSV()">Export CSV</button>
-    <input type="file" id="csvUpload" accept=".csv">
-  </div>  <div class="table-container">
+    <input type="file" id="csvUpload" accept=".csv,text/csv">
+  </div>
+
+  <div class="table-container">
     <table id="financeTable">
       <thead>
         <tr>
@@ -85,9 +107,14 @@
       </thead>
       <tbody></tbody>
     </table>
-  </div><canvas id="mainChart" width="800" height="300"></canvas> <canvas id="netChart" width="800" height="200"></canvas> <canvas id="cumulativeChart" width="800" height="200"></canvas>
+  </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>  <script>
+  <canvas id="mainChart" width="800" height="300"></canvas>
+  <canvas id="netChart" width="800" height="200"></canvas>
+  <canvas id="cumulativeChart" width="800" height="200"></canvas>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
     let mainChart, netChart, cumulativeChart;
 
     const initialData = [
@@ -269,7 +296,7 @@
       data.forEach(row => {
         csv.push(`${row.type},${row.month},${row.category},${row.amount}`);
       });
-      const blob = new Blob([csv.join('\n')], { type: 'text/csv' });
+      const blob = new Blob([csv.join('\\n')], { type: 'text/csv' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
       link.download = 'finance_data.csv';
@@ -281,7 +308,7 @@
       if (!file) return;
       const reader = new FileReader();
       reader.onload = function (event) {
-        const lines = event.target.result.trim().split('\n');
+        const lines = event.target.result.trim().split('\\n');
         document.querySelector('#financeTable tbody').innerHTML = '';
         lines.slice(1).forEach(line => {
           const [type, month, category, amount] = line.split(',');
@@ -294,5 +321,6 @@
 
     initialData.forEach(createRow);
     updateChart();
-  </script></body>
+  </script>
+</body>
 </html>
