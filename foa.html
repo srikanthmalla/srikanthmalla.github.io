@@ -17,6 +17,27 @@
       --file-bg: #10b981;
     }
 
+#darkToggle {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 1000;
+  padding: 0.4rem 0.7rem;
+  font-size: 1.2rem;
+  background: transparent;
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  cursor: pointer;
+  transition: background 0.3s, color 0.3s;
+}
+
+#darkToggle:hover {
+  background: var(--table-header-bg);
+}
+
+
     body.dark {
       --bg-color: #1f2937;
       --text-color: #f3f4f6;
@@ -105,9 +126,13 @@
       text-align: center;
     }
 
-    th {
-      background: var(--table-header-bg);
-    }
+th {
+  background: var(--table-header-bg);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
 
     td[contenteditable] {
       background-color: var(--highlight-bg);
@@ -127,13 +152,13 @@
   </style>
 </head>
 <body>
+<button class="toggle-dark" onclick="toggleDarkMode()" id="darkToggle">🌙</button>
   <h1>Multi-Month Finance Editor</h1>
   <div class="controls">
     <button onclick="addRow()">Add Row</button>
     <button onclick="updateChart()">Update Chart</button>
     <button onclick="exportCSV()">Export CSV</button>
     <input type="file" id="csvUpload" accept=".csv,text/csv">
-    <button class="toggle-dark" onclick="toggleDarkMode()">Toggle Dark Mode</button>
   </div>
 
   <div class="table-container">
@@ -158,8 +183,12 @@
   <div id="errorMsg" style="text-align: center; color: red; font-weight: bold; margin-top: 1rem;"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+
   <script>
     let mainChart, netChart, cumulativeChart;
+let activeCategory = null;
+
 
     const initialData = [
       ["Income", "2025-06", "Salary", 5000],
@@ -171,9 +200,13 @@
       ["Reserve", "2025-06", "Opening", 2000]
     ];
 
-    function toggleDarkMode() {
-      document.body.classList.toggle('dark');
-    }
+
+function toggleDarkMode() {
+  document.body.classList.toggle('dark');
+  const btn = document.getElementById('darkToggle');
+  btn.textContent = document.body.classList.contains('dark') ? '☀️' : '🌙';
+}
+
 
     function createRow([type, month, category, amount]) {
       const tr = document.createElement('tr');
@@ -258,16 +291,26 @@
       return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
     }
 
-    function updateChart() {
+    function updateChart(filteredMonth = null, filteredCategory = null){
       const rawData = getDataFromTable();
       const { grouped, net, cumulative, months, categories, lastRealMonth } = groupData(rawData);
 
-      const mainDatasets = months.filter(m => m <= lastRealMonth).map(month => ({
-        label: month,
-        data: categories.map(cat => (grouped[month]?.[cat] || 0)),
-        fill: false,
-        tension: 0.1
-      }));
+
+const mainDatasets = months
+  .filter(m => m <= lastRealMonth)
+  .filter(m => !filteredMonth || m === filteredMonth)
+  .map(month => ({
+    label: month,
+data: categories.map(cat => {
+  if (filteredCategory && cat !== filteredCategory) return NaN;
+  return (grouped[month]?.[cat] || 0);
+}),
+
+    fill: false,
+    tension: 0.1
+  }));
+
+
 
       const netData = months.map(m => net[m] || 0);
       const cumulativeData = months.map(m => cumulative[m] || 0);
@@ -277,16 +320,34 @@
       if (netChart) netChart.destroy();
       if (cumulativeChart) cumulativeChart.destroy();
 
-      mainChart = new Chart(document.getElementById('mainChart').getContext('2d'), {
-        type: 'line',
-        data: {
-          labels: categories,
-          datasets: mainDatasets
+mainChart = new Chart(document.getElementById('mainChart').getContext('2d'), {
+  type: 'line',
+  data: {
+    labels: categories,
+    datasets: mainDatasets
+  },
+  options: {
+    plugins: {
+      title: { display: true, text: 'Monthly Finance by Category' },
+      zoom: {
+        zoom: {
+          wheel: { enabled: true },
+          pinch: { enabled: true },
+          mode: 'xy'
         },
-        options: {
-          plugins: { title: { display: true, text: 'Monthly Finance by Category' } }
+        pan: {
+          enabled: true,
+          mode: 'xy'
+        },
+        limits: {
+          x: { min: 'original', max: 'original' },
+          y: { min: 'original', max: 'original' }
         }
-      });
+      }
+    }
+  }
+});
+
 
       netChart = new Chart(document.getElementById('netChart').getContext('2d'), {
         type: 'bar',
@@ -295,7 +356,12 @@
           datasets: [{
             label: 'Monthly Net',
             data: netData,
-            backgroundColor: netData.map((val, i) => isProjected[i] ? '#cccccc' : (val >= 0 ? '#a0e0a0' : '#e0a0a0'))
+backgroundColor: netData.map((val, i) => {
+  if (isProjected[i]) return '#cccccc';
+  if (filteredMonth && months[i] === filteredMonth) return '#3b82f6'; // highlight
+  return val >= 0 ? '#a0e0a0' : '#e0a0a0';
+})
+
           }]
         },
         options: {
@@ -344,7 +410,7 @@
       data.forEach(row => {
         csv.push(`${row.type},${row.month},${row.category},${row.amount}`);
       });
-      const blob = new Blob([csv.join('\\n')], { type: 'text/csv' });
+      const blob = new Blob([csv.join('\n')], { type: 'text/csv' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
       link.download = 'finance_data.csv';
@@ -359,9 +425,9 @@
       const reader = new FileReader();
       reader.onload = function (event) {
         try {
-          const lines = event.target.result.trim().split('\\n');
+          const lines = event.target.result.trim().split('\n');
           if (!lines[0].includes('Type') || !lines[0].includes('Month')) {
-            throw new Error(\"Invalid CSV format. Expected headers: Type, Month, Category, Amount\");
+            throw new Error("Invalid CSV format. Expected headers: Type, Month, Category, Amount");
           }
           document.querySelector('#financeTable tbody').innerHTML = '';
           lines.slice(1).forEach(line => {
@@ -376,7 +442,7 @@
         }
       };
       reader.onerror = () => {
-        errorMsg.textContent = \"Failed to read the file.\";
+        errorMsg.textContent = "Failed to read the file.";
       };
       reader.readAsText(file);
     });
@@ -384,6 +450,53 @@
     // Populate default data
     initialData.forEach(createRow);
     updateChart();
+let activeMonth = null;
+
+document.getElementById('netChart').onclick = function (evt) {
+  const points = netChart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, true);
+  if (points.length) {
+    const index = points[0].index;
+    activeMonth = netChart.data.labels[index];
+    updateChart(activeMonth);
+  }
+};
+
+
+document.getElementById('mainChart').onclick = function (evt) {
+  const chart = mainChart;
+  const x = evt.offsetX;
+  const xScale = chart.scales['x'];
+
+  let closestIndex = -1;
+  let minDist = Infinity;
+
+  chart.data.labels.forEach((label, i) => {
+    const tickX = xScale.getPixelForTick(i);
+    const dist = Math.abs(tickX - x);
+    if (dist < minDist) {
+      minDist = dist;
+      closestIndex = i;
+    }
+  });
+
+  if (minDist < 20 && chart.data.labels[closestIndex]) { // 20px tolerance
+    const clickedLabel = chart.data.labels[closestIndex];
+    activeCategory = (activeCategory === clickedLabel) ? null : clickedLabel;
+    updateChart(activeMonth, activeCategory);
+  }
+};
+
+
+
+// Reset on click outside
+document.body.addEventListener('click', (e) => {
+  const charts = ['mainChart', 'netChart'];
+  if (!charts.some(id => document.getElementById(id).contains(e.target))) {
+    activeMonth = null;
+    updateChart();
+  }
+});
+
   </script>
 </body>
 </html>
