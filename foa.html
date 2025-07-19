@@ -1,0 +1,152 @@
+<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Editable Finance Chart</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 2rem;
+      background: #f0f2f5;
+    }
+    h1 {
+      text-align: center;
+    }
+    button {
+      margin: 1rem auto;
+      display: block;
+      padding: 0.5rem 1rem;
+    }
+    canvas {
+      background: white;
+      border: 1px solid #ccc;
+      display: block;
+      margin: 2rem auto;
+    }
+    table {
+      width: 90%;
+      margin: 1rem auto;
+      border-collapse: collapse;
+      background: white;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 0.5rem;
+      text-align: center;
+    }
+    th {
+      background: #eee;
+    }
+    td[contenteditable] {
+      background-color: #fffbe7;
+    }
+  </style>
+</head>
+<body>
+  <h1>Multi-Month Finance Editor</h1>
+  <button onclick="addRow()">Add Row</button>
+  <table id="financeTable">
+    <thead>
+      <tr>
+        <th>Month (YYYY-MM)</th>
+        <th>Category</th>
+        <th>Amount</th>
+      </tr>
+    </thead>
+    <tbody contenteditable="true">
+      <tr><td contenteditable>2025-06</td><td contenteditable>Rent</td><td contenteditable>1200</td></tr>
+      <tr><td contenteditable>2025-06</td><td contenteditable>Groceries</td><td contenteditable>320</td></tr>
+      <tr><td contenteditable>2025-07</td><td contenteditable>Rent</td><td contenteditable>1200</td></tr>
+      <tr><td contenteditable>2025-07</td><td contenteditable>Groceries</td><td contenteditable>300</td></tr>
+    </tbody>
+  </table><canvas id="chart" width="800" height="400"></canvas>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>  <script>
+    const ctx = document.getElementById('chart').getContext('2d');
+    let chart;
+
+    function getDataFromTable() {
+      const rows = document.querySelectorAll('#financeTable tbody tr');
+      const data = [];
+      rows.forEach(row => {
+        const cells = row.querySelectorAll('td');
+        if (cells.length === 3) {
+          const month = cells[0].innerText.trim();
+          const category = cells[1].innerText.trim();
+          const amount = parseFloat(cells[2].innerText.trim());
+          if (month && category && !isNaN(amount)) {
+            data.push({ month, category, amount });
+          }
+        }
+      });
+      return data;
+    }
+
+    function groupData(data) {
+      const grouped = {};
+      const months = new Set();
+      const categories = new Set();
+
+      data.forEach(item => {
+        months.add(item.month);
+        categories.add(item.category);
+        if (!grouped[item.month]) grouped[item.month] = {};
+        grouped[item.month][item.category] = item.amount;
+      });
+
+      return { grouped, months: Array.from(months), categories: Array.from(categories) };
+    }
+
+    function updateChart() {
+      const rawData = getDataFromTable();
+      const { grouped, months, categories } = groupData(rawData);
+
+      const datasets = months.map(month => {
+        return {
+          label: month,
+          data: categories.map(cat => grouped[month][cat] || 0),
+          fill: false,
+          tension: 0.1,
+        };
+      });
+
+      if (chart) chart.destroy();
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: categories,
+          datasets: datasets
+        },
+        options: {
+          responsive: false,
+          plugins: {
+            title: {
+              display: true,
+              text: 'Monthly Finance Comparison'
+            }
+          }
+        }
+      });
+    }
+
+    function addRow() {
+      const tbody = document.querySelector('#financeTable tbody');
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td contenteditable>2025-08</td>
+        <td contenteditable>New Category</td>
+        <td contenteditable>0</td>
+      `;
+      tbody.appendChild(row);
+      row.querySelectorAll('td').forEach(td => {
+        td.addEventListener('blur', updateChart);
+      });
+      updateChart();
+    }
+
+    document.querySelectorAll('#financeTable td').forEach(td => {
+      td.addEventListener('blur', updateChart);
+    });
+
+    updateChart();
+  </script></body>
+</html>
