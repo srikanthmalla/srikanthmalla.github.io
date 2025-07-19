@@ -20,6 +20,10 @@
     button {
       padding: 0.5rem 1rem;
     }
+    input[type="file"] {
+      display: block;
+      margin: 1rem auto;
+    }
     canvas {
       background: white;
       border: 1px solid #ccc;
@@ -53,6 +57,9 @@
       color: red;
       cursor: pointer;
     }
+    select.type-select {
+      width: 100%;
+    }
     .income-cell { background-color: #e0ffe0; }
     .expense-cell { background-color: #ffe0e0; }
     .reserve-cell { background-color: #e0e0ff; }
@@ -63,6 +70,8 @@
   <div class="controls">
     <button onclick="addRow()">Add Row</button>
     <button onclick="updateChart()">Update Chart</button>
+    <button onclick="exportCSV()">Export CSV</button>
+    <input type="file" id="csvUpload" accept=".csv">
   </div>  <div class="table-container">
     <table id="financeTable">
       <thead>
@@ -74,38 +83,50 @@
           <th>Delete</th>
         </tr>
       </thead>
-      <tbody>
-        <tr><td contenteditable class="income-cell">Income</td><td contenteditable>2025-06</td><td contenteditable>Salary</td><td contenteditable>5000</td><td><span class="delete-btn" onclick="deleteRow(this)">&#10060;</span></td></tr>
-        <tr><td contenteditable class="expense-cell">Expenditure</td><td contenteditable>2025-06</td><td contenteditable>Rent</td><td contenteditable>1200</td><td><span class="delete-btn" onclick="deleteRow(this)">&#10060;</span></td></tr>
-        <tr><td contenteditable class="expense-cell">Expenditure</td><td contenteditable>2025-06</td><td contenteditable>Groceries</td><td contenteditable>320</td><td><span class="delete-btn" onclick="deleteRow(this)">&#10060;</span></td></tr>
-        <tr><td contenteditable class="income-cell">Income</td><td contenteditable>2025-07</td><td contenteditable>Salary</td><td contenteditable>5200</td><td><span class="delete-btn" onclick="deleteRow(this)">&#10060;</span></td></tr>
-        <tr><td contenteditable class="expense-cell">Expenditure</td><td contenteditable>2025-07</td><td contenteditable>Rent</td><td contenteditable>1200</td><td><span class="delete-btn" onclick="deleteRow(this)">&#10060;</span></td></tr>
-        <tr><td contenteditable class="expense-cell">Expenditure</td><td contenteditable>2025-07</td><td contenteditable>Utilities</td><td contenteditable>350</td><td><span class="delete-btn" onclick="deleteRow(this)">&#10060;</span></td></tr>
-        <tr><td contenteditable class="reserve-cell">Reserve</td><td contenteditable>2025-06</td><td contenteditable>Opening</td><td contenteditable>2000</td><td><span class="delete-btn" onclick="deleteRow(this)">&#10060;</span></td></tr>
-      </tbody>
+      <tbody></tbody>
     </table>
   </div><canvas id="mainChart" width="800" height="300"></canvas> <canvas id="netChart" width="800" height="200"></canvas> <canvas id="cumulativeChart" width="800" height="200"></canvas>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>  <script>
     let mainChart, netChart, cumulativeChart;
 
+    const initialData = [
+      ["Income", "2025-06", "Salary", 5000],
+      ["Expenditure", "2025-06", "Rent", 1200],
+      ["Expenditure", "2025-06", "Groceries", 320],
+      ["Income", "2025-07", "Salary", 5200],
+      ["Expenditure", "2025-07", "Rent", 1200],
+      ["Expenditure", "2025-07", "Utilities", 350],
+      ["Reserve", "2025-06", "Opening", 2000]
+    ];
+
+    function createRow([type, month, category, amount]) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><select class="type-select">
+          <option value="Income" ${type === 'Income' ? 'selected' : ''}>Income</option>
+          <option value="Expenditure" ${type === 'Expenditure' ? 'selected' : ''}>Expenditure</option>
+          <option value="Reserve" ${type === 'Reserve' ? 'selected' : ''}>Reserve</option>
+        </select></td>
+        <td contenteditable>${month}</td>
+        <td contenteditable>${category}</td>
+        <td contenteditable>${amount}</td>
+        <td><span class="delete-btn" onclick="deleteRow(this)">&#10060;</span></td>
+      `;
+      document.querySelector('#financeTable tbody').appendChild(tr);
+    }
+
     function getDataFromTable() {
       const rows = document.querySelectorAll('#financeTable tbody tr');
       const data = [];
       rows.forEach(row => {
+        const type = row.querySelector('select').value;
         const cells = row.querySelectorAll('td');
-        if (cells.length >= 4) {
-          const type = cells[0].innerText.trim();
-          const month = cells[1].innerText.trim();
-          const category = cells[2].innerText.trim();
-          let amount = parseFloat(cells[3].innerText.trim());
-          if (type.toLowerCase() === 'expenditure') amount = -Math.abs(amount);
-          else amount = Math.abs(amount);
-          if (month && category && !isNaN(amount)) {
-            data.push({ type, month, category, amount });
-            cells[0].className = type.toLowerCase() === 'income' ? 'income-cell' :
-                                 type.toLowerCase() === 'expenditure' ? 'expense-cell' : 'reserve-cell';
-          }
+        const month = cells[1].innerText.trim();
+        const category = cells[2].innerText.trim();
+        const amount = parseFloat(cells[3].innerText.trim());
+        if (month && category && !isNaN(amount)) {
+          data.push({ type, month, category, amount });
         }
       });
       return data;
@@ -118,12 +139,12 @@
       data.forEach(item => {
         months.add(item.month);
         categories.add(item.category);
-        if (item.type.toLowerCase() === 'reserve') {
+        if (item.type === 'Reserve') {
           reserves[item.month] = (reserves[item.month] || 0) + item.amount;
         } else {
           if (!grouped[item.month]) grouped[item.month] = {};
-          grouped[item.month][item.category] = (grouped[item.month][item.category] || 0) + item.amount;
-          net[item.month] = (net[item.month] || 0) + item.amount;
+          grouped[item.month][item.category] = (grouped[item.month][item.category] || 0) + (item.type === 'Expenditure' ? -Math.abs(item.amount) : Math.abs(item.amount));
+          net[item.month] = (net[item.month] || 0) + (item.type === 'Expenditure' ? -Math.abs(item.amount) : Math.abs(item.amount));
         }
       });
 
@@ -199,7 +220,7 @@
           datasets: [{
             label: 'Monthly Net',
             data: netData,
-            backgroundColor: isProjected.map(p => p ? '#cccccc' : '#a0e0a0')
+            backgroundColor: netData.map((val, i) => isProjected[i] ? '#cccccc' : (val >= 0 ? '#a0e0a0' : '#e0a0a0'))
           }]
         },
         options: {
@@ -207,17 +228,26 @@
         }
       });
 
+      const actualCumulative = {
+        label: 'Cumulative Net (Actual)',
+        data: cumulativeData.map((v, i) => isProjected[i] ? null : v),
+        borderColor: '#333',
+        fill: false,
+        borderDash: []
+      };
+      const projectedCumulative = {
+        label: 'Cumulative Net (Projected)',
+        data: cumulativeData.map((v, i) => isProjected[i] ? v : null),
+        borderColor: '#666',
+        fill: false,
+        borderDash: [5, 5]
+      };
+
       cumulativeChart = new Chart(document.getElementById('cumulativeChart').getContext('2d'), {
         type: 'line',
         data: {
           labels: months,
-          datasets: [{
-            label: 'Cumulative Net',
-            data: cumulativeData,
-            borderColor: '#333',
-            fill: false,
-            borderDash: isProjected.map(p => p ? [5, 5] : [0, 0])
-          }]
+          datasets: [actualCumulative, projectedCumulative]
         },
         options: {
           plugins: { title: { display: true, text: 'Cumulative Net with Projections' } }
@@ -226,22 +256,43 @@
     }
 
     function addRow() {
-      const tbody = document.querySelector('#financeTable tbody');
-      const row = document.createElement('tr');
-      row.innerHTML = `
-        <td contenteditable>Income</td>
-        <td contenteditable>2025-08</td>
-        <td contenteditable>New Category</td>
-        <td contenteditable>0</td>
-        <td><span class="delete-btn" onclick="deleteRow(this)">&#10060;</span></td>
-      `;
-      tbody.appendChild(row);
+      createRow(["Income", "2025-08", "New Category", 0]);
     }
 
     function deleteRow(btn) {
       btn.closest('tr').remove();
     }
 
+    function exportCSV() {
+      const data = getDataFromTable();
+      const csv = ['Type,Month,Category,Amount'];
+      data.forEach(row => {
+        csv.push(`${row.type},${row.month},${row.category},${row.amount}`);
+      });
+      const blob = new Blob([csv.join('\n')], { type: 'text/csv' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'finance_data.csv';
+      link.click();
+    }
+
+    document.getElementById('csvUpload').addEventListener('change', function (e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function (event) {
+        const lines = event.target.result.trim().split('\n');
+        document.querySelector('#financeTable tbody').innerHTML = '';
+        lines.slice(1).forEach(line => {
+          const [type, month, category, amount] = line.split(',');
+          createRow([type, month, category, amount]);
+        });
+        updateChart();
+      };
+      reader.readAsText(file);
+    });
+
+    initialData.forEach(createRow);
     updateChart();
   </script></body>
 </html>
