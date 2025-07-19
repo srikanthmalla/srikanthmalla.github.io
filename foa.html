@@ -120,7 +120,7 @@
         net[item.month] = (net[item.month] || 0) + item.amount;
       });
 
-      const sortedMonths = Array.from(months).sort();
+      let sortedMonths = Array.from(months).sort();
       let cumSum = 0;
       sortedMonths.forEach(m => {
         cumSum += net[m] || 0;
@@ -130,30 +130,31 @@
       const last = sortedMonths.slice(-2);
       if (last.length === 2) {
         const m1 = net[last[0]], m2 = net[last[1]];
-        const nextNet = m2 + (m2 - m1);
-        const nextMonth = nextMonthStr(last[1]);
-        const nextNextMonth = nextMonthStr(nextMonth);
-        net[nextMonth] = nextNet;
-        net[nextNextMonth] = nextNet + (nextNet - m2);
-        cumulative[nextMonth] = cumSum + net[nextMonth];
-        cumulative[nextNextMonth] = cumulative[nextMonth] + net[nextNextMonth];
-        sortedMonths.push(nextMonth, nextNextMonth);
+        const next1 = nextMonthStr(last[1]);
+        const next2 = nextMonthStr(next1);
+        const proj1 = m2 + (m2 - m1);
+        const proj2 = proj1 + (proj1 - m2);
+        net[next1] = proj1;
+        net[next2] = proj2;
+        cumulative[next1] = cumSum + proj1;
+        cumulative[next2] = cumulative[next1] + proj2;
+        sortedMonths.push(next1, next2);
       }
 
-      return { grouped, net, cumulative, months: sortedMonths, categories: Array.from(categories) };
+      return { grouped, net, cumulative, months: sortedMonths, categories: Array.from(categories), lastRealMonth: last[1] };
     }
 
     function nextMonthStr(monthStr) {
       const [y, m] = monthStr.split('-').map(Number);
       const date = new Date(y, m, 1);
-      return `${date.getFullYear()}-${String(date.getMonth()).padStart(2, '0')}`;
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
     }
 
     function updateChart() {
       const rawData = getDataFromTable();
-      const { grouped, net, cumulative, months, categories } = groupData(rawData);
+      const { grouped, net, cumulative, months, categories, lastRealMonth } = groupData(rawData);
 
-      const mainDatasets = months.map(month => ({
+      const mainDatasets = [lastRealMonth].map(month => ({
         label: month,
         data: categories.map(cat => (grouped[month]?.[cat] || 0)),
         fill: false,
@@ -162,6 +163,7 @@
 
       const netData = months.map(m => net[m] || 0);
       const cumulativeData = months.map(m => cumulative[m] || 0);
+      const isProjected = months.map(m => m > lastRealMonth);
 
       if (mainChart) mainChart.destroy();
       if (netChart) netChart.destroy();
@@ -170,25 +172,39 @@
       mainChart = new Chart(document.getElementById('mainChart').getContext('2d'), {
         type: 'line',
         data: { labels: categories, datasets: mainDatasets },
-        options: { plugins: { title: { display: true, text: 'Monthly Finance by Category' } } }
+        options: { plugins: { title: { display: true, text: 'Latest Month Finance by Category' } } }
       });
 
       netChart = new Chart(document.getElementById('netChart').getContext('2d'), {
         type: 'bar',
         data: {
           labels: months,
-          datasets: [{ label: 'Monthly Net', data: netData, backgroundColor: netData.map(v => v >= 0 ? '#a0e0a0' : '#e0a0a0') }]
+          datasets: [{
+            label: 'Monthly Net',
+            data: netData,
+            backgroundColor: isProjected.map(p => p ? '#cccccc' : (netData[isProjected.indexOf(p)] >= 0 ? '#a0e0a0' : '#e0a0a0'))
+          }]
         },
-        options: { plugins: { title: { display: true, text: 'Net Position per Month' } } }
+        options: {
+          plugins: { title: { display: true, text: 'Net Position per Month' } }
+        }
       });
 
       cumulativeChart = new Chart(document.getElementById('cumulativeChart').getContext('2d'), {
         type: 'line',
         data: {
           labels: months,
-          datasets: [{ label: 'Cumulative Net', data: cumulativeData, borderColor: '#333', fill: false }]
+          datasets: [{
+            label: 'Cumulative Net',
+            data: cumulativeData,
+            borderColor: '#333',
+            fill: false,
+            borderDash: months.map(m => m > lastRealMonth ? [5, 5] : []).flat()
+          }]
         },
-        options: { plugins: { title: { display: true, text: 'Cumulative Net with Projections' } } }
+        options: {
+          plugins: { title: { display: true, text: 'Cumulative Net with Projections' } }
+        }
       });
     }
 
