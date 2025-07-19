@@ -1,19 +1,48 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Editable Finance Chart</title>
   <style>
+    :root {
+      --bg-color: #f9fafb;
+      --text-color: #333;
+      --header-color: #444;
+      --border-color: #ccc;
+      --table-bg: white;
+      --table-header-bg: #f3f4f6;
+      --highlight-bg: #fffbe7;
+      --btn-bg: #4f46e5;
+      --btn-hover: #4338ca;
+      --file-bg: #10b981;
+    }
+
+    body.dark {
+      --bg-color: #1f2937;
+      --text-color: #f3f4f6;
+      --header-color: #e5e7eb;
+      --border-color: #374151;
+      --table-bg: #111827;
+      --table-header-bg: #374151;
+      --highlight-bg: #1c1c1c;
+      --btn-bg: #2563eb;
+      --btn-hover: #1d4ed8;
+      --file-bg: #059669;
+    }
+
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       margin: 2rem;
-      background: #f9fafb;
-      color: #333;
+      background: var(--bg-color);
+      color: var(--text-color);
+      transition: background 0.3s, color 0.3s;
     }
+
     h1 {
       text-align: center;
-      color: #444;
+      color: var(--header-color);
     }
+
     .controls {
       display: flex;
       flex-wrap: wrap;
@@ -21,68 +50,80 @@
       gap: 1rem;
       margin-bottom: 1rem;
     }
+
     button, input[type="file"] {
       padding: 0.6rem 1.2rem;
       font-size: 1rem;
       border: none;
       border-radius: 6px;
       cursor: pointer;
-      background: #4f46e5;
+      background: var(--btn-bg);
       color: white;
       transition: background 0.3s;
     }
+
     button:hover, input[type="file"]:hover {
-      background: #4338ca;
+      background: var(--btn-hover);
     }
+
     input[type="file"] {
-      background: #10b981;
+      background: var(--file-bg);
     }
+
+    .toggle-dark {
+      background: #6b7280;
+    }
+
     canvas {
-      background: white;
-      border: 1px solid #ccc;
+      background: var(--table-bg);
+      border: 1px solid var(--border-color);
       display: block;
       margin: 2rem auto;
       border-radius: 8px;
       box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
+
     .table-container {
       max-height: 300px;
       overflow-y: auto;
       width: 90%;
       margin: 1rem auto;
-      border: 1px solid #ccc;
-      background: white;
+      border: 1px solid var(--border-color);
+      background: var(--table-bg);
       border-radius: 8px;
       box-shadow: 0 2px 6px rgba(0,0,0,0.1);
     }
+
     table {
       width: 100%;
       border-collapse: collapse;
     }
+
     th, td {
-      border: 1px solid #e5e7eb;
+      border: 1px solid var(--border-color);
       padding: 0.5rem;
       text-align: center;
     }
+
     th {
-      background: #f3f4f6;
+      background: var(--table-header-bg);
     }
+
     td[contenteditable] {
-      background-color: #fffbe7;
+      background-color: var(--highlight-bg);
     }
+
     .delete-btn {
       color: red;
       cursor: pointer;
       font-weight: bold;
     }
+
     select.type-select {
       width: 100%;
       padding: 0.3rem;
       border-radius: 4px;
     }
-    .income-cell { background-color: #e0ffe0; }
-    .expense-cell { background-color: #ffe0e0; }
-    .reserve-cell { background-color: #e0e0ff; }
   </style>
 </head>
 <body>
@@ -92,6 +133,7 @@
     <button onclick="updateChart()">Update Chart</button>
     <button onclick="exportCSV()">Export CSV</button>
     <input type="file" id="csvUpload" accept=".csv,text/csv">
+    <button class="toggle-dark" onclick="toggleDarkMode()">Toggle Dark Mode</button>
   </div>
 
   <div class="table-container">
@@ -113,6 +155,8 @@
   <canvas id="netChart" width="800" height="200"></canvas>
   <canvas id="cumulativeChart" width="800" height="200"></canvas>
 
+  <div id="errorMsg" style="text-align: center; color: red; font-weight: bold; margin-top: 1rem;"></div>
+
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>
     let mainChart, netChart, cumulativeChart;
@@ -126,6 +170,10 @@
       ["Expenditure", "2025-07", "Utilities", 350],
       ["Reserve", "2025-06", "Opening", 2000]
     ];
+
+    function toggleDarkMode() {
+      document.body.classList.toggle('dark');
+    }
 
     function createRow([type, month, category, amount]) {
       const tr = document.createElement('tr');
@@ -305,20 +353,35 @@
 
     document.getElementById('csvUpload').addEventListener('change', function (e) {
       const file = e.target.files[0];
+      const errorMsg = document.getElementById('errorMsg');
+      errorMsg.textContent = '';
       if (!file) return;
       const reader = new FileReader();
       reader.onload = function (event) {
-        const lines = event.target.result.trim().split('\\n');
-        document.querySelector('#financeTable tbody').innerHTML = '';
-        lines.slice(1).forEach(line => {
-          const [type, month, category, amount] = line.split(',');
-          createRow([type, month, category, amount]);
-        });
-        updateChart();
+        try {
+          const lines = event.target.result.trim().split('\\n');
+          if (!lines[0].includes('Type') || !lines[0].includes('Month')) {
+            throw new Error(\"Invalid CSV format. Expected headers: Type, Month, Category, Amount\");
+          }
+          document.querySelector('#financeTable tbody').innerHTML = '';
+          lines.slice(1).forEach(line => {
+            const [type, month, category, amount] = line.split(',');
+            if (type && month && category && amount) {
+              createRow([type, month, category, parseFloat(amount)]);
+            }
+          });
+          updateChart();
+        } catch (err) {
+          errorMsg.textContent = err.message;
+        }
+      };
+      reader.onerror = () => {
+        errorMsg.textContent = \"Failed to read the file.\";
       };
       reader.readAsText(file);
     });
 
+    // Populate default data
     initialData.forEach(createRow);
     updateChart();
   </script>
