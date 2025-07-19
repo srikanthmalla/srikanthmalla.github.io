@@ -26,11 +26,17 @@
       display: block;
       margin: 2rem auto;
     }
-    table {
+    .table-container {
+      max-height: 300px;
+      overflow-y: auto;
       width: 90%;
       margin: 1rem auto;
-      border-collapse: collapse;
+      border: 1px solid #ccc;
       background: white;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
     }
     th, td {
       border: 1px solid #ccc;
@@ -47,6 +53,8 @@
       color: red;
       cursor: pointer;
     }
+    .income-cell { background-color: #e0ffe0; }
+    .expense-cell { background-color: #ffe0e0; }
   </style>
 </head>
 <body>
@@ -54,59 +62,46 @@
   <div class="controls">
     <button onclick="addRow()">Add Row</button>
     <button onclick="updateChart()">Update Chart</button>
-  </div>
-  <table id="financeTable">
-    <thead>
-      <tr>
-        <th>Month (YYYY-MM)</th>
-        <th>Category</th>
-        <th>Amount</th>
-        <th>Delete</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td contenteditable>2025-06</td>
-        <td contenteditable>Rent</td>
-        <td contenteditable>1200</td>
-        <td><span class="delete-btn" onclick="deleteRow(this)">&#10060;</span></td>
-      </tr>
-      <tr>
-        <td contenteditable>2025-06</td>
-        <td contenteditable>Groceries</td>
-        <td contenteditable>320</td>
-        <td><span class="delete-btn" onclick="deleteRow(this)">&#10060;</span></td>
-      </tr>
-      <tr>
-        <td contenteditable>2025-07</td>
-        <td contenteditable>Rent</td>
-        <td contenteditable>1200</td>
-        <td><span class="delete-btn" onclick="deleteRow(this)">&#10060;</span></td>
-      </tr>
-      <tr>
-        <td contenteditable>2025-07</td>
-        <td contenteditable>Groceries</td>
-        <td contenteditable>300</td>
-        <td><span class="delete-btn" onclick="deleteRow(this)">&#10060;</span></td>
-      </tr>
-    </tbody>
-  </table><canvas id="chart" width="800" height="400"></canvas>
+  </div>  <div class="table-container">
+    <table id="financeTable">
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Month (YYYY-MM)</th>
+          <th>Category</th>
+          <th>Amount</th>
+          <th>Delete</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td contenteditable class="income-cell">Income</td><td contenteditable>2025-06</td><td contenteditable>Salary</td><td contenteditable>5000</td><td><span class="delete-btn" onclick="deleteRow(this)">&#10060;</span></td></tr>
+        <tr><td contenteditable class="expense-cell">Expenditure</td><td contenteditable>2025-06</td><td contenteditable>Rent</td><td contenteditable>1200</td><td><span class="delete-btn" onclick="deleteRow(this)">&#10060;</span></td></tr>
+        <tr><td contenteditable class="expense-cell">Expenditure</td><td contenteditable>2025-06</td><td contenteditable>Groceries</td><td contenteditable>320</td><td><span class="delete-btn" onclick="deleteRow(this)">&#10060;</span></td></tr>
+        <tr><td contenteditable class="income-cell">Income</td><td contenteditable>2025-07</td><td contenteditable>Salary</td><td contenteditable>5200</td><td><span class="delete-btn" onclick="deleteRow(this)">&#10060;</span></td></tr>
+        <tr><td contenteditable class="expense-cell">Expenditure</td><td contenteditable>2025-07</td><td contenteditable>Rent</td><td contenteditable>1200</td><td><span class="delete-btn" onclick="deleteRow(this)">&#10060;</span></td></tr>
+        <tr><td contenteditable class="expense-cell">Expenditure</td><td contenteditable>2025-07</td><td contenteditable>Utilities</td><td contenteditable>350</td><td><span class="delete-btn" onclick="deleteRow(this)">&#10060;</span></td></tr>
+      </tbody>
+    </table>
+  </div><canvas id="mainChart" width="800" height="300"></canvas> <canvas id="netChart" width="800" height="200"></canvas> <canvas id="cumulativeChart" width="800" height="200"></canvas>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>  <script>
-    const ctx = document.getElementById('chart').getContext('2d');
-    let chart;
+    let mainChart, netChart, cumulativeChart;
 
     function getDataFromTable() {
       const rows = document.querySelectorAll('#financeTable tbody tr');
       const data = [];
       rows.forEach(row => {
         const cells = row.querySelectorAll('td');
-        if (cells.length >= 3) {
-          const month = cells[0].innerText.trim();
-          const category = cells[1].innerText.trim();
-          const amount = parseFloat(cells[2].innerText.trim());
+        if (cells.length >= 4) {
+          const type = cells[0].innerText.trim();
+          const month = cells[1].innerText.trim();
+          const category = cells[2].innerText.trim();
+          let amount = parseFloat(cells[3].innerText.trim());
+          if (type.toLowerCase() === 'expenditure') amount = -Math.abs(amount);
+          else amount = Math.abs(amount);
           if (month && category && !isNaN(amount)) {
             data.push({ month, category, amount });
+            cells[0].className = type.toLowerCase() === 'income' ? 'income-cell' : 'expense-cell';
           }
         }
       });
@@ -114,49 +109,86 @@
     }
 
     function groupData(data) {
-      const grouped = {};
-      const months = new Set();
-      const categories = new Set();
+      const grouped = {}, net = {}, cumulative = {};
+      const months = new Set(), categories = new Set();
 
       data.forEach(item => {
         months.add(item.month);
         categories.add(item.category);
         if (!grouped[item.month]) grouped[item.month] = {};
-        grouped[item.month][item.category] = item.amount;
+        grouped[item.month][item.category] = (grouped[item.month][item.category] || 0) + item.amount;
+        net[item.month] = (net[item.month] || 0) + item.amount;
       });
 
-      return { grouped, months: Array.from(months), categories: Array.from(categories) };
+      const sortedMonths = Array.from(months).sort();
+      let cumSum = 0;
+      sortedMonths.forEach(m => {
+        cumSum += net[m] || 0;
+        cumulative[m] = cumSum;
+      });
+
+      const last = sortedMonths.slice(-2);
+      if (last.length === 2) {
+        const m1 = net[last[0]], m2 = net[last[1]];
+        const nextNet = m2 + (m2 - m1);
+        const nextMonth = nextMonthStr(last[1]);
+        const nextNextMonth = nextMonthStr(nextMonth);
+        net[nextMonth] = nextNet;
+        net[nextNextMonth] = nextNet + (nextNet - m2);
+        cumulative[nextMonth] = cumSum + net[nextMonth];
+        cumulative[nextNextMonth] = cumulative[nextMonth] + net[nextNextMonth];
+        sortedMonths.push(nextMonth, nextNextMonth);
+      }
+
+      return { grouped, net, cumulative, months: sortedMonths, categories: Array.from(categories) };
+    }
+
+    function nextMonthStr(monthStr) {
+      const [y, m] = monthStr.split('-').map(Number);
+      const date = new Date(y, m, 1);
+      return `${date.getFullYear()}-${String(date.getMonth()).padStart(2, '0')}`;
     }
 
     function updateChart() {
       const rawData = getDataFromTable();
-      const { grouped, months, categories } = groupData(rawData);
+      const { grouped, net, cumulative, months, categories } = groupData(rawData);
 
-      const datasets = months.map(month => {
-        return {
-          label: month,
-          data: categories.map(cat => grouped[month][cat] || 0),
-          fill: false,
-          tension: 0.1,
-        };
+      const mainDatasets = months.map(month => ({
+        label: month,
+        data: categories.map(cat => (grouped[month]?.[cat] || 0)),
+        fill: false,
+        tension: 0.1
+      }));
+
+      const netData = months.map(m => net[m] || 0);
+      const cumulativeData = months.map(m => cumulative[m] || 0);
+
+      if (mainChart) mainChart.destroy();
+      if (netChart) netChart.destroy();
+      if (cumulativeChart) cumulativeChart.destroy();
+
+      mainChart = new Chart(document.getElementById('mainChart').getContext('2d'), {
+        type: 'line',
+        data: { labels: categories, datasets: mainDatasets },
+        options: { plugins: { title: { display: true, text: 'Monthly Finance by Category' } } }
       });
 
-      if (chart) chart.destroy();
-      chart = new Chart(ctx, {
+      netChart = new Chart(document.getElementById('netChart').getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: months,
+          datasets: [{ label: 'Monthly Net', data: netData, backgroundColor: netData.map(v => v >= 0 ? '#a0e0a0' : '#e0a0a0') }]
+        },
+        options: { plugins: { title: { display: true, text: 'Net Position per Month' } } }
+      });
+
+      cumulativeChart = new Chart(document.getElementById('cumulativeChart').getContext('2d'), {
         type: 'line',
         data: {
-          labels: categories,
-          datasets: datasets
+          labels: months,
+          datasets: [{ label: 'Cumulative Net', data: cumulativeData, borderColor: '#333', fill: false }]
         },
-        options: {
-          responsive: false,
-          plugins: {
-            title: {
-              display: true,
-              text: 'Monthly Finance Comparison'
-            }
-          }
-        }
+        options: { plugins: { title: { display: true, text: 'Cumulative Net with Projections' } } }
       });
     }
 
@@ -164,6 +196,7 @@
       const tbody = document.querySelector('#financeTable tbody');
       const row = document.createElement('tr');
       row.innerHTML = `
+        <td contenteditable>Income</td>
         <td contenteditable>2025-08</td>
         <td contenteditable>New Category</td>
         <td contenteditable>0</td>
@@ -173,8 +206,7 @@
     }
 
     function deleteRow(btn) {
-      const row = btn.closest('tr');
-      row.remove();
+      btn.closest('tr').remove();
     }
 
     updateChart();
