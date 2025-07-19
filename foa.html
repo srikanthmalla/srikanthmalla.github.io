@@ -177,6 +177,22 @@ th {
   </div>
 
   <canvas id="mainChart" width="800" height="300"></canvas>
+<div id="projectionContainer" class="table-container" style="display:none">
+  <h3 style="text-align:center">Projected Data Editor</h3>
+  <table id="projectionTable">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Month</th>
+        <th>Category</th>
+        <th>Amount</th>
+        <th>Delete</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+
   <canvas id="netChart" width="800" height="200"></canvas>
   <canvas id="cumulativeChart" width="800" height="200"></canvas>
 
@@ -188,6 +204,7 @@ th {
   <script>
     let mainChart, netChart, cumulativeChart;
 let activeCategory = null;
+let projectedData = {};
 
 
     const initialData = [
@@ -237,53 +254,63 @@ function toggleDarkMode() {
           data.push({ type, month, category, amount });
         }
       });
+
       return data;
     }
 
-    function groupData(data) {
-      const grouped = {}, net = {}, cumulative = {}, reserves = {};
-      const months = new Set(), categories = new Set();
+function groupData(data, projections = {}) {
+  const grouped = {}, net = {}, cumulative = {}, reserves = {};
+  const months = new Set(), categories = new Set();
 
-      data.forEach(item => {
-        months.add(item.month);
-        categories.add(item.category);
-        if (item.type === 'Reserve') {
-          reserves[item.month] = (reserves[item.month] || 0) + item.amount;
-        } else {
-          if (!grouped[item.month]) grouped[item.month] = {};
-          grouped[item.month][item.category] = (grouped[item.month][item.category] || 0) + (item.type === 'Expenditure' ? -Math.abs(item.amount) : Math.abs(item.amount));
-          net[item.month] = (net[item.month] || 0) + (item.type === 'Expenditure' ? -Math.abs(item.amount) : Math.abs(item.amount));
-        }
-      });
+  // Combine real and projected
+  const combined = [...data];
+  Object.values(projections).forEach(arr => combined.push(...arr));
 
-      let sortedMonths = Array.from(months).sort();
-      const allMonths = [...sortedMonths];
-      const last = sortedMonths.slice(-1);
-      if (last.length === 1) {
-        const lastNet = net[last[0]] || 0;
-        const next1 = nextMonthStr(last[0]);
-        const next2 = nextMonthStr(next1);
-        net[next1] = lastNet;
-        net[next2] = lastNet;
-        allMonths.push(next1, next2);
-      }
-
-      let cumSum = 0;
-      for (let m of allMonths) {
-        if (reserves[m]) cumSum = reserves[m];
-        cumSum += net[m] || 0;
-        cumulative[m] = cumSum;
-      }
-
-      return {
-        grouped,
-        net,
-        cumulative,
-        months: allMonths,
-        categories: Array.from(categories),
-        lastRealMonth: sortedMonths.at(-1)
-      };
+  combined.forEach(item => {
+    months.add(item.month);
+    categories.add(item.category);
+    if (item.type === 'Reserve') {
+      reserves[item.month] = (reserves[item.month] || 0) + item.amount;
+    } else {
+      if (!grouped[item.month]) grouped[item.month] = {};
+      grouped[item.month][item.category] = (grouped[item.month][item.category] || 0)
+        + (item.type === 'Expenditure' ? -Math.abs(item.amount) : Math.abs(item.amount));
+      net[item.month] = (net[item.month] || 0) +
+        (item.type === 'Expenditure' ? -Math.abs(item.amount) : Math.abs(item.amount));
     }
+  });
+
+  let sortedMonths = Array.from(months).sort();
+  const allMonths = [...sortedMonths];
+  const realMonths = data.map(row => row.month);
+  const lastRealMonth = realMonths.sort().at(-1);
+
+  // Remove dummy projections
+  if (projectedData && Object.keys(projections).length) {
+    // Only add projection months already in projectedData
+    Object.keys(projections).forEach(pm => {
+      if (!allMonths.includes(pm)) allMonths.push(pm);
+    });
+  }
+
+  // Calculate cumulative
+  let cumSum = 0;
+  for (let m of allMonths) {
+    if (reserves[m]) cumSum = reserves[m];
+    cumSum += net[m] || 0;
+    cumulative[m] = cumSum;
+  }
+
+  return {
+    grouped,
+    net,
+    cumulative,
+    months: allMonths.sort(),
+    categories: Array.from(categories),
+    lastRealMonth
+  };
+}
+
 
     function nextMonthStr(monthStr) {
       const [y, m] = monthStr.split('-').map(Number);
@@ -291,13 +318,74 @@ function toggleDarkMode() {
       return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
     }
 
+function monthBefore(monthStr) {
+  const [y, m] = monthStr.split('-').map(Number);
+  const date = new Date(y, m - 2, 1); // JS months 0-based
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+function showProjectionEditor(month) {
+  const container = document.getElementById('projectionContainer');
+  const tbody = container.querySelector('tbody');
+  tbody.innerHTML = '';
+
+  if (!projectedData[month]) {
+    const lastMonth = monthBefore(month);
+    const lastData = getDataFromTable().filter(row => row.month === lastMonth && row.type !== 'Reserve');
+    projectedData[month] = lastData.map(row => ({
+      ...row,
+      month: month,
+      amount: Math.round(row.amount * 1.01) // example projection
+    }));
+  }
+
+  projectedData[month].forEach((entry, idx) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><select class="type-select">
+        <option value="Income" ${entry.type === 'Income' ? 'selected' : ''}>Income</option>
+        <option value="Expenditure" ${entry.type === 'Expenditure' ? 'selected' : ''}>Expenditure</option>
+      </select></td>
+      <td>${entry.month}</td>
+      <td contenteditable>${entry.category}</td>
+      <td contenteditable>${entry.amount}</td>
+      <td><span class="delete-btn" onclick="this.closest('tr').remove(); projectedData['${month}'].splice(${idx},1); updateChart();">🗑️</span></td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  container.style.display = 'block';
+  updateChart();
+}
+
+function hideProjectionEditor() {
+  document.getElementById('projectionContainer').style.display = 'none';
+}
+
+
     function updateChart(filteredMonth = null, filteredCategory = null){
-      const rawData = getDataFromTable();
-      const { grouped, net, cumulative, months, categories, lastRealMonth } = groupData(rawData);
+
+const rawData = getDataFromTable();
+ // TEMP name to avoid duplicate declaration
+const rawMonths = rawData.map(r => r.month);
+const lastReal = rawMonths.sort().at(-1);
+const next1 = nextMonthStr(lastReal);
+const next2 = nextMonthStr(next1);
+
+[next1, next2].forEach(next => {
+  if (!projectedData[next]) {
+    const lastData = rawData.filter(r => r.month === lastReal && r.type !== 'Reserve');
+    projectedData[next] = lastData.map(r => ({
+      ...r,
+      month: next,
+      amount: Math.round(r.amount * 1.01)
+    }));
+  }
+});
+const { grouped, net, cumulative, months, categories, lastRealMonth } = groupData(rawData, projectedData);
 
 
 const mainDatasets = months
-  .filter(m => m <= lastRealMonth)
+  .filter(m => !filteredMonth || m === filteredMonth || m <= lastRealMonth)
   .filter(m => !filteredMonth || m === filteredMonth)
   .map(month => ({
     label: month,
@@ -331,8 +419,6 @@ mainChart = new Chart(document.getElementById('mainChart').getContext('2d'), {
       title: { display: true, text: 'Monthly Finance by Category' },
       zoom: {
         zoom: {
-          wheel: { enabled: true },
-          pinch: { enabled: true },
           mode: 'xy'
         },
         pan: {
@@ -450,13 +536,35 @@ backgroundColor: netData.map((val, i) => {
     // Populate default data
     initialData.forEach(createRow);
     updateChart();
+document.getElementById('projectionContainer').addEventListener('input', () => {
+  const rows = document.querySelectorAll('#projectionTable tbody tr');
+  projectedData[activeMonth] = Array.from(rows).map(row => ({
+    type: row.querySelector('select').value,
+    month: activeMonth,
+    category: row.cells[2].innerText.trim(),
+    amount: parseFloat(row.cells[3].innerText.trim()) || 0
+  }));
+  updateChart(activeMonth, activeCategory);
+});
+
 let activeMonth = null;
+
 
 document.getElementById('netChart').onclick = function (evt) {
   const points = netChart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, true);
   if (points.length) {
     const index = points[0].index;
-    activeMonth = netChart.data.labels[index];
+    const month = netChart.data.labels[index];
+    const lastReal = groupData(getDataFromTable()).lastRealMonth;
+
+    if (month > lastReal) {
+      activeMonth = month;
+      showProjectionEditor(month);
+    } else {
+      activeMonth = month;
+      hideProjectionEditor();
+    }
+
     updateChart(activeMonth);
   }
 };
@@ -491,11 +599,16 @@ document.getElementById('mainChart').onclick = function (evt) {
 // Reset on click outside
 document.body.addEventListener('click', (e) => {
   const charts = ['mainChart', 'netChart'];
-  if (!charts.some(id => document.getElementById(id).contains(e.target))) {
+  const insideCharts = charts.some(id => document.getElementById(id).contains(e.target));
+  const insideProjection = document.getElementById('projectionContainer').contains(e.target);
+
+  if (!insideCharts && !insideProjection) {
     activeMonth = null;
+    hideProjectionEditor();
     updateChart();
   }
 });
+
 
   </script>
 </body>
