@@ -1,0 +1,1098 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Recovery Program</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #EAF2EF;
+    --surface: #FFFFFF;
+    --ink: #15302B;
+    --muted: #5E7873;
+    --faint: #8AA39D;
+    --line: #DCE7E3;
+    --primary: #11876F;
+    --primary-deep: #0B5F4E;
+    --mint: #54C9A6;
+    --mint-soft: #E3F5EE;
+    --amber: #C9842F;
+    --amber-soft: #FBF0DF;
+    --shadow: 0 1px 2px rgba(16,48,42,.04), 0 8px 24px rgba(16,48,42,.06);
+    --radius: 20px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.5;
+  }
+
+  .app {
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 0 16px 64px;
+  }
+
+  h1, h2, h3, .display { font-family: 'Outfit', sans-serif; }
+
+  /* ---------- Header ---------- */
+  .head {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: linear-gradient(var(--bg) 78%, rgba(234,242,239,0));
+    padding: 22px 0 14px;
+  }
+  .head .eyebrow {
+    font-size: 12px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--primary);
+    font-weight: 600;
+  }
+  .head h1 {
+    font-size: 27px;
+    font-weight: 700;
+    letter-spacing: -.02em;
+    margin-top: 3px;
+  }
+
+  /* ---------- Program switcher tiles ---------- */
+  .tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin: 14px 0 4px;
+  }
+  .tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 7px;
+    padding: 12px 6px 10px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    cursor: pointer;
+    font-family: 'Outfit', sans-serif;
+    font-weight: 600;
+    font-size: 12.5px;
+    color: var(--muted);
+    transition: border-color .2s, background .2s, color .2s, box-shadow .2s;
+  }
+  .tab .tab-ic {
+    width: 34px; height: 34px;
+    display: grid; place-items: center;
+    border-radius: 11px;
+    background: var(--mint-soft);
+    color: var(--primary-deep);
+    transition: background .2s, color .2s;
+  }
+  .tab .tab-ic svg { width: 20px; height: 20px; }
+  .tab .tab-lbl { line-height: 1.15; text-align: center; }
+  .tab:hover { border-color: var(--mint); }
+  .tab.active {
+    border-color: var(--primary);
+    background: var(--primary);
+    color: #fff;
+    box-shadow: var(--shadow);
+  }
+  .tab.active .tab-ic { background: rgba(255,255,255,.18); color: #fff; }
+  .tab:focus-visible { outline: 2px solid var(--primary-deep); outline-offset: 2px; }
+
+  /* ---------- Today summary ---------- */
+  .summary {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 18px 20px;
+    margin: 14px 0 22px;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+  }
+  .ring { flex: 0 0 auto; }
+  .ring text {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 700;
+  }
+  .summary .info { flex: 1; }
+  .summary .label {
+    font-size: 12px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--faint); font-weight: 600;
+  }
+  .summary .count {
+    font-family: 'Outfit', sans-serif;
+    font-size: 22px; font-weight: 700; letter-spacing: -.01em;
+    margin-top: 1px;
+  }
+  .summary .count b { color: var(--primary); }
+  .summary .sub { font-size: 13.5px; color: var(--muted); margin-top: 2px; }
+
+  /* ---------- Card deck (cards stacked one behind another) ---------- */
+  .deck {
+    position: relative;
+    margin: 8px 0 24px;
+    transition: height .34s cubic-bezier(.22,.61,.36,1);
+  }
+  .deck-done {
+    position: absolute; inset: 0;
+    display: none;
+    flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; gap: 4px;
+  }
+  .deck.empty .deck-done { display: flex; }
+  .deck-done svg { width: 42px; height: 42px; color: var(--mint); margin-bottom: 4px; }
+  .deck-done .big {
+    font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 20px;
+    color: var(--primary-deep);
+  }
+  .deck-done .small { font-size: 13.5px; color: var(--muted); }
+
+  .ex {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    transform-origin: top center;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    touch-action: pan-y;
+    will-change: transform;
+    transition: transform .34s cubic-bezier(.22,.61,.36,1),
+                opacity .3s ease,
+                box-shadow .3s ease,
+                border-color .25s;
+  }
+  .ex:not(.front) { pointer-events: none; }
+  .ex.complete { border-color: var(--mint); }
+  .ex.dragging { transition: none; user-select: none; cursor: grabbing; }
+  .ex.dismissed { pointer-events: none; }
+
+  /* swipe affordance revealed as you drag the front card */
+  .swipe-hint {
+    position: absolute; inset: 0; z-index: 6;
+    display: flex; align-items: center; justify-content: center; gap: 9px;
+    background: var(--primary); color: #fff;
+    font-family: 'Outfit', sans-serif;
+    font-weight: 700; font-size: 15px; letter-spacing: .01em;
+    opacity: 0; pointer-events: none;
+    transition: opacity .15s ease;
+  }
+  .ex.dragging .swipe-hint { opacity: 1; }
+  .swipe-hint svg { width: 20px; height: 20px; }
+
+  /* ---------- Video media (YouTube click-to-play facade) ---------- */
+  .media {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background: #0b1f1b;
+    overflow: hidden;
+    cursor: pointer;
+    touch-action: pan-y;
+  }
+  .media-thumb {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover; display: block; border: 0;
+  }
+  .media-fallback { position: absolute; inset: 0; display: none; }
+  .media-fallback svg { width: 100%; height: 100%; display: block; }
+  .media.noimg .media-thumb { display: none; }
+  .media.noimg .media-fallback { display: block; }
+  .media::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(0,0,0,0) 45%, rgba(0,0,0,.30));
+    pointer-events: none; transition: opacity .2s; z-index: 1;
+  }
+  .play {
+    position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%,-50%);
+    width: 58px; height: 58px; border-radius: 50%;
+    background: rgba(255,255,255,.93);
+    display: grid; place-items: center; z-index: 2;
+    box-shadow: 0 6px 18px rgba(0,0,0,.28);
+    transition: transform .2s; pointer-events: none;
+  }
+  .media:hover .play { transform: translate(-50%,-50%) scale(1.07); }
+  .play svg { width: 23px; height: 23px; margin-left: 3px; color: var(--primary-deep); }
+  .media-label {
+    position: absolute; left: 11px; bottom: 9px; z-index: 2;
+    color: #fff; font-size: 11.5px; font-weight: 600; letter-spacing: .02em;
+    text-shadow: 0 1px 4px rgba(0,0,0,.55); pointer-events: none;
+  }
+  .media.playing .play,
+  .media.playing .media-label,
+  .media.playing::after { display: none; }
+  .media iframe {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%; border: 0; z-index: 3;
+  }
+
+  .ex-body { padding: 15px 16px 4px; }
+  .ex-name {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 700; font-size: 18px;
+    letter-spacing: -.01em; line-height: 1.22;
+  }
+  .freq {
+    display: inline-flex; align-items: center; gap: 5px;
+    margin-top: 9px;
+    font-size: 12px; font-weight: 600;
+    color: var(--primary-deep);
+    background: var(--mint-soft);
+    padding: 3px 9px; border-radius: 999px;
+  }
+  .freq svg { width: 12px; height: 12px; }
+
+  .metrics {
+    display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;
+  }
+  .metric {
+    background: #F4F8F6;
+    border: 1px solid var(--line);
+    border-radius: 11px;
+    padding: 6px 11px;
+    text-align: center;
+    min-width: 54px;
+  }
+  .metric .v {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 700; font-size: 16px; color: var(--ink);
+    line-height: 1.1;
+  }
+  .metric .k {
+    font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase;
+    color: var(--faint); font-weight: 600; margin-top: 1px;
+  }
+
+  /* set tracker */
+  .sets {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 0 2px;
+    flex-wrap: wrap;
+  }
+  .sets .stitle {
+    font-size: 12px; font-weight: 600; color: var(--muted);
+    letter-spacing: .03em;
+  }
+  .pips { display: flex; gap: 7px; }
+  .pip {
+    width: 30px; height: 30px;
+    border-radius: 9px;
+    border: 1.5px solid var(--line);
+    background: #fff;
+    cursor: pointer;
+    font-family: 'Outfit', sans-serif;
+    font-weight: 700; font-size: 12px;
+    color: var(--faint);
+    display: grid; place-items: center;
+    transition: all .18s;
+  }
+  .pip:hover { border-color: var(--primary); color: var(--primary); }
+  .pip.on {
+    background: var(--primary); border-color: var(--primary); color: #fff;
+    transform: scale(1.04);
+  }
+  .pip:focus-visible { outline: 2px solid var(--primary-deep); outline-offset: 2px; }
+
+  /* instructions */
+  .toggle {
+    display: flex; align-items: center; justify-content: space-between;
+    width: 100%;
+    padding: 13px 16px;
+    margin-top: 6px;
+    border: none; border-top: 1px solid var(--line);
+    background: transparent;
+    font-family: 'Outfit', sans-serif;
+    font-weight: 600; font-size: 13.5px; color: var(--primary-deep);
+    cursor: pointer;
+    letter-spacing: .01em;
+  }
+  .toggle .chev { transition: transform .25s; }
+  .ex.open .toggle .chev { transform: rotate(180deg); }
+  .toggle:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+
+  .details {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows .3s ease;
+  }
+  .ex.open .details { grid-template-rows: 1fr; }
+  .details-inner { overflow: hidden; }
+  .block { padding: 4px 18px 16px; }
+  .block:first-child { padding-top: 14px; }
+  .block .btag {
+    font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+    font-weight: 700; color: var(--primary);
+    display: inline-block; margin-bottom: 5px;
+  }
+  .block p { font-size: 14px; color: var(--ink); }
+  .block.tip {
+    background: var(--amber-soft);
+    margin: 0 12px 14px;
+    border-radius: 12px;
+    padding: 12px 14px;
+  }
+  .block.tip .btag { color: var(--amber); }
+  .block.tip p { color: #6e4d1f; }
+  .block.tip p + p { margin-top: 6px; }
+
+  /* complete button */
+  .cta-wrap { padding: 4px 16px 16px; }
+  .complete-btn {
+    width: 100%;
+    border: 1.5px solid var(--primary);
+    background: #fff;
+    color: var(--primary-deep);
+    font-family: 'Outfit', sans-serif;
+    font-weight: 600; font-size: 14.5px;
+    padding: 12px; border-radius: 13px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    transition: all .2s;
+  }
+  .complete-btn:hover { background: var(--mint-soft); }
+  .complete-btn:focus-visible { outline: 2px solid var(--primary-deep); outline-offset: 2px; }
+  .ex.complete .complete-btn {
+    background: var(--primary); border-color: var(--primary); color: #fff;
+  }
+  .complete-btn svg { width: 17px; height: 17px; }
+
+  .footer-note {
+    text-align: center; font-size: 12.5px; color: var(--faint);
+    margin-top: 26px; line-height: 1.6;
+  }
+
+  @media (max-width: 380px) {
+    .metric { min-width: 48px; padding: 6px 8px; }
+    .ex-name { font-size: 16.5px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Shared gradient palette for the exercise illustrations -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="gBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#EFF8F4"/><stop offset="1" stop-color="#D4EAE1"/>
+    </linearGradient>
+    <linearGradient id="gSkin" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F6CDA8"/><stop offset="1" stop-color="#E4AA79"/>
+    </linearGradient>
+    <linearGradient id="gSkinD" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#E2AD83"/><stop offset="1" stop-color="#C98C5D"/>
+    </linearGradient>
+    <linearGradient id="gTop" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2DB892"/><stop offset="1" stop-color="#0F7D67"/>
+    </linearGradient>
+    <linearGradient id="gBot" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#15745F"/><stop offset="1" stop-color="#0A4C40"/>
+    </linearGradient>
+    <linearGradient id="gMat" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#CFE9DE"/><stop offset="1" stop-color="#AED4C7"/>
+    </linearGradient>
+    <linearGradient id="gWood" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#E9D0A1"/><stop offset="1" stop-color="#CFAE72"/>
+    </linearGradient>
+    <linearGradient id="gProp" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#BEDFD2"/><stop offset="1" stop-color="#93C3B5"/>
+    </linearGradient>
+    <linearGradient id="gWall" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#DDEEE7"/><stop offset="1" stop-color="#C5DCD3"/>
+    </linearGradient>
+  </defs>
+</svg>
+
+<main class="app">
+
+  <header class="head">
+    <div class="eyebrow" id="eyebrow">Daily Program</div>
+    <h1 id="progTitle">Knee Recovery</h1>
+  </header>
+
+  <!-- Program switcher (tiles generated dynamically) -->
+  <nav class="tabs" id="tabs" aria-label="Choose a program"></nav>
+
+  <!-- Today summary -->
+  <section class="summary">
+    <svg class="ring" width="64" height="64" viewBox="0 0 64 64">
+      <circle cx="32" cy="32" r="27" fill="none" stroke="#E3F5EE" stroke-width="8"/>
+      <circle id="ringFill" cx="32" cy="32" r="27" fill="none" stroke="#11876F" stroke-width="8"
+        stroke-linecap="round" stroke-dasharray="169.6" stroke-dashoffset="169.6"
+        transform="rotate(-90 32 32)" style="transition:stroke-dashoffset .5s ease"/>
+      <text id="ringPct" x="32" y="37" text-anchor="middle" font-size="15" fill="#0B5F4E">0%</text>
+    </svg>
+    <div class="info">
+      <div class="label">Today</div>
+      <div class="count"><b id="doneCount">0</b> of <span id="totalCount">5</span> exercises done</div>
+      <div class="sub" id="summarySub">Tap sets to track reps · swipe a card away when done.</div>
+    </div>
+  </section>
+
+  <!-- Exercise card deck (cards stacked one behind another) -->
+  <section class="deck" id="deck" aria-label="Today's exercises">
+    <div class="deck-done">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+      <div class="big">All done for today</div>
+      <div class="small">Great work — see you tomorrow.</div>
+    </div>
+  </section>
+
+  <p class="footer-note">
+    These exercises are part of a guided home program.<br>
+    Stop and check with your therapist if anything causes sharp pain.
+  </p>
+
+</main>
+
+<script>
+/* ---------- Embedded illustrations (self-contained, gradient-shaded, never break) ---------- */
+const HAIR = '#4A3526', SHOE = '#27433D';
+
+function fig(inner){
+  return `<svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" role="img">`
+    + `<rect width="100" height="100" fill="url(#gBg)"/>${inner}</svg>`;
+}
+
+const POSE = {
+  // Lying on back: one knee bent, other leg lifted straight
+  legraise: fig(`
+    <rect x="3" y="75" width="94" height="11" rx="5.5" fill="url(#gMat)"/>
+    <ellipse cx="50" cy="75" rx="33" ry="3.5" fill="#0B5F4E" opacity=".10"/>
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M53 67 L70 57" stroke="url(#gBot)" stroke-width="10.5"/>
+      <path d="M70 57 L84 50" stroke="url(#gSkinD)" stroke-width="9"/>
+      <path d="M84 50 L89 53" stroke="${SHOE}" stroke-width="7.5"/>
+      <path d="M30 67 L54 67" stroke="url(#gTop)" stroke-width="15"/>
+      <path d="M54 67 L61 52" stroke="url(#gBot)" stroke-width="10.5"/>
+      <path d="M61 52 L53 68" stroke="url(#gSkin)" stroke-width="9"/>
+      <path d="M53 68 L48 70" stroke="${SHOE}" stroke-width="7.5"/>
+      <path d="M39 65 L47 72" stroke="url(#gTop)" stroke-width="5.5"/>
+    </g>
+    <circle cx="24" cy="64" r="8.5" fill="url(#gSkin)"/>
+    <path d="M16 62 A8.5 8.5 0 0 1 31 60" fill="none" stroke="${HAIR}" stroke-width="4" stroke-linecap="round"/>`),
+
+  // Lying on side: top leg lifted toward ceiling
+  sidelying: fig(`
+    <rect x="3" y="76" width="94" height="11" rx="5.5" fill="url(#gMat)"/>
+    <ellipse cx="54" cy="79" rx="36" ry="3" fill="#0B5F4E" opacity=".10"/>
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M54 71 L72 72" stroke="url(#gBot)" stroke-width="10.5"/>
+      <path d="M72 72 L86 73" stroke="url(#gSkinD)" stroke-width="9"/>
+      <path d="M86 73 L91 73" stroke="${SHOE}" stroke-width="7.5"/>
+      <path d="M30 70 L54 71" stroke="url(#gTop)" stroke-width="15"/>
+      <path d="M54 67 L71 55" stroke="url(#gBot)" stroke-width="10.5"/>
+      <path d="M71 55 L88 43" stroke="url(#gSkin)" stroke-width="9"/>
+      <path d="M88 43 L93 44" stroke="${SHOE}" stroke-width="7.5"/>
+      <path d="M40 66 L47 74" stroke="url(#gTop)" stroke-width="5.5"/>
+    </g>
+    <circle cx="24" cy="67" r="8.5" fill="url(#gSkin)"/>
+    <path d="M16 65 A8.5 8.5 0 0 1 31 63" fill="none" stroke="${HAIR}" stroke-width="4" stroke-linecap="round"/>`),
+
+  // Lying on a table, one knee held, opposite leg hanging off the edge
+  stretch: fig(`
+    <rect x="2" y="59" width="62" height="9" rx="3" fill="url(#gWood)"/>
+    <rect x="9" y="68" width="6" height="27" rx="2" fill="#CBA86C"/>
+    <rect x="52" y="68" width="6" height="27" rx="2" fill="#CBA86C"/>
+    <ellipse cx="38" cy="57" rx="24" ry="2.5" fill="#0B5F4E" opacity=".10"/>
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M51 57 L60 70" stroke="url(#gBot)" stroke-width="10.5"/>
+      <path d="M60 70 L66 82" stroke="url(#gSkinD)" stroke-width="9"/>
+      <path d="M66 82 L64 90" stroke="${SHOE}" stroke-width="7.5"/>
+      <path d="M22 55 L50 56" stroke="url(#gTop)" stroke-width="15"/>
+      <path d="M50 56 L60 45" stroke="url(#gBot)" stroke-width="10.5"/>
+      <path d="M60 45 L51 56" stroke="url(#gSkin)" stroke-width="9"/>
+      <path d="M51 56 L47 60" stroke="${SHOE}" stroke-width="7.5"/>
+      <path d="M34 53 L52 50" stroke="url(#gTop)" stroke-width="5.5"/>
+    </g>
+    <circle cx="16" cy="53" r="8.5" fill="url(#gSkin)"/>
+    <path d="M8 51 A8.5 8.5 0 0 1 23 49" fill="none" stroke="${HAIR}" stroke-width="4" stroke-linecap="round"/>`),
+
+  // Rising from a chair, hands on knees
+  sitstand: fig(`
+    <rect x="4" y="86" width="92" height="7" rx="3" fill="url(#gMat)"/>
+    <rect x="60" y="40" width="9" height="46" rx="3" fill="url(#gProp)"/>
+    <rect x="44" y="63" width="26" height="8" rx="3" fill="url(#gProp)"/>
+    <ellipse cx="48" cy="87" rx="22" ry="2.5" fill="#0B5F4E" opacity=".12"/>
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M40 36 L55 60" stroke="url(#gTop)" stroke-width="15"/>
+      <path d="M55 60 L43 71" stroke="url(#gBot)" stroke-width="10.5"/>
+      <path d="M43 71 L45 84" stroke="url(#gSkin)" stroke-width="9"/>
+      <path d="M45 84 L51 86" stroke="${SHOE}" stroke-width="7.5"/>
+      <path d="M44 41 L44 68" stroke="url(#gTop)" stroke-width="5.5"/>
+    </g>
+    <circle cx="38" cy="29" r="8.5" fill="url(#gSkin)"/>
+    <path d="M30 27 A8.5 8.5 0 0 1 46 26" fill="none" stroke="${HAIR}" stroke-width="4" stroke-linecap="round"/>`),
+
+  // Plank against a wall, opposite arm and leg extended
+  birddog: fig(`
+    <rect x="85" y="3" width="12" height="92" fill="url(#gWall)"/>
+    <rect x="4" y="86" width="92" height="7" rx="3" fill="url(#gMat)"/>
+    <ellipse cx="40" cy="87" rx="28" ry="2.5" fill="#0B5F4E" opacity=".12"/>
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M58 52 L72 53" stroke="url(#gBot)" stroke-width="10.5"/>
+      <path d="M72 53 L84 55" stroke="url(#gSkinD)" stroke-width="8.5"/>
+      <path d="M58 52 L40 70" stroke="url(#gTop)" stroke-width="15"/>
+      <path d="M40 70 L44 86" stroke="url(#gBot)" stroke-width="10.5"/>
+      <path d="M40 70 L16 61" stroke="url(#gSkin)" stroke-width="8"/>
+      <path d="M16 61 L11 58" stroke="url(#gSkin)" stroke-width="6.5"/>
+      <path d="M58 52 L78 34" stroke="url(#gSkin)" stroke-width="7"/>
+    </g>
+    <circle cx="64" cy="50" r="8.5" fill="url(#gSkin)"/>
+    <path d="M56 48 A8.5 8.5 0 0 1 72 47" fill="none" stroke="${HAIR}" stroke-width="4" stroke-linecap="round"/>`),
+
+  // ----- Lower back -----
+  // Supine, knees bent, feet flat (pelvic tilt)
+  pelvictilt: fig(`
+    <rect x="3" y="76" width="94" height="11" rx="5.5" fill="url(#gMat)"/>
+    <ellipse cx="50" cy="76" rx="34" ry="3.5" fill="#0B5F4E" opacity=".10"/>
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M26 70 L52 69" stroke="url(#gTop)" stroke-width="15"/>
+      <path d="M52 69 L66 56" stroke="url(#gBot)" stroke-width="10.5"/>
+      <path d="M66 56 L70 74" stroke="url(#gSkin)" stroke-width="9"/>
+      <path d="M70 74 L78 75" stroke="${SHOE}" stroke-width="7.5"/>
+      <path d="M36 68 L48 72" stroke="url(#gTop)" stroke-width="5.5"/>
+    </g>
+    <circle cx="20" cy="67" r="8.5" fill="url(#gSkin)"/>
+    <path d="M12 65 A8.5 8.5 0 0 1 27 63" fill="none" stroke="${HAIR}" stroke-width="4" stroke-linecap="round"/>`),
+
+  // Supine, one knee hugged to chest, other leg extended
+  kneechest: fig(`
+    <rect x="3" y="76" width="94" height="11" rx="5.5" fill="url(#gMat)"/>
+    <ellipse cx="52" cy="76" rx="34" ry="3.5" fill="#0B5F4E" opacity=".10"/>
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M50 71 L70 73" stroke="url(#gBot)" stroke-width="10.5"/>
+      <path d="M70 73 L86 74" stroke="url(#gSkin)" stroke-width="9"/>
+      <path d="M86 74 L91 74" stroke="${SHOE}" stroke-width="7.5"/>
+      <path d="M26 70 L50 70" stroke="url(#gTop)" stroke-width="15"/>
+      <path d="M50 68 L52 52" stroke="url(#gBot)" stroke-width="10.5"/>
+      <path d="M52 52 L41 60" stroke="url(#gSkin)" stroke-width="9"/>
+      <path d="M34 66 L50 56" stroke="url(#gTop)" stroke-width="5.5"/>
+    </g>
+    <circle cx="20" cy="68" r="8.5" fill="url(#gSkin)"/>
+    <path d="M12 66 A8.5 8.5 0 0 1 27 64" fill="none" stroke="${HAIR}" stroke-width="4" stroke-linecap="round"/>`),
+
+  // Supine bridge: hips lifted, knees bent
+  glutebridge: fig(`
+    <rect x="3" y="76" width="94" height="11" rx="5.5" fill="url(#gMat)"/>
+    <ellipse cx="52" cy="76" rx="36" ry="3" fill="#0B5F4E" opacity=".10"/>
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 72 L52 54" stroke="url(#gTop)" stroke-width="15"/>
+      <path d="M52 54 L70 60" stroke="url(#gBot)" stroke-width="10.5"/>
+      <path d="M70 60 L72 74" stroke="url(#gSkin)" stroke-width="9"/>
+      <path d="M72 74 L80 75" stroke="${SHOE}" stroke-width="7.5"/>
+      <path d="M24 72 L36 74" stroke="url(#gSkin)" stroke-width="6"/>
+    </g>
+    <circle cx="18" cy="72" r="8.5" fill="url(#gSkin)"/>
+    <path d="M10 71 A8.5 8.5 0 0 1 25 70" fill="none" stroke="${HAIR}" stroke-width="4" stroke-linecap="round"/>`),
+
+  // Quadruped, arched spine (cat-cow)
+  catcow: fig(`
+    <rect x="3" y="78" width="94" height="10" rx="5" fill="url(#gMat)"/>
+    <ellipse cx="52" cy="79" rx="36" ry="3" fill="#0B5F4E" opacity=".10"/>
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M34 52 Q52 41 70 52" stroke="url(#gTop)" stroke-width="15"/>
+      <path d="M34 53 L33 75" stroke="url(#gSkin)" stroke-width="8"/>
+      <path d="M70 52 L72 75" stroke="url(#gBot)" stroke-width="10.5"/>
+      <path d="M34 50 L27 60" stroke="url(#gSkin)" stroke-width="6"/>
+    </g>
+    <circle cx="24" cy="63" r="8" fill="url(#gSkin)"/>
+    <path d="M17 60 A8 8 0 0 1 31 59" fill="none" stroke="${HAIR}" stroke-width="3.5" stroke-linecap="round"/>`),
+
+  // Prone press-up (cobra), hips on the floor
+  pressup: fig(`
+    <rect x="3" y="78" width="94" height="10" rx="5" fill="url(#gMat)"/>
+    <ellipse cx="56" cy="79" rx="36" ry="3" fill="#0B5F4E" opacity=".10"/>
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M52 74 L74 76" stroke="url(#gBot)" stroke-width="10.5"/>
+      <path d="M74 76 L90 76" stroke="url(#gSkin)" stroke-width="9"/>
+      <path d="M52 74 L33 54" stroke="url(#gTop)" stroke-width="14"/>
+      <path d="M34 56 L31 76" stroke="url(#gSkin)" stroke-width="7"/>
+    </g>
+    <circle cx="28" cy="48" r="8.5" fill="url(#gSkin)"/>
+    <path d="M20 46 A8.5 8.5 0 0 1 35 45" fill="none" stroke="${HAIR}" stroke-width="4" stroke-linecap="round"/>`),
+
+  // ----- Neck & shoulders -----
+  // Seated bust, head drawing straight back (chin tuck)
+  chintuck: fig(`
+    <rect x="4" y="86" width="92" height="7" rx="3" fill="url(#gMat)"/>
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M38 86 L50 56" stroke="url(#gTop)" stroke-width="17"/>
+      <path d="M50 56 L52 48" stroke="url(#gSkin)" stroke-width="8"/>
+    </g>
+    <circle cx="54" cy="40" r="9" fill="url(#gSkin)"/>
+    <path d="M46 38 A9 9 0 0 1 60 34" fill="none" stroke="${HAIR}" stroke-width="4.5" stroke-linecap="round"/>
+    <path d="M74 40 L65 40 M69 36 L65 40 L69 44" fill="none" stroke="#0B5F4E" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`),
+
+  // Seated, head tilted, hand over head (upper trap stretch)
+  uppertrap: fig(`
+    <rect x="4" y="86" width="92" height="7" rx="3" fill="url(#gMat)"/>
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M44 86 L48 58" stroke="url(#gTop)" stroke-width="17"/>
+      <path d="M48 58 L40 50" stroke="url(#gSkin)" stroke-width="8"/>
+      <path d="M54 62 L42 44 L33 40" stroke="url(#gSkin)" stroke-width="6.5"/>
+    </g>
+    <circle cx="36" cy="44" r="9" fill="url(#gSkin)"/>
+    <path d="M28 46 A9 9 0 0 1 43 40" fill="none" stroke="${HAIR}" stroke-width="4.5" stroke-linecap="round"/>`),
+
+  // Goalpost arms, squeezing shoulder blades
+  scapsqueeze: fig(`
+    <rect x="4" y="86" width="92" height="7" rx="3" fill="url(#gMat)"/>
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M50 86 L50 54" stroke="url(#gTop)" stroke-width="18"/>
+      <path d="M50 60 L34 58" stroke="url(#gTop)" stroke-width="6.5"/>
+      <path d="M50 60 L66 58" stroke="url(#gTop)" stroke-width="6.5"/>
+      <path d="M34 58 L36 44" stroke="url(#gSkin)" stroke-width="6"/>
+      <path d="M66 58 L64 44" stroke="url(#gSkin)" stroke-width="6"/>
+    </g>
+    <circle cx="50" cy="42" r="9" fill="url(#gSkin)"/>
+    <path d="M41 41 A9 9 0 0 1 59 41" fill="none" stroke="${HAIR}" stroke-width="4.5" stroke-linecap="round"/>`),
+
+  // Doorway pec stretch: lean forward, arm on the frame
+  pecstretch: fig(`
+    <rect x="4" y="86" width="92" height="7" rx="3" fill="url(#gMat)"/>
+    <rect x="72" y="6" width="9" height="82" rx="2" fill="url(#gWall)"/>
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M40 86 L52 54" stroke="url(#gTop)" stroke-width="17"/>
+      <path d="M51 60 L70 52" stroke="url(#gSkin)" stroke-width="6.5"/>
+      <path d="M40 86 L37 70" stroke="url(#gBot)" stroke-width="8"/>
+    </g>
+    <circle cx="50" cy="44" r="9" fill="url(#gSkin)"/>
+    <path d="M41 43 A9 9 0 0 1 59 41" fill="none" stroke="${HAIR}" stroke-width="4.5" stroke-linecap="round"/>`),
+
+  // Wall angels: back to wall, goalpost arms sliding up
+  wallangel: fig(`
+    <rect x="63" y="4" width="13" height="84" fill="url(#gWall)"/>
+    <rect x="4" y="86" width="92" height="7" rx="3" fill="url(#gMat)"/>
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M52 86 L52 50" stroke="url(#gTop)" stroke-width="17"/>
+      <path d="M52 58 L40 54" stroke="url(#gTop)" stroke-width="6.5"/>
+      <path d="M52 58 L62 56" stroke="url(#gTop)" stroke-width="6.5"/>
+      <path d="M40 54 L42 40" stroke="url(#gSkin)" stroke-width="6"/>
+      <path d="M62 56 L60 42" stroke="url(#gSkin)" stroke-width="6"/>
+      <path d="M52 86 L50 70" stroke="url(#gBot)" stroke-width="8"/>
+    </g>
+    <circle cx="52" cy="42" r="9" fill="url(#gSkin)"/>
+    <path d="M43 41 A9 9 0 0 1 61 41" fill="none" stroke="${HAIR}" stroke-width="4.5" stroke-linecap="round"/>`)
+};
+
+const ICON_REPEAT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>`;
+const ICON_CHEV = `<svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>`;
+const ICON_CHECK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`;
+const ICON_PLAY = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5.5v13a1 1 0 0 0 1.54.84l10-6.5a1 1 0 0 0 0-1.68l-10-6.5A1 1 0 0 0 7 5.5z"/></svg>`;
+const ICON_KNEE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3l3.5 7"/><circle cx="11" cy="12" r="2.3"/><path d="M12.6 13.4 17 21"/></svg>`;
+const ICON_BACK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><path d="M9 6h6M9 10h6M9 14h6M9 18h6"/></svg>`;
+const ICON_SHOULDER = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="6" r="3"/><path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7"/></svg>`;
+
+/* ---------- Program data ---------- */
+const PROGRAMS = {
+  knee: {
+    label: "Knee", title: "Knee Recovery", icon: ICON_KNEE,
+    exercises: [
+      {
+        name: "Active Straight Leg Raise with Quad Set",
+        pose: "legraise", yt: "HBnwcO2B4fU", freq: "1× Daily", sets: 3,
+        metrics: [{v:"3",k:"sets"},{v:"8",k:"reps"}],
+        setup: "Begin lying on your back with one knee bent and your other leg straight.",
+        movement: "Squeeze the thigh muscles in your straight leg and flex your foot, then slowly lift your leg until it is parallel with your other thigh. Lower your leg back to the starting position and repeat.",
+        tips: ["Keep your back flat against the floor during the exercise.","Keep your abdominal muscles engaged throughout."]
+      },
+      {
+        name: "Sidelying Hip Abduction",
+        pose: "sidelying", yt: "EwBJKBa4PKU", freq: "1× Daily", sets: 3,
+        metrics: [{v:"3",k:"sets"},{v:"10",k:"reps"}],
+        setup: "Begin lying on your side with your legs straight. Keep your pelvis stacked so that you aren't rolled to the side.",
+        movement: "Exhale, contract your abdominal muscles, and slowly lift your top leg up toward the ceiling, then lower it back to the starting position and repeat.",
+        tips: ["Keep your knee straight and do not let your hips roll forward or backward."]
+      },
+      {
+        name: "Supine Dynamic Modified Thomas Quad & Hip Flexor Stretch",
+        pose: "stretch", yt: "bDWeLkeCbBg", freq: "1× Daily", sets: 3,
+        metrics: [{v:"3",k:"reps"},{v:"30s",k:"hold"}],
+        setup: "Begin lying on your back at the edge of a table or bed with your knees bent and feet resting flat.",
+        movement: "Lower your outside leg off of the table until you feel a stretch in the front of your hip. Repeatedly straighten and bend your knee to increase or decrease the stretch sensation.",
+        tips: ["Keep your back flat on the bed during the exercise."]
+      },
+      {
+        name: "Sit to Stand with Hands on Knees",
+        pose: "sitstand", yt: "ITv-_BkcrD0", freq: "3× Daily", sets: 3,
+        metrics: [{v:"10",k:"reps"}],
+        setup: "Begin sitting upright on a tall chair (with a pillow) or bed, feet slightly wider than shoulder-width apart.",
+        movement: "Lean forward at your hips until your bottom starts to lift off the chair. Move into a standing position, then reverse the order of your movements to return to the start.",
+        tips: ["Do not let your knees collapse inward during the exercise."]
+      },
+      {
+        name: "Modified Bird Dog at Wall",
+        pose: "birddog", yt: "ww-6lRXvI9Y", freq: "1× Daily", sets: 2,
+        metrics: [{v:"2",k:"sets"},{v:"10",k:"reps"}],
+        setup: "Begin standing upright with your hands against a wall, then step backward into a plank position.",
+        movement: "Slowly reach one arm forward overhead, then stretch the opposite leg behind you, keeping your knee straight. Tap knee and elbow together. Return to the start and repeat on the other side.",
+        tips: ["Keep your chin tucked and keep breathing throughout.","Do not let your low back arch excessively."]
+      }
+    ]
+  },
+
+  back: {
+    label: "Lower Back", title: "Lower Back Care", icon: ICON_BACK,
+    exercises: [
+      {
+        name: "Posterior Pelvic Tilt",
+        pose: "pelvictilt", yt: "W665sT9B-7U", freq: "2× Daily", sets: 3,
+        metrics: [{v:"3",k:"sets"},{v:"10",k:"reps"}],
+        setup: "Begin lying on your back with your knees bent and feet flat on the floor, arms resting at your sides.",
+        movement: "Tighten your stomach muscles and gently flatten your low back into the floor, tilting your pelvis backward. Hold briefly, then relax back to the start and repeat.",
+        tips: ["Keep the movement small and slow — it comes from your stomach and hips, not your legs.","Keep breathing throughout; don't hold your breath."]
+      },
+      {
+        name: "Single Knee to Chest Stretch",
+        pose: "kneechest", yt: "mogJTRBHcBs", freq: "2× Daily", sets: 3,
+        metrics: [{v:"3",k:"reps"},{v:"30s",k:"hold"}],
+        setup: "Begin lying on your back with your legs straight or your knees bent and feet on the floor.",
+        movement: "Gently draw one knee toward your chest, clasping your hands around your shin or behind the thigh. Hold the stretch, then slowly lower and repeat on the other side.",
+        tips: ["Keep your low back and opposite leg relaxed on the floor.","Pull only until you feel a gentle stretch, never pain."]
+      },
+      {
+        name: "Glute Bridge",
+        pose: "glutebridge", yt: "WtilA9IJX1c", freq: "1× Daily", sets: 3,
+        metrics: [{v:"3",k:"sets"},{v:"10",k:"reps"}],
+        setup: "Begin lying on your back with your knees bent, feet flat and hip-width apart, arms at your sides.",
+        movement: "Squeeze your glutes and lift your hips until your body forms a straight line from shoulders to knees. Hold briefly, then lower with control and repeat.",
+        tips: ["Drive through your heels and keep your stomach gently braced.","Don't arch your low back at the top — squeeze your glutes instead."]
+      },
+      {
+        name: "Cat-Cow Mobilization",
+        pose: "catcow", yt: "mU1iRLuVpPw", freq: "1× Daily", sets: 2,
+        metrics: [{v:"2",k:"sets"},{v:"10",k:"reps"}],
+        setup: "Begin on your hands and knees with your hands under your shoulders and your knees under your hips.",
+        movement: "Slowly round your back toward the ceiling and tuck your chin (cat), then reverse — drop your belly and lift your chest and gaze (cow). Move smoothly between the two.",
+        tips: ["Move slowly and let your breath lead the motion.","Stay within a comfortable, pain-free range."]
+      },
+      {
+        name: "Prone Press-Up",
+        pose: "pressup", yt: "UqSP7ZrHxRE", freq: "2× Daily", sets: 3,
+        metrics: [{v:"3",k:"sets"},{v:"10",k:"reps"}],
+        setup: "Begin lying face down with your hands flat on the floor beside your shoulders, as if to push up.",
+        movement: "Slowly press your upper body up by straightening your arms, keeping your hips and pelvis relaxed on the floor. Lower back down with control and repeat.",
+        tips: ["Keep your hips, pelvis and legs relaxed on the floor throughout.","Stop if you feel pain spreading down your leg."]
+      }
+    ]
+  },
+
+  shoulder: {
+    label: "Neck & Shoulders", title: "Neck & Shoulder Relief", icon: ICON_SHOULDER,
+    exercises: [
+      {
+        name: "Chin Tuck",
+        pose: "chintuck", yt: "3TNHm-UH9sQ", freq: "3× Daily", sets: 3,
+        metrics: [{v:"3",k:"sets"},{v:"10",k:"reps"}],
+        setup: "Begin sitting or standing tall with your shoulders relaxed and your eyes looking straight ahead.",
+        movement: "Gently glide your head straight back, making a 'double chin', without tipping your head up or down. Hold briefly, then relax and repeat.",
+        tips: ["Keep your gaze level — the motion is straight back, not a nod.","Keep it gentle; you should feel a stretch, not strain."]
+      },
+      {
+        name: "Upper Trapezius Stretch",
+        pose: "uppertrap", yt: "-r0eoFS7_5Q", freq: "2× Daily", sets: 3,
+        metrics: [{v:"3",k:"reps"},{v:"30s",k:"hold"}],
+        setup: "Begin sitting or standing tall with your shoulders relaxed down.",
+        movement: "Gently tilt one ear toward your shoulder, using your hand on the side of your head to add a light stretch. Hold, then slowly return and repeat on the other side.",
+        tips: ["Keep the opposite shoulder relaxed and down.","Use only light pressure — never force the stretch."]
+      },
+      {
+        name: "Scapular Squeeze",
+        pose: "scapsqueeze", yt: "WklUZWulQao", freq: "3× Daily", sets: 3,
+        metrics: [{v:"3",k:"sets"},{v:"10",k:"reps"}],
+        setup: "Begin sitting or standing tall with your arms relaxed at your sides or bent to 90 degrees.",
+        movement: "Gently squeeze your shoulder blades down and back together, as if tucking them into your back pockets. Hold briefly, then relax and repeat.",
+        tips: ["Don't shrug your shoulders up toward your ears.","The motion is in the shoulder blades — don't puff your chest out."]
+      },
+      {
+        name: "Doorway Pec Stretch",
+        pose: "pecstretch", yt: "CEQMx4zFwYs", freq: "2× Daily", sets: 3,
+        metrics: [{v:"3",k:"reps"},{v:"30s",k:"hold"}],
+        setup: "Begin standing in an open doorway with your forearms resting on the frame at shoulder height.",
+        movement: "Step one foot forward and gently lean your chest through the doorway until you feel a stretch across the front of your chest and shoulders. Hold, then return and repeat.",
+        tips: ["Keep your shoulder blades gently down, away from your ears.","Lean only until you feel a comfortable stretch."]
+      },
+      {
+        name: "Wall Angels",
+        pose: "wallangel", yt: "cvx06snMQ3A", freq: "1× Daily", sets: 2,
+        metrics: [{v:"2",k:"sets"},{v:"10",k:"reps"}],
+        setup: "Begin standing with your back against a wall, feet a few inches out, low back and head gently touching the wall.",
+        movement: "Raise your arms into a 'goalpost' against the wall, then slowly slide them up overhead and back down, keeping your arms and back in contact with the wall.",
+        tips: ["Keep your low back from arching away from the wall.","Only slide as high as you can while keeping contact with the wall."]
+      }
+    ]
+  }
+};
+
+/* ---------- Render ---------- */
+const deck = document.getElementById('deck');
+let currentExercises = [];
+
+function buildCard(ex) {
+  const card = document.createElement('article');
+  card.className = 'ex';
+
+  const pips = Array.from({length: ex.sets}, (_, s) =>
+    `<button class="pip" data-set="${s}" aria-label="Mark set ${s+1} complete">${s+1}</button>`).join('');
+
+  const metrics = ex.metrics.map(m =>
+    `<div class="metric"><div class="v">${m.v}</div><div class="k">${m.k}</div></div>`).join('');
+
+  const tips = ex.tips.map(t => `<p>${t}</p>`).join('');
+
+  card.innerHTML = `
+    <div class="media" data-yt="${ex.yt}">
+      <img class="media-thumb" loading="lazy" alt="${ex.name} — video demonstration"
+        src="https://i.ytimg.com/vi/${ex.yt}/maxresdefault.jpg"
+        onerror="if(!this.dataset.f){this.dataset.f=1;this.src='https://i.ytimg.com/vi/${ex.yt}/mqdefault.jpg';}else{this.closest('.media').classList.add('noimg');}">
+      <div class="media-fallback">${POSE[ex.pose]}</div>
+      <div class="play">${ICON_PLAY}</div>
+      <span class="media-label">Watch demo</span>
+    </div>
+
+    <div class="ex-body">
+      <div class="ex-name">${ex.name}</div>
+      <span class="freq">${ICON_REPEAT}${ex.freq}</span>
+      <div class="metrics">${metrics}</div>
+      <div class="sets">
+        <span class="stitle">Sets</span>
+        <div class="pips">${pips}</div>
+      </div>
+    </div>
+
+    <button class="toggle" aria-expanded="false">
+      <span>Instructions</span>${ICON_CHEV}
+    </button>
+
+    <div class="details">
+      <div class="details-inner">
+        <div class="block"><span class="btag">Setup</span><p>${ex.setup}</p></div>
+        <div class="block"><span class="btag">Movement</span><p>${ex.movement}</p></div>
+        <div class="block tip"><span class="btag">Tip</span>${tips}</div>
+      </div>
+    </div>
+
+    <div class="cta-wrap">
+      <button class="complete-btn">${ICON_CHECK}<span class="cbtxt">Mark complete &amp; next</span></button>
+    </div>
+
+    <div class="swipe-hint" aria-hidden="true">${ICON_CHECK}<span>Done</span></div>
+  `;
+
+  // --- interactions ---
+  const pipEls = card.querySelectorAll('.pip');
+  const completeBtn = card.querySelector('.complete-btn');
+  const cbtxt = card.querySelector('.cbtxt');
+  const media = card.querySelector('.media');
+
+  function syncFromPips() {
+    const onCount = card.querySelectorAll('.pip.on').length;
+    const all = onCount === ex.sets;
+    card.classList.toggle('complete', all);
+    cbtxt.textContent = all ? 'Completed — next' : 'Mark complete & next';
+    updateSummary();
+  }
+
+  pipEls.forEach(p => p.addEventListener('click', () => {
+    p.classList.toggle('on');
+    syncFromPips();
+  }));
+
+  completeBtn.addEventListener('click', () => dismissCard(1));
+
+  // tap the poster to load & play the YouTube demo
+  media.addEventListener('click', () => {
+    if (suppressClick) { suppressClick = false; return; }
+    if (media.classList.contains('playing')) return;
+    // YouTube blocks embeds loaded from a file:// (null) origin — error 153.
+    // When opened as a local file, open the video on YouTube instead.
+    if (location.protocol === 'file:') {
+      window.open('https://www.youtube.com/watch?v=' + ex.yt, '_blank', 'noopener');
+      return;
+    }
+    const ifr = document.createElement('iframe');
+    ifr.src = `https://www.youtube-nocookie.com/embed/${ex.yt}?autoplay=1&rel=0&modestbranding=1&playsinline=1&origin=${encodeURIComponent(location.origin)}`;
+    ifr.title = ex.name + ' video';
+    ifr.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+    ifr.allowFullscreen = true;
+    media.appendChild(ifr);
+    media.classList.add('playing');
+  });
+
+  // expand/collapse instructions
+  const toggle = card.querySelector('.toggle');
+  toggle.addEventListener('click', () => {
+    const open = card.classList.toggle('open');
+    toggle.setAttribute('aria-expanded', open);
+    restack();
+    setTimeout(restack, 340);
+  });
+
+  // --- swipe the front card to complete & advance ---
+  const THRESH = 96;            // px past which a swipe commits
+  let startX = 0, startY = 0, dx = 0;
+  let dragging = false, decided = false, horizontal = false, suppressClick = false;
+
+  function onDown(e) {
+    if (!card.classList.contains('front')) return;
+    startX = e.clientX; startY = e.clientY;
+    dx = 0; dragging = true; decided = false; horizontal = false; suppressClick = false;
+  }
+
+  function onMove(e) {
+    if (!dragging) return;
+    const mx = e.clientX - startX, my = e.clientY - startY;
+    if (!decided) {
+      if (Math.abs(mx) > 8 || Math.abs(my) > 8) {
+        decided = true;
+        horizontal = Math.abs(mx) > Math.abs(my);
+        if (horizontal) {
+          card.classList.add('dragging');
+          suppressClick = true;          // don't trigger video play after a swipe
+          try { card.setPointerCapture(e.pointerId); } catch (_) {}
+        }
+      }
+    }
+    if (horizontal) {
+      e.preventDefault();
+      dx = mx;
+      card.style.transform = `translateX(${dx}px) rotate(${dx * 0.025}deg)`;
+      card.style.opacity = String(Math.max(.4, 1 - Math.abs(dx) / 360));
+    }
+  }
+
+  function onUp() {
+    if (!dragging) return;
+    dragging = false;
+    card.classList.remove('dragging');
+    if (horizontal && Math.abs(dx) > THRESH) {
+      dismissCard(dx > 0 ? 1 : -1);
+    } else {
+      card.style.transform = '';
+      card.style.opacity = '';
+    }
+  }
+
+  function dismissCard(dir) {
+    if (card.classList.contains('dismissed')) return;
+    pipEls.forEach(p => p.classList.add('on'));
+    syncFromPips();
+    card.classList.add('dismissed');
+    card.classList.remove('front');
+    card.style.transition = 'transform .42s ease, opacity .42s ease';
+    card.style.transform = `translateX(${dir * 540}px) rotate(${dir * 9}deg)`;
+    card.style.opacity = '0';
+    setTimeout(() => { card.style.visibility = 'hidden'; }, 440);
+    restack();
+  }
+
+  card.addEventListener('pointerdown', onDown);
+  card.addEventListener('pointermove', onMove);
+  card.addEventListener('pointerup', onUp);
+  card.addEventListener('pointercancel', onUp);
+
+  return card;
+}
+
+/* ---------- Program switching ---------- */
+function renderProgram(key) {
+  const prog = PROGRAMS[key];
+  currentExercises = prog.exercises;
+  document.getElementById('progTitle').textContent = prog.title;
+  document.querySelectorAll('.tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.key === key));
+  deck.querySelectorAll('.ex').forEach(c => c.remove());
+  prog.exercises.forEach(ex => deck.appendChild(buildCard(ex)));
+  restack();
+  updateSummary();
+}
+
+/* build the tab switcher */
+const tabsEl = document.getElementById('tabs');
+Object.keys(PROGRAMS).forEach(key => {
+  const p = PROGRAMS[key];
+  const btn = document.createElement('button');
+  btn.className = 'tab';
+  btn.dataset.key = key;
+  btn.innerHTML = `<span class="tab-ic">${p.icon}</span><span class="tab-lbl">${p.label}</span>`;
+  btn.addEventListener('click', () => renderProgram(key));
+  tabsEl.appendChild(btn);
+});
+
+/* ---------- Deck stacking: front card on top, the rest peeking behind ---------- */
+const PEEK = 13;   // px of each card's bottom edge visible behind the front card
+
+function restack() {
+  const live = [...deck.querySelectorAll('.ex:not(.dismissed)')];
+  deck.classList.toggle('empty', live.length === 0);
+  const front = live[0];
+  const frontH = front ? front.offsetHeight : 0;
+  live.forEach((c, d) => {
+    c.classList.toggle('front', d === 0);
+    if (d === 0) {
+      c.style.zIndex = 50;
+      c.style.visibility = '';
+      if (!c.classList.contains('dragging')) { c.style.transform = ''; c.style.opacity = ''; }
+    } else {
+      const dd = Math.min(d, 3);
+      const scale = 1 - dd * 0.05;
+      // place each card so exactly PEEK*dd px of its (white) bottom shows below the front card
+      const ty = frontH + dd * PEEK - scale * c.offsetHeight;
+      c.style.zIndex = 50 - d;
+      c.style.transform = `translateY(${ty}px) scale(${scale})`;
+      c.style.opacity = '1';
+      c.style.visibility = d > 3 ? 'hidden' : '';
+    }
+  });
+  fitDeck(frontH, live.length);
+}
+
+function fitDeck(frontH, n) {
+  const front = deck.querySelector('.ex.front');
+  if (!front) { deck.style.height = '200px'; return; }
+  frontH = frontH || front.offsetHeight;
+  n = n || deck.querySelectorAll('.ex:not(.dismissed)').length;
+  deck.style.height = (frontH + Math.min(n - 1, 3) * PEEK + 4) + 'px';
+}
+
+/* ---------- Daily summary ring ---------- */
+const ringFill = document.getElementById('ringFill');
+const ringPct = document.getElementById('ringPct');
+const doneCount = document.getElementById('doneCount');
+const totalCount = document.getElementById('totalCount');
+const summarySub = document.getElementById('summarySub');
+const CIRC = 169.6;
+
+function updateSummary() {
+  const total = currentExercises.length;
+  const done = deck.querySelectorAll('.ex.complete').length;
+  const pct = total ? Math.round((done/total)*100) : 0;
+  ringFill.style.strokeDashoffset = CIRC - (CIRC * pct/100);
+  ringPct.textContent = pct + '%';
+  doneCount.textContent = done;
+  totalCount.textContent = total;
+  if (done === 0) summarySub.textContent = 'Tap sets to track reps · swipe a card away when done.';
+  else if (done === total) summarySub.textContent = "Program complete — nice work today.";
+  else summarySub.textContent = (total - done) + ' to go. Keep it up.';
+}
+
+/* ---------- Start ---------- */
+renderProgram('knee');
+window.addEventListener('resize', fitDeck);
+</script>
+</body>
+</html>
