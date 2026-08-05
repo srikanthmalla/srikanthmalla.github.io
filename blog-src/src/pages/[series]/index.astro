@@ -1,0 +1,270 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { SERIES, entriesByPart, getSeries, slugOf } from '../../lib/series';
+
+export async function getStaticPaths() {
+  return SERIES.map((s) => ({ params: { series: s.id }, props: { seriesId: s.id } }));
+}
+
+const { seriesId } = Astro.props;
+const series = getSeries(seriesId);
+const parts = await entriesByPart(seriesId);
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const total = parts.reduce((n, p) => n + p.entries.length, 0);
+const minutes = parts.reduce((n, p) => n + p.entries.reduce((m, e) => m + e.data.minutes, 0), 0);
+---
+
+<BaseLayout title={`${series.title} — ${series.subtitle}`} description={series.description} seriesId={seriesId} crumb="Contents">
+  <div class="home" data-article>
+    <header class="hero">
+      <p class="hero-kicker">
+        {total} {series.unit.toLowerCase()}s · {parts.filter((p) => p.entries.length).length} parts · ~{minutes} min
+      </p>
+      <h1 class="hero-title">{series.title}</h1>
+      <p class="hero-sub">{series.description}</p>
+    </header>
+
+    {
+      parts.map((part) =>
+        part.entries.length === 0 ? null : (
+          <section class="part">
+            <div class="part-head">
+              <h2 class="part-title">
+                <span class="part-letter">Part {part.id}</span>
+                {part.title}
+              </h2>
+              <p class="part-note">{part.note}</p>
+            </div>
+
+            <ul class="cards">
+              {part.entries.map((e) => (
+                <li>
+                  <a
+                    href={`${base}/${series.id}/${slugOf(e)}/`}
+                    class:list={['card', { 'is-draft': e.data.draft }]}
+                  >
+                    <span class="card-n">{String(e.data.n).padStart(2, '0')}</span>
+                    <span class="card-body">
+                      <span class="card-title">
+                        {e.data.title}
+                        {e.data.draft && <span class="card-flag">soon</span>}
+                      </span>
+                      <span class="card-blurb">{e.data.blurb}</span>
+                    </span>
+                    <span class="card-tick" data-tick={e.id} aria-hidden="true" />
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )
+      )
+    }
+
+    <footer class="home-foot">
+      <p>
+        <kbd>/</kbd> to search · <kbd>j</kbd> <kbd>k</kbd> between sections ·
+        <kbd>[</kbd> <kbd>]</kbd> for previous and next. Progress is kept in this
+        browser only.
+      </p>
+    </footer>
+  </div>
+</BaseLayout>
+
+<style>
+  .home {
+    padding: 3.5rem 1.25rem 6rem;
+    max-width: 60rem;
+    margin-inline: auto;
+  }
+
+  @media (min-width: 1024px) {
+    .home {
+      padding-inline: 3rem;
+    }
+  }
+
+  .hero {
+    max-width: 62ch;
+    padding-block-end: 2.5rem;
+    border-block-end: 1px solid var(--rule);
+  }
+
+  .hero-kicker {
+    font-family: var(--font-sans);
+    font-size: 0.6875rem;
+    font-weight: 550;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--accent);
+    margin: 0 0 0.9rem;
+  }
+
+  .hero-title {
+    font-family: var(--font-sans);
+    font-size: clamp(2.25rem, 1.6rem + 2.8vw, 3.25rem);
+    font-weight: 660;
+    letter-spacing: -0.032em;
+    line-height: 1.05;
+    color: var(--ink-strong);
+    margin: 0 0 1.1rem;
+  }
+
+  .hero-sub {
+    font-size: 1.0625rem;
+    line-height: 1.65;
+    color: var(--ink);
+    margin: 0;
+  }
+
+  .part {
+    margin-block-start: 3rem;
+  }
+
+  .part-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-block-end: 1rem;
+  }
+
+  .part-title {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    font-family: var(--font-sans);
+    font-size: 0.9375rem;
+    font-weight: 640;
+    letter-spacing: -0.01em;
+    color: var(--ink-strong);
+    margin: 0;
+  }
+
+  .part-letter {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+  }
+
+  .part-note {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    color: var(--ink-faint);
+  }
+
+  .cards {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  @media (min-width: 780px) {
+    .cards {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+
+  .card {
+    height: 100%;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 0.85rem;
+    align-items: start;
+    padding: 0.9rem 1rem;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    background: var(--bg-raised);
+    text-decoration: none;
+  }
+
+  .card:hover {
+    border-color: color-mix(in oklab, var(--accent) 55%, var(--rule));
+  }
+
+  .card.is-draft {
+    background: none;
+    border-style: dashed;
+  }
+
+  .card-n {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--accent);
+    padding-block-start: 0.28rem;
+  }
+
+  .card.is-draft .card-n {
+    color: var(--ink-faint);
+  }
+
+  .card-body {
+    min-width: 0;
+  }
+
+  .card-title {
+    display: block;
+    font-family: var(--font-sans);
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.35;
+    color: var(--ink-strong);
+    letter-spacing: -0.008em;
+  }
+
+  .card.is-draft .card-title {
+    color: var(--ink-muted);
+  }
+
+  .card-flag {
+    font-size: 0.5625rem;
+    font-weight: 550;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--ink-faint);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 0.05rem 0.3rem;
+    margin-inline-start: 0.45rem;
+    vertical-align: 0.15em;
+    white-space: nowrap;
+  }
+
+  .card-blurb {
+    display: block;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: var(--ink-muted);
+    margin-block-start: 0.3rem;
+  }
+
+  .card-tick {
+    font-size: 0.75rem;
+    color: var(--bridge);
+    padding-block-start: 0.2rem;
+  }
+
+  .card-tick[data-read]::before {
+    content: '✓';
+  }
+
+  .home-foot {
+    margin-block-start: 3.5rem;
+    padding-block-start: 1.25rem;
+    border-block-start: 1px solid var(--rule);
+  }
+
+  .home-foot p {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    line-height: 2;
+    color: var(--ink-faint);
+    max-width: 62ch;
+  }
+</style>

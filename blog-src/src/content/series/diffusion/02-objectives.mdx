@@ -1,0 +1,247 @@
+---
+n: 2
+title: 'One network, four parameterizations'
+blurb: 'ε, x₀, v and score are affine reparameterizations of the same quantity. Choosing between them is choosing an implicit loss weighting, which is choosing where capacity goes.'
+part: 'F'
+minutes: 14
+draft: false
+tags: ['epsilon prediction', 'v-prediction', 'x0 prediction', 'ELBO', 'loss weighting', 'min-SNR', 'objective']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+Given $x_t = \sqrt{\bar\alpha_t}x_0 + \sqrt{1-\bar\alpha_t}\varepsilon$, knowing any one of
+$x_0$, $\varepsilon$, or the score determines the others exactly, because the relation is linear
+and $x_t$ is known at inference. So the four common targets are one quantity in four coordinate
+systems:
+
+$$
+\hat x_0 = \frac{x_t - \sqrt{1-\bar\alpha_t}\,\hat\varepsilon}{\sqrt{\bar\alpha_t}},
+\qquad
+s = -\frac{\hat\varepsilon}{\sqrt{1-\bar\alpha_t}},
+\qquad
+v = \sqrt{\bar\alpha_t}\,\varepsilon - \sqrt{1-\bar\alpha_t}\,x_0 .
+$$
+
+The network architecture does not change. What changes is **what the MSE is measured on**, and
+since the coordinate change is $t$-dependent, an equal-weighted loss in one coordinate system is an
+unequally-weighted loss in the others. That is the whole story: **parameterisation is loss
+weighting in disguise, and loss weighting decides which noise levels the model spends its capacity
+on.**
+
+Make it concrete. The variational bound has per-timestep weights proportional to
+$1/\mathrm{SNR}$-ish factors, and DDPM's famous $L_{\text{simple}} = \mathbb{E}\lVert\varepsilon -
+\varepsilon_\theta\rVert^2$ drops them. That is not an approximation to the ELBO; it is a
+deliberately different objective that happens to produce far better samples, because the ELBO
+over-weights the very low noise levels where the remaining work is imperceptible detail and
+under-weights the middle of the process where global structure is decided. Writing the same loss in
+$x_0$-coordinates weights by $\mathrm{SNR}(t)$; writing it in $\varepsilon$-coordinates weights by 1.
+Neither is "correct" — they are different allocations of a fixed capacity budget.
+
+This is also why $v$-prediction exists. At high noise, $\varepsilon$-prediction becomes trivial
+($x_t$ is nearly all noise, so predicting $\varepsilon$ is close to predicting $x_t$) and carries
+almost no gradient signal about $x_0$; at low noise, $x_0$-prediction becomes trivial for the
+mirror-image reason. $v$ interpolates between them, so its target stays informative across the
+entire schedule. That property is what makes $v$ the standard choice for zero-terminal-SNR
+schedules, for progressive distillation, and for anything that must behave sensibly at both ends.
+
+<Callout type="bridge" title="you have seen this as a training-stability bug">
+  "Loss looks fine but samples are blurry" and "loss is dominated by a handful of timesteps" are
+  both symptoms of the weighting implied by your parameterisation, not of the optimiser. The fix is
+  almost always a reweighting — min-SNR-$\gamma$, a $t$-sampling change, or a different target.
+</Callout>
+
+## Numbers worth memorizing
+
+Conversions, all exact given $x_t$ and $t$:
+
+| From → to           | Relation                                                              |
+| ------------------- | --------------------------------------------------------------------- |
+| $\varepsilon \to x_0$ | $(x_t - \sqrt{1-\bar\alpha}\,\varepsilon)/\sqrt{\bar\alpha}$          |
+| $\varepsilon \to s$   | $-\varepsilon/\sqrt{1-\bar\alpha}$                                    |
+| $v$                   | $\sqrt{\bar\alpha}\,\varepsilon - \sqrt{1-\bar\alpha}\,x_0$           |
+| $v \to x_0$           | $\sqrt{\bar\alpha}\,x_t - \sqrt{1-\bar\alpha}\,v$                     |
+| $v \to \varepsilon$   | $\sqrt{1-\bar\alpha}\,x_t + \sqrt{\bar\alpha}\,v$                     |
+
+Implied weighting of an equal-weighted MSE, relative to $\varepsilon$-space:
+
+| Target        | Effective weight $w(t)$ | Emphasises              |
+| ------------- | ----------------------- | ----------------------- |
+| $\varepsilon$ | $1$                     | balanced, high-noise-ish |
+| $x_0$         | $\mathrm{SNR}(t)$       | low noise, fine detail  |
+| $v$           | $\mathrm{SNR}(t) + 1$   | balanced across the range |
+| ELBO / NLL    | $\propto 1/(1-\bar\alpha_t)$-type | very low noise    |
+| min-SNR-$\gamma$ | $\min(\mathrm{SNR}, \gamma)/\mathrm{SNR}$ | clamps the low-noise blowup |
+
+| Practical value        | Setting                                  |
+| ---------------------- | ---------------------------------------- |
+| min-SNR $\gamma$       | 5 (the value that transfers most often)  |
+| $\varepsilon$-pred     | default for pixel-space DDPM, SD 1.x/2-base |
+| $v$-pred               | SD 2.x-v, progressive distillation, zero-terminal-SNR |
+| $x_0$-pred             | common in latent/audio, and at very low resolution |
+
+<Callout type="trap" title="ε-prediction with zero terminal SNR">
+  At $\bar\alpha_t = 0$ the input is pure noise, so predicting $\varepsilon$ means predicting the
+  input — a perfect score with zero information about $x_0$, and no usable gradient. Any schedule
+  that reaches genuinely zero SNR must use $v$ (or $x_0$) at that end.
+</Callout>
+
+## Critical thinking
+
+<Probe q="If the parameterizations are equivalent, why does the choice change sample quality at all?">
+
+Because equivalence holds for the *converged optimum*, not for the *optimisation problem*. Three
+mechanisms separate them.
+
+**Loss weighting.** The coordinate change is $t$-dependent, so a uniform MSE in one space is a
+$t$-weighted MSE in another. Since the model has finite capacity and cannot be optimal everywhere,
+the weighting decides where the error goes. Equal weighting in $x_0$-space concentrates capacity at
+low noise, where the residual work is texture; equal weighting in $\varepsilon$-space spreads it
+toward the middle of the schedule, where global structure is decided — which is why
+$L_{\text{simple}}$ beat the ELBO and started the field.
+
+**Conditioning of the target.** Near either end of the schedule one target becomes nearly
+deterministic given the input, so its gradient carries almost no information while its loss value
+looks excellent. You get a model that reports good numbers and produces bad samples at those noise
+levels.
+
+**Error amplification at inference.** The sampler needs a particular quantity, and converting to it
+multiplies the error by a $t$-dependent factor. Predicting $x_0$ and converting to $\varepsilon$ at
+high noise divides by $\sqrt{1-\bar\alpha}$; small errors in the trained quantity become large
+errors in the used one.
+
+So the choice should be made by asking: which target stays informative across the whole schedule,
+and which weighting matches where I want capacity? For most modern setups the answer is $v$ with an
+explicit reweighting on top.
+
+</Probe>
+
+<Probe q="Why is the simple loss better than the ELBO if the ELBO is the principled objective?">
+
+Because the ELBO is principled about the wrong quantity for this use case.
+
+The bound is over log-likelihood, and log-likelihood in pixel space is dominated by exactly the
+fine, high-frequency details that human perception discounts. In diffusion terms, the ELBO's
+per-timestep weights blow up at low noise — the region that contributes most bits and least
+perceptual quality. Optimising it faithfully spends most of the model's capacity making the last
+few percent of texture slightly more probable.
+
+$L_{\text{simple}}$ drops those weights entirely. The resulting objective is no longer a bound on
+anything, and models trained with it have measurably *worse* likelihoods and dramatically better
+samples. That gap is the well-known one between likelihood and perceptual quality, and diffusion
+made it unusually easy to see because the two objectives differ by nothing except a known
+per-timestep scalar.
+
+The mature position is that neither extreme is right, and the weighting is a hyperparameter to be
+tuned like any other. min-SNR-$\gamma$ is the standard middle ground: it clamps the weight at low
+noise so a handful of timesteps stop dominating the gradient, treating training as a multi-task
+problem with conflicting tasks rather than as a single bound to be maximised.
+
+</Probe>
+
+<Probe q="Derive why v-prediction is well behaved at both ends.">
+
+Take $v = \sqrt{\bar\alpha}\,\varepsilon - \sqrt{1-\bar\alpha}\,x_0$ and evaluate the ends.
+
+**High noise**, $\bar\alpha \to 0$: the coefficient on $\varepsilon$ vanishes and $v \to -x_0$. So
+the target becomes the clean sample — which is precisely the informative thing to predict when the
+input is nearly pure noise, and precisely what $\varepsilon$-prediction fails to give you there.
+
+**Low noise**, $\bar\alpha \to 1$: the coefficient on $x_0$ vanishes and $v \to \varepsilon$. The
+target becomes the noise — again the informative choice, since $x_0$ is nearly visible in the input
+and predicting it is trivial.
+
+So $v$ automatically becomes whichever of the two targets is non-degenerate at that noise level,
+with a smooth interpolation between. Geometrically it is the velocity of the point
+$(\sqrt{\bar\alpha}, \sqrt{1-\bar\alpha})$ moving on the unit circle as the schedule advances,
+which is where the name comes from and why the implied weighting $\mathrm{SNR}+1$ is well behaved
+everywhere.
+
+The practical consequences follow directly: $v$ is required for zero-terminal-SNR schedules
+(Module 1), and it is what makes progressive distillation stable, because a student trained to
+match a teacher across many noise levels needs a target that is informative at all of them.
+
+</Probe>
+
+<Probe q="Your loss is dominated by a few timesteps. Diagnose and fix.">
+
+That is the expected behaviour of the weighting you chose, not an optimiser problem — so the fix is
+in the objective, not the learning rate.
+
+**Diagnose.** Log loss bucketed by $t$ (or better, by log-SNR) rather than as a scalar. You will
+normally see one of two shapes: a spike at low noise if you are in $x_0$-space or near the ELBO
+weighting, or a spike at high noise if you are in $\varepsilon$-space with a schedule that reaches
+very low SNR.
+
+**Fix, in order of how often it is the answer:**
+
+1. **Reweight.** min-SNR-$\gamma$ with $\gamma = 5$ clamps the low-noise weight and is the most
+   reliable single change. It reframes training as multi-task learning across noise levels whose
+   gradients otherwise conflict.
+2. **Change the target** to $v$, so no noise level has a degenerate target.
+3. **Change the $t$ sampling distribution.** Uniform $t$ is not uniform in log-SNR; sampling
+   uniformly in log-SNR, or importance-sampling toward the middle, allocates gradient steps where
+   the model is actually uncertain.
+4. **Check the schedule** for the resolution you are training at (Module 3) — the same schedule
+   destroys much less information at higher resolution, pushing all the useful work into a narrow
+   band of $t$.
+
+The framing to carry: the loss is a sum over noise levels that are, in effect, separate tasks. A
+scalar loss hides which task is winning.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="Convert between ε, x₀, v and the score.">
+
+$\hat x_0 = (x_t - \sqrt{1-\bar\alpha}\,\hat\varepsilon)/\sqrt{\bar\alpha}$;
+$s = -\hat\varepsilon/\sqrt{1-\bar\alpha}$;
+$v = \sqrt{\bar\alpha}\,\varepsilon - \sqrt{1-\bar\alpha}\,x_0$, with
+$x_0 = \sqrt{\bar\alpha}\,x_t - \sqrt{1-\bar\alpha}\,v$ and
+$\varepsilon = \sqrt{1-\bar\alpha}\,x_t + \sqrt{\bar\alpha}\,v$. All exact given $x_t$ and $t$ —
+which is why the choice of target is a choice of loss weighting, not of model capability.
+
+</SelfCheck>
+
+<SelfCheck q="Give the effective weighting each target implies, relative to ε-space.">
+
+$\varepsilon$: 1. $x_0$: $\mathrm{SNR}(t)$, emphasising low noise. $v$: $\mathrm{SNR}(t)+1$,
+balanced. The ELBO weighting blows up at low noise. min-SNR-$\gamma$ multiplies by
+$\min(\mathrm{SNR},\gamma)/\mathrm{SNR}$ to clamp that blowup, with $\gamma=5$ the value that
+transfers most often.
+
+</SelfCheck>
+
+<SelfCheck q="Why does the simple loss beat the ELBO on sample quality?">
+
+The ELBO's per-timestep weights blow up at low noise, the region contributing the most bits and the
+least perceptual quality, so faithfully optimising it spends capacity on imperceptible texture.
+$L_{\text{simple}}$ drops those weights, ceasing to be a bound on anything — such models have worse
+likelihoods and much better samples. It is the likelihood-versus-perceptual-quality gap made
+unusually visible, since the two objectives differ only by a known per-timestep scalar.
+
+</SelfCheck>
+
+<SelfCheck q="Show that v is non-degenerate at both ends of the schedule.">
+
+As $\bar\alpha \to 0$, $v \to -x_0$: at high noise the target becomes the clean sample, the
+informative quantity when the input is nearly pure noise. As $\bar\alpha \to 1$, $v \to
+\varepsilon$: at low noise the target becomes the noise, informative when $x_0$ is nearly visible.
+So $v$ is always whichever target is non-degenerate — which is why zero-terminal-SNR schedules and
+progressive distillation both require it.
+
+</SelfCheck>
+
+<SelfCheck q="Loss is dominated by a handful of timesteps. What is the first thing you log, and the first fix?">
+
+Log the loss bucketed by $t$ or log-SNR rather than as a scalar — a single number hides which noise
+levels are winning. The first fix is min-SNR-$\gamma$ ($\gamma = 5$), then switching the target to
+$v$, then sampling $t$ uniformly in log-SNR rather than uniformly in $t$. Treat noise levels as
+conflicting tasks sharing one network.
+
+</SelfCheck>

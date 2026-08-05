@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Srikanth Malla | Blog</title>
-  <meta name="description" content="Long-form technical writing by Srikanth Malla on ML systems, hardware and low-latency inference." />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Blog | Srikanth Malla</title>
+  <meta name="description" content="Long-form technical series by Srikanth Malla on ML hardware, low-latency systems and diffusion models." />
 
   <link rel="icon" href="files/favicon.svg" type="image/svg+xml" />
   <link rel="canonical" href="https://www.srikanthmalla.com/learning.html" />
@@ -12,168 +12,230 @@
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://www.srikanthmalla.com/learning.html" />
   <meta property="og:title" content="Blog — Srikanth Malla" />
-  <meta property="og:description" content="Long-form technical notes on ML systems, hardware and low-latency inference." />
+  <meta property="og:description" content="Long-form technical series on ML hardware, low-latency systems and diffusion models." />
   <meta property="og:image" content="https://www.srikanthmalla.com/files/profile_pic.jpg" />
   <meta name="twitter:card" content="summary" />
 
   <link rel="stylesheet" type="text/css" href="css/bootstrap.css" />
-  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
-  <!-- 3.4.1 is the Bootstrap 3 line that accepts jQuery 3, which index.html also loads. -->
-  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
 
   <style>
+    :root {
+      --ink: #2b2f36;
+      --ink-strong: #14171c;
+      --ink-muted: #6a7078;
+      --rule: #e3e5e8;
+      --bg: #f8f8f8;
+      --card: #ffffff;
+      --link: #1772d0;
+      --accent: #f09228;
+    }
+
     body {
-      font-family: 'Arial', sans-serif;
-      background-color: #f8f8f8;
-      color: #333333;
+      font-family: 'Arial', Helvetica, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
       margin: 0;
-      padding: 0;
       font-size: 15px;
+      line-height: 1.6;
+      -webkit-text-size-adjust: 100%;
     }
 
-    a { color: #1772d0; text-decoration: none; }
-    a:focus, a:hover { color: #f09228; text-decoration: none; }
+    a { color: var(--link); text-decoration: none; }
+    a:focus, a:hover { color: var(--accent); text-decoration: none; }
 
-    .container {
-      max-width: 950px;
-      margin: auto;
-      padding: 0 15px;
-    }
+    .container { max-width: 900px; margin: auto; padding: 0 18px; }
 
+    /* ---------- header ---------- */
     .page-head {
-      padding: 40px 0 10px;
+      padding: 44px 0 6px;
+      border-bottom: 1px solid var(--rule);
+      margin-bottom: 34px;
     }
 
     .page-head h1 {
-      margin: 0 0 8px;
-      font-size: 2em;
+      margin: 0 0 10px;
+      font-size: 2.1em;
       font-weight: bold;
-      color: #222;
+      letter-spacing: -0.02em;
+      color: var(--ink-strong);
     }
 
     .page-head p {
-      margin: 0;
-      color: #666;
-      max-width: 640px;
-      line-height: 1.6;
+      margin: 0 0 26px;
+      color: var(--ink-muted);
+      max-width: 62ch;
     }
 
-    .post-list {
-      list-style: none;
-      margin: 30px 0 60px;
-      padding: 0;
-    }
+    /* ---------- series cards ---------- */
+    .series-list { list-style: none; margin: 0; padding: 0; }
+    .series-list > li { margin-bottom: 22px; }
 
-    .post-list li { margin-bottom: 16px; }
-
-    .post-tile {
+    .series {
       display: block;
-      background: #ffffff;
-      border: 1px solid #e2e2e2;
-      border-radius: 6px;
-      padding: 18px 22px;
-      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+      background: var(--card);
+      border: 1px solid var(--rule);
+      border-radius: 10px;
+      padding: 26px 28px 22px;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
     }
 
-    .post-tile:hover {
-      border-color: #1772d0;
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+    .series:hover {
+      border-color: var(--link);
+      box-shadow: 0 4px 18px rgba(23, 114, 208, 0.08);
     }
 
-    .post-meta {
+    .series-meta {
       font-size: 11px;
+      font-weight: bold;
       text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: #999;
-      margin-bottom: 6px;
+      letter-spacing: 0.1em;
+      color: var(--accent);
+      margin-bottom: 10px;
     }
 
-    .post-meta .tag {
-      color: #f09228;
+    .series-meta .dot { color: #c9ccd1; margin: 0 6px; font-weight: normal; }
+    .series-meta .plain { color: var(--ink-muted); font-weight: normal; letter-spacing: 0.06em; }
+
+    .series-title {
+      font-size: 1.55em;
       font-weight: bold;
+      letter-spacing: -0.02em;
+      color: var(--ink-strong);
+      margin: 0 0 4px;
+      line-height: 1.2;
     }
 
-    .post-title {
-      font-size: 1.15em;
+    .series:hover .series-title { color: var(--link); }
+
+    .series-sub {
+      color: var(--ink-muted);
+      font-size: 0.95em;
+      margin: 0 0 12px;
+    }
+
+    /* The whole card is an <a>, so body text must opt out of link colour. */
+    .series-desc { margin: 0 0 18px; max-width: 68ch; color: var(--ink); }
+
+    /* Part chips: shows the shape of the series at a glance. */
+    .parts {
+      list-style: none;
+      margin: 0 0 16px;
+      padding: 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .parts li {
+      font-size: 11.5px;
+      color: var(--ink-muted);
+      background: #f4f5f7;
+      border: 1px solid var(--rule);
+      border-radius: 20px;
+      padding: 3px 11px;
+      white-space: nowrap;
+    }
+
+    .parts li b { color: var(--ink); font-weight: bold; }
+
+    .series-cta {
+      display: inline-block;
       font-weight: bold;
-      color: #222;
-      margin: 0 0 6px;
+      font-size: 0.95em;
+      color: var(--link);
     }
 
-    .post-tile:hover .post-title { color: #1772d0; }
+    .series:hover .series-cta { color: var(--accent); }
+    .series-cta::after { content: ' →'; }
 
-    .post-desc {
-      color: #555;
-      line-height: 1.6;
-      margin: 0;
+    /* ---------- footer ---------- */
+    .foot {
+      margin: 46px 0 0;
+      padding: 18px 0 40px;
+      border-top: 1px solid var(--rule);
+      font-size: 13px;
+      color: var(--ink-muted);
     }
 
-    .post-tile.soon {
-      background: none;
-      border-style: dashed;
-      opacity: 0.7;
-      cursor: default;
+    @media (max-width: 640px) {
+      .page-head { padding-top: 30px; }
+      .page-head h1 { font-size: 1.7em; }
+      .series { padding: 20px 18px 18px; }
+      .series-title { font-size: 1.3em; }
     }
-
-    .post-tile.soon:hover {
-      border-color: #e2e2e2;
-      box-shadow: none;
-    }
-
-    .post-tile.soon .post-title { color: #777; }
   </style>
 </head>
 
 <body>
-  <!-- Navigation Bar -->
-  <div container id="nav_bar">
-    <script>
-      $("#nav_bar").load("nav_bar.html");
-    </script>
-  </div>
+  <div id="nav_bar"></div>
+  <script src="/js/nav.js"></script>
 
   <div class="container">
-    <div class="page-head">
+    <header class="page-head">
       <h1>Blog</h1>
       <p>
-        Long-form technical notes. Mostly the things I wanted to read and could not
-        find written at the right level of detail.
+        Multi-part technical series, written for people who already know the basics.
+        Each module is a mental model, the numbers worth memorizing, critical-thinking
+        probes, and self-checks with the answers hidden.
       </p>
-    </div>
+    </header>
 
-    <ul class="post-list">
+    <ul class="series-list">
       <li>
-        <a class="post-tile" href="refresher/">
-          <div class="post-meta">
-            <span class="tag">Series</span> &middot; 12 modules &middot; ML hardware &amp; low-latency systems
+        <a class="series" href="/blog/refresher/">
+          <div class="series-meta">
+            Series <span class="dot">·</span> 12 modules
+            <span class="dot">·</span><span class="plain">~180 min</span>
           </div>
-          <div class="post-title">Refresher: ML hardware and low-latency systems</div>
-          <p class="post-desc">
-            A twelve-module refresher, written for someone who already knows the basics.
-            Starts from roofline, arithmetic intensity and GPU throughput instincts, then
-            inverts them for the batch-of-one regime: tail latency and determinism, CPU
-            microarchitecture, PCIe and the wire, fixed-point numerics, and the workloads
-            that have to answer in nanoseconds. Each module is a mental model, the numbers
-            worth memorizing, critical-thinking probes, and self-checks.
+          <div class="series-title">Refresher: ML hardware &amp; low-latency systems</div>
+          <p class="series-sub">Roofline, tail latency, CPU microarchitecture, fixed-point numerics, nanosecond inference</p>
+          <p class="series-desc">
+            Starts from roofline and GPU throughput instincts, then inverts them for the
+            batch-of-one regime: why utilization is a defect, where jitter actually comes
+            from, what a PCIe round trip costs, and why a depth-6 decision tree evaluates
+            in three levels rather than six.
           </p>
+          <ul class="parts">
+            <li><b>A</b> Foundations</li>
+            <li><b>B</b> The pivot</li>
+            <li><b>C</b> Substrate</li>
+            <li><b>D</b> Numerics</li>
+            <li><b>E</b> Workloads</li>
+          </ul>
+          <span class="series-cta">Read the series</span>
         </a>
       </li>
 
       <li>
-        <a class="post-tile" href="blogs/diffusion.html">
-          <div class="post-meta">
-            <span class="tag">Notes</span> &middot; Generative models
+        <a class="series" href="/blog/diffusion/">
+          <div class="series-meta">
+            Series <span class="dot">·</span> 9 modules
+            <span class="dot">·</span><span class="plain">~120 min</span>
           </div>
-          <div class="post-title">Diffusion models</div>
-          <p class="post-desc">
-            Working notes on diffusion: the forward and reverse processes, score matching,
-            samplers, and where the practical knobs actually sit.
+          <div class="series-title">Diffusion: from score matching to fast samplers</div>
+          <p class="series-sub">The forward process, objectives, ODE samplers, guidance, latents, distillation</p>
+          <p class="series-desc">
+            For people who have trained one and want the derivations to actually connect.
+            Why the forward process is Gaussian, how one network hides four parameterizations,
+            why sampling is numerical integration, what classifier-free guidance really does to
+            the distribution, and where the milliseconds go.
           </p>
+          <ul class="parts">
+            <li><b>F</b> The process</li>
+            <li><b>G</b> Sampling</li>
+            <li><b>H</b> Control</li>
+            <li><b>I</b> In practice</li>
+          </ul>
+          <span class="series-cta">Read the series</span>
         </a>
       </li>
     </ul>
-  </div>
 
-  <script src="js/main.js"></script>
+    <p class="foot">
+      Every series lives at <code>/blog/&lt;name&gt;/</code> and shares the same reader:
+      sidebar navigation, full-text search with <kbd>/</kbd>, and reading progress kept
+      in your browser.
+    </p>
+  </div>
 </body>
 </html>

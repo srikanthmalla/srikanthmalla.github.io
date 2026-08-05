@@ -1,0 +1,243 @@
+---
+n: 7
+title: 'Conditioning and control'
+blurb: 'Cross-attention, adapters, ControlNet and attention injection — four places to inject a signal, and what each one can and cannot control.'
+part: 'H'
+minutes: 12
+draft: false
+tags: ['cross-attention', 'ControlNet', 'LoRA', 'IP-Adapter', 'attention injection', 'conditioning', 'inpainting']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+Every conditioning mechanism answers the same question — *where in the network does the signal
+enter?* — and the answer determines what it can control. There are four places, and they form a
+rough hierarchy from global to spatial.
+
+**Timestep-style embeddings**, injected by adding to features or by modulating normalisation
+(AdaLN, FiLM), are inherently global: one vector per sample scales and shifts whole feature maps.
+Perfect for class labels, timestep, aesthetic score, or any low-dimensional global attribute.
+Structurally incapable of saying "put the object *here*". **Cross-attention** lets every spatial
+position query a sequence of condition tokens, so it carries much richer semantics and *can* be
+spatially selective — but only indirectly, because the association between a token and a region is
+learned, soft, and famously leaky, which is the root cause of attribute binding failures. **Channel
+concatenation** on the input is the bluntest and most spatially precise: append the condition as
+extra channels and every position sees its own local condition, which is why inpainting masks and
+depth maps enter this way. **Residual injection into the backbone**, which is ControlNet, adds
+spatially-structured features to intermediate layers, giving strong spatial control while keeping
+the base model's weights frozen.
+
+The practical corollary is that control failures are usually **mechanism mismatches** rather than
+training problems. Asking cross-attention to enforce exact spatial layout fights its architecture:
+attention is a soft, learned association over a shared feature space, so "the red cube on the left"
+must compete with every other token for the same spatial region. If you need spatial precision, use
+a mechanism that is spatially indexed — concatenation or ControlNet — rather than a stronger prompt
+or more guidance. Most prompt-engineering effort is spent trying to make a global-ish mechanism do a
+spatial job.
+
+<Callout type="bridge" title="the LLM analogy is exact">
+  Prompt tokens, LoRA, prefix tuning and adapter layers are the same four choices: condition via the
+  input sequence, via a low-rank weight delta, via extra activations, or via a parallel branch. What
+  differs in diffusion is that one of the axes is spatial, so "where" is a real question rather than
+  just "how strongly".
+</Callout>
+
+## Numbers worth memorizing
+
+| Mechanism                | Enters at            | Controls                      | Cost                    |
+| ------------------------ | -------------------- | ----------------------------- | ----------------------- |
+| Embedding / AdaLN        | normalisation        | global attributes             | negligible              |
+| Cross-attention          | attention layers     | semantics, soft spatial       | $O(HW \cdot L)$ per layer |
+| Channel concat           | input                | exact spatial, per-pixel      | one extra conv          |
+| **ControlNet**           | encoder residuals    | strong spatial structure      | **~+35–50% params, ~+30–45% latency** |
+| LoRA                     | weight delta         | style, subject                | ~1–2% params, mergeable |
+| IP-Adapter               | extra cross-attn     | image-as-prompt               | small, ~+5–10%          |
+| Attention injection      | attention maps       | layout transfer, editing      | free (reuses maps)      |
+
+| Fact                            | Value                                     |
+| ------------------------------- | ----------------------------------------- |
+| CLIP text encoder context       | 77 tokens (SD 1.x/2.x)                     |
+| T5-XXL context (SD3, Flux)      | 256–512 tokens                             |
+| LoRA rank in practice           | 4–64; 8–16 covers most style adaptation    |
+| ControlNet training data        | 10k–100k pairs is often enough             |
+| Condition dropout               | 10–20% — needed for CFG on that condition  |
+
+<Callout type="trap" title="every conditioning signal needs its own dropout">
+  If you add a condition and never train with it dropped, you cannot guide on it — there is no
+  unconditional branch to subtract. Multi-condition models need independent dropout per signal, or
+  you lose the ability to weight them separately at inference.
+</Callout>
+
+## Critical thinking
+
+<Probe q="Why does “a red cube and a blue sphere” so often come out wrong?">
+
+Because cross-attention binds attributes to regions **softly and by learned association**, and
+nothing in the architecture enforces that "red" attaches to the cube's pixels rather than the
+sphere's.
+
+Mechanically: each spatial position produces a query and attends over all 77 text tokens. A position
+inside the sphere can and often does attend to "red", because the attention is a similarity in a
+shared embedding space with no constraint tying colour tokens to the noun they modify. The text
+encoder itself contributes — CLIP's pooled representations are famously weak at compositional
+structure, so "red" and "blue" are not cleanly separated in the conditioning sequence before
+attention even begins.
+
+What actually helps, in order of effectiveness:
+
+1. **A better text encoder.** T5 in SD3 and Flux improves compositionality substantially, because
+   the conditioning sequence itself carries the binding.
+2. **Spatially indexed conditioning.** Give each object a region — a layout map, a segmentation
+   mask, regional prompting — so the mechanism is spatial rather than associative.
+3. **Attention manipulation at inference.** Attend-and-excite and similar methods directly optimise
+   the latent so each noun token achieves sufficient attention mass. A patch on the symptom, but
+   an effective one.
+4. **More guidance.** Usually makes it *worse*, by amplifying whichever binding the model already
+   preferred.
+
+The framing: this is not a capacity problem and more training will not fix it. It is a mechanism
+mismatch, and the fix is a mechanism with the right inductive bias.
+
+</Probe>
+
+<Probe q="Why does ControlNet freeze the base model, and why copy the encoder rather than train a small adapter?">
+
+Two separate design decisions, each solving a specific failure.
+
+**Freezing** protects the base model from catastrophic forgetting on a small conditioning dataset.
+With 10k–100k pairs, fine-tuning the whole model would degrade its general prior toward that
+dataset's distribution. Freezing means the worst case is that the control signal is ignored — the
+base model's quality is a floor rather than something at risk. It also means one base model can host
+many independent ControlNets.
+
+**Copying the encoder** rather than using a small fresh adapter is about initialisation and feature
+compatibility. The injected features must live in the same representational space as the frozen
+backbone's activations, at every resolution. A copy of the trained encoder already produces exactly
+such features, so training starts from a good place instead of learning the space from scratch. The
+zero-initialised convolutions between copy and backbone complete the design: at step zero the
+injection is exactly zero, so the model is bit-identical to the frozen original and training begins
+from a known-good state rather than from a perturbation of it.
+
+The cost is real — roughly 35–50% more parameters and 30–45% more latency, since the copied encoder
+runs every step. Which is why lighter alternatives exist (T2I-Adapter, ControlNet-Lite, and
+LoRA-style control), trading some fidelity for much less compute. The choice is the usual one:
+ControlNet when the spatial constraint must be respected precisely, adapters when it is a hint.
+
+</Probe>
+
+<Probe q="Given a new conditioning signal, how do you choose the mechanism?">
+
+Ask two questions, in this order.
+
+**Is the signal spatial?** If it varies across the image — depth, edges, pose, a mask — it must
+enter through a spatially indexed path: channel concatenation if it is cheap and aligned with the
+input resolution, ControlNet or an adapter if it needs to influence deeper structure. Trying to push
+a spatial signal through a global embedding or a short token sequence discards its spatial content
+at the first layer, and no amount of training recovers it.
+
+**How much data do you have?** This decides how much you may perturb the model.
+
+| Data | Mechanism |
+| --- | --- |
+| < 100 examples | textual inversion, or a few-token embedding |
+| 100s–1000s | LoRA, rank 8–16 |
+| 10k–100k | ControlNet or an adapter, base frozen |
+| Millions | native conditioning, trained from scratch |
+
+Then the practical checklist: add **independent dropout** for the new signal so you can guide on it;
+decide whether it should be composable with existing conditions (which favours additive mechanisms
+over ones that rewrite shared features); and check inference cost, since anything running every step
+multiplies by NFE and again by 2 if guided.
+
+The mistake worth avoiding is reaching for the most powerful mechanism by default. ControlNet on a
+global attribute is a large waste, and a LoRA asked to enforce exact geometry will simply fail.
+
+</Probe>
+
+<Probe q="Why is attention injection so effective for editing when it trains nothing?">
+
+Because attention maps are where the **layout** lives, separately from where the **content** lives —
+and editing usually means changing one while holding the other.
+
+The observation behind prompt-to-prompt is that in a text-to-image U-net, cross-attention maps at
+each step encode the spatial arrangement: which regions belong to which token. Value features encode
+appearance. So if you generate with prompt A, cache its attention maps, then generate with prompt B
+while *substituting* A's maps, you get B's content in A's composition. Swap the maps for a token you
+changed and keep the rest, and you have a targeted edit.
+
+Why this works with no training: you are not modifying the model at all, only reusing intermediate
+state across two runs. The model's own learned association is doing the work; you are just holding
+part of it fixed. It costs nothing beyond the second generation.
+
+Where it breaks:
+
+- **Structural changes.** If prompt B implies a different layout, forcing A's maps produces
+  incoherence — you are demanding a composition the content cannot occupy.
+- **Real images.** Requires inversion first, inheriting all of Module 4's problems, especially under
+  guidance.
+- **Architectures without cross-attention**, or with fused attention where maps are not
+  materialised. FlashAttention does not expose the map, so the technique needs an explicit,
+  slower path.
+
+The generalisable insight is worth more than the technique: **intermediate activations of a
+generative model are an interface.** Anywhere the model has factored a representation — layout
+versus appearance here — you can intervene without training, provided you can identify where the
+factorisation lives.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="Name the four injection points and what each is good for.">
+
+Embedding/AdaLN modulation — global attributes (class, timestep, aesthetic score), no spatial
+ability. Cross-attention — rich semantics, soft and leaky spatial association. Channel concatenation
+— exact per-pixel spatial conditioning (masks, depth). Residual injection into the backbone
+(ControlNet) — strong spatial structure with the base frozen. Control failures are usually mechanism
+mismatches, not training problems.
+
+</SelfCheck>
+
+<SelfCheck q="Why do attribute-binding prompts fail, and what actually fixes it?">
+
+Cross-attention binds attributes to regions by learned similarity with nothing enforcing that "red"
+attaches to the cube; a position inside the sphere can attend to "red" freely, and CLIP's
+conditioning sequence is weak at compositional structure to begin with. Fixes, in order: a better
+text encoder (T5), spatially indexed conditioning (layout maps, regional prompting), inference-time
+attention manipulation. More guidance usually makes it worse by amplifying the existing binding.
+
+</SelfCheck>
+
+<SelfCheck q="Why does ControlNet copy the encoder and zero-initialize the connections?">
+
+The copied encoder already produces features in the same representational space as the frozen
+backbone at every resolution, so training starts from compatible features rather than learning that
+space from scratch. Zero-initialised convolutions make the injection exactly zero at step 0, so the
+model begins bit-identical to the original and training is a departure from a known-good state.
+Freezing the base protects a strong prior from a small conditioning dataset.
+
+</SelfCheck>
+
+<SelfCheck q="Choose a mechanism for a new signal.">
+
+First: is it spatial? If it varies across the image it needs a spatially indexed path —
+concatenation or ControlNet/adapter — since a global embedding discards spatial content at the first
+layer. Second: how much data? under 100 → textual inversion; 100s–1000s → LoRA rank 8–16; 10k–100k →
+ControlNet/adapter with base frozen; millions → native conditioning. Then add independent dropout so
+the signal is guidable, and check cost, which multiplies by NFE and again by 2 under guidance.
+
+</SelfCheck>
+
+<SelfCheck q="Why does attention injection work without training, and when does it fail?">
+
+Cross-attention maps encode layout while value features encode appearance, so caching one prompt's
+maps and reusing them under a different prompt transfers composition without touching weights — you
+are reusing intermediate state, not modifying the model. It fails when the new prompt implies a
+genuinely different layout, on real images (needing inversion, with all its guidance problems), and
+where fused attention kernels never materialise the map.
+
+</SelfCheck>

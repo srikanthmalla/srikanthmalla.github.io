@@ -1,0 +1,233 @@
+---
+n: 8
+title: 'Latent diffusion and what the VAE costs'
+blurb: 'Compressing 48× before diffusing is why any of this is affordable. The autoencoder sets a hard ceiling on quality that no amount of diffusion training can lift.'
+part: 'I'
+minutes: 13
+draft: false
+tags: ['latent diffusion', 'VAE', 'autoencoder', 'KL', 'compression', 'reconstruction ceiling', 'scaling factor']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+Diffusion in pixel space is dominated by perceptually irrelevant work. Most of the bits in a natural
+image are high-frequency detail that contributes little to what the image *is*, and a pixel-space
+model spends most of its capacity and nearly all of its compute modelling them. Latent diffusion
+splits the problem: an autoencoder handles perceptual compression once, and the diffusion model
+handles semantic composition in the compressed space. At the standard $8\times$ spatial downsampling
+with 4 latent channels, a $512\times512\times3$ image becomes $64\times64\times4$ — a **48×**
+reduction in elements, and since attention is quadratic in sequence length, far more than 48× in
+some layers.
+
+The autoencoder is deliberately *not* a strong generative model. It is trained with a small KL
+penalty (or a VQ codebook) whose only job is to keep the latent space from drifting to arbitrary
+scale and structure — regularisation, not a meaningful prior. The heavy lifting comes from
+perceptual and adversarial losses, which is what lets an 8× downsampling still reconstruct crisp
+detail: an L2-only autoencoder at that compression produces blur, because L2 has no notion of which
+errors matter. The generative prior lives entirely in the diffusion model, and the autoencoder is
+a fixed, invertible-enough codec.
+
+The consequence that governs everything downstream is that **the autoencoder sets a hard ceiling**.
+Whatever it cannot reconstruct, the diffusion model can never produce, no matter how well it is
+trained — because the target it learns is the encoder's output, and the output you see is the
+decoder's. The classic symptoms are small faces, fine text, and regular high-frequency textures,
+all of which round-trip poorly at 8×. When your samples have mangled text, the first experiment is
+not to retrain the diffusion model but to **encode and decode a real image and look at it**: if the
+text is already mangled after a round trip, the diffusion model was never the problem. This single
+check separates two very different engineering programmes and is skipped astonishingly often.
+
+<Callout type="bridge" title="the two-stage pattern is everywhere">
+  VQ-VAE plus an autoregressive prior, a speech codec plus a token model, latent diffusion. In every
+  case a cheap codec removes perceptual redundancy and an expensive model handles semantics — and in
+  every case the codec's reconstruction quality is the ceiling on the whole system.
+</Callout>
+
+## Numbers worth memorizing
+
+| Quantity                       | Value                                                    |
+| ------------------------------ | -------------------------------------------------------- |
+| SD 1.x/2.x latent              | $8\times$ downsample, 4 channels                          |
+| Element reduction              | $512^2 \times 3 \to 64^2 \times 4$ = **48×**              |
+| SDXL                           | same $8\times$/4ch, better-trained decoder                |
+| SD3 / Flux                     | $8\times$, **16 channels** — higher ceiling               |
+| **Scaling factor**             | **0.18215** (SD 1.x) — normalises latent std to ~1        |
+| KL weight                      | $\sim10^{-6}$ — regularisation only, not a real prior     |
+| Autoencoder losses             | L1/L2 + LPIPS perceptual + patch GAN                      |
+| Reconstruction ceiling         | ~24–26 dB PSNR at 8×/4ch; higher with 16ch                |
+| Decoder cost                   | one pass, ~1 NFE-equivalent — amortised over all steps    |
+
+Where the 8×/4ch codec reliably fails:
+
+| Content                | Why                                                  |
+| ---------------------- | ---------------------------------------------------- |
+| Small text             | high-frequency, semantically brittle                 |
+| Faces at small scale   | perceptually sensitive, few pixels                   |
+| Regular fine texture   | aliases under downsampling                           |
+| Thin high-contrast lines | ringing on reconstruct                             |
+| Flat gradients         | banding, from limited latent precision               |
+
+<Callout type="trap" title="forgetting the scaling factor">
+  The raw encoder output has standard deviation well away from 1; multiplying by 0.18215 puts it
+  where the noise schedule expects. Skip it and every SNR in your schedule means something different
+  from what it means in the reference implementation — the model trains, badly, and the failure
+  looks like a schedule problem.
+</Callout>
+
+## Critical thinking
+
+<Probe q="Your model produces mangled text. What is the first experiment?">
+
+Round-trip a real image through the autoencoder and look at the text. No diffusion, no sampling —
+just `decode(encode(x))`.
+
+If the text is already mangled, the diffusion model is irrelevant to this failure. The encoder
+discarded the information and no amount of training, guidance or steps can recover what the target
+representation does not contain. Your options are all at the codec level: more latent channels (the
+SD3/Flux move from 4 to 16 is largely about this), less spatial downsampling, a decoder fine-tuned
+on text-heavy data, or a separate super-resolution or text-rendering stage.
+
+If the round trip is clean and only generated text is wrong, then it is a modelling problem, and the
+usual suspects apply — text encoder quality, training data with legible text, resolution and
+schedule (Module 3), and whether the model has enough capacity at the relevant noise band
+(Module 2).
+
+The reason to insist on this experiment is that the two failures look identical in the output and
+have completely disjoint fixes. Teams routinely spend weeks on the diffusion model for a problem
+that a two-line script would have localised to the codec. The generalisation: **in any multi-stage
+system, bound each stage's contribution before optimising any of them**, and the cheapest bound is
+usually to run the stage in isolation on real data.
+
+</Probe>
+
+<Probe q="Why is the KL weight so small? Is the latent space really a well-behaved Gaussian?">
+
+The KL weight is around $10^{-6}$, which is orders of magnitude below what a VAE trained as a
+generative model would use. That is deliberate: the KL term here is not buying a meaningful prior,
+it is only preventing the latent scale from drifting arbitrarily during training. A large KL would
+force the latent toward $\mathcal{N}(0,I)$ and destroy reconstruction quality — precisely the
+trade-off that makes plain VAEs blurry.
+
+So no, the latent space is *not* a well-behaved isotropic Gaussian, and this matters practically:
+
+- **You cannot sample the latent directly.** The whole point of the diffusion model is to learn the
+  actual, complicated distribution that the encoder induces.
+- **The scaling factor is required** because the latent's natural scale is not 1. 0.18215 for SD 1.x
+  is an empirical constant, and a different autoencoder needs a different one.
+- **Latent channels are not independent or identically scaled**, which is why per-channel statistics
+  are worth checking when adapting a schedule to a new codec.
+
+The clean way to hold it: the autoencoder is a **codec**, and the KL is a *conditioning*
+regulariser on that codec's output, not a prior. Calling it a VAE is historical; nothing about the
+system relies on its variational interpretation, and SD3-era models are increasingly explicit about
+treating it as a learned compressor.
+
+</Probe>
+
+<Probe q="Four latent channels to sixteen. What does that buy and what does it cost?">
+
+**Buys:** a higher reconstruction ceiling, which lifts every downstream failure at once. Four times
+the latent capacity per spatial position dramatically improves exactly the content that 4-channel
+codecs mangle — small text, faces, fine texture. Since the ceiling bounds the whole system, this is
+one of the few changes that improves everything simultaneously rather than trading one thing for
+another.
+
+**Costs:**
+
+1. **A retrained diffusion model.** The latent distribution changes completely, so nothing transfers
+   — not the weights, not the schedule, not the scaling factor. This is the real cost and it is why
+   the change happens at major version boundaries.
+2. **More diffusion compute per step**, since the tensor is 4× larger in the channel dimension.
+   Cheaper than it sounds, because attention cost is driven by sequence length ($64\times64$
+   positions), which is unchanged — the increase lands in convolutions and projections.
+3. **Schedule recalibration.** More channels means more information survives a given noise level, so
+   the effective SNR shifts — Module 3's resolution argument applied to channel depth. Reusing a
+   4-channel schedule under-noises the model.
+
+The pattern is a familiar one: the ceiling was in the codec, so raising the codec raises everything,
+and the price is that the two stages are coupled tightly enough that you must retrain the second
+whenever you change the first.
+
+</Probe>
+
+<Probe q="Where should you spend an extra 30% of inference budget: better decoder, more steps, or higher guidance?">
+
+Measure first, because the answer is genuinely system-dependent and the three are not comparable
+without data.
+
+**Bound each contribution:**
+
+- **Codec ceiling:** round-trip real images and compute your quality metric. That number is the best
+  your system can ever do.
+- **Discretisation:** sample at very high NFE and compare against your operating point (Module 5).
+  The gap is what more steps could recover.
+- **Guidance:** sweep $w$ and look at quality against diversity, remembering that guidance costs
+  2 NFE per step (Module 6).
+
+**Then the usual finding.** The decoder runs *once* per image while the diffusion model runs once
+per NFE, so decoder improvements are extraordinarily cheap per unit of quality — a fine-tuned
+decoder costing one extra forward pass is often worth more than four extra diffusion steps costing
+four. This asymmetry is under-exploited, and decoder fine-tuning on domain data is one of the
+highest-return interventions available.
+
+More steps has sharply diminishing returns past ~20 with a good solver. Guidance is usually already
+past its optimum in shipped configurations, and *lowering* it while spending the freed NFE elsewhere
+often improves both quality and diversity.
+
+The framing: the decoder is a fixed cost and the diffusion model is a per-step cost, so at any
+non-trivial NFE the cost-effectiveness ratio strongly favours the decoder. Very few teams sweep it.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="Quantify the compression and say what the KL term is actually for.">
+
+$512^2\times3 \to 64^2\times4$ at 8× downsampling with 4 channels: a **48×** reduction in elements,
+and more than that in attention cost since it is quadratic in sequence length. The KL weight
+(~$10^{-6}$) is regularisation to stop the latent scale drifting — not a meaningful prior. A large
+KL would force the latent toward $\mathcal{N}(0,I)$ and reintroduce VAE blur.
+
+</SelfCheck>
+
+<SelfCheck q="Your samples have mangled text. First experiment, and why?">
+
+Round-trip a real image: `decode(encode(x))` and inspect the text. If it is already mangled, the
+encoder discarded the information and no diffusion training can recover it — fix the codec (more
+channels, less downsampling, fine-tuned decoder, separate text stage). If the round trip is clean,
+it is a modelling problem. The two failures look identical in output and have disjoint fixes.
+
+</SelfCheck>
+
+<SelfCheck q="Why is the 0.18215 scaling factor necessary?">
+
+The raw encoder output's standard deviation is not 1, and the noise schedule assumes unit-ish scale.
+Multiplying by 0.18215 (for SD 1.x) puts the latent where the schedule expects, so each $\bar\alpha_t$
+corresponds to the intended SNR. Omit it and every noise level means something different from the
+reference implementation; the model trains badly and the symptom masquerades as a schedule problem.
+A different autoencoder needs a different constant.
+
+</SelfCheck>
+
+<SelfCheck q="4 → 16 latent channels: buys and costs?">
+
+Buys a higher reconstruction ceiling, which lifts every downstream failure at once — text, faces,
+fine texture — because the ceiling bounds the whole system. Costs: a fully retrained diffusion model
+(nothing transfers), more compute per step in convolutions and projections though attention cost is
+unchanged since sequence length is the same, and schedule recalibration because more channels means
+more information survives a given noise level.
+
+</SelfCheck>
+
+<SelfCheck q="Why is decoder improvement usually the best value per unit of compute?">
+
+Because the decoder runs **once per image** while the diffusion model runs once per NFE. At 20+ NFE,
+one extra decoder pass costs a twentieth of what one extra diffusion step-equivalent costs across
+the sample. A decoder fine-tuned on domain data often beats four more diffusion steps outright, and
+it also raises the ceiling rather than closing a gap to it. It is one of the least-swept knobs in
+practice.
+
+</SelfCheck>

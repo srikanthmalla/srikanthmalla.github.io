@@ -1,0 +1,26 @@
+---
+import { render } from 'astro:content';
+import EntryLayout from '../../layouts/EntryLayout.astro';
+import { SERIES, seriesEntries, neighbours, slugOf } from '../../lib/series';
+
+export async function getStaticPaths() {
+  const paths = [];
+  for (const s of SERIES) {
+    const entries = await seriesEntries(s.id);
+    for (const entry of entries) {
+      paths.push({
+        params: { series: s.id, slug: slugOf(entry) },
+        props: { seriesId: s.id, entry, ...neighbours(entries, entry.id) },
+      });
+    }
+  }
+  return paths;
+}
+
+const { seriesId, entry, prev, next } = Astro.props;
+const { Content, headings } = await render(entry);
+---
+
+<EntryLayout seriesId={seriesId} entry={entry} headings={headings} prev={prev} next={next}>
+  <Content />
+</EntryLayout>

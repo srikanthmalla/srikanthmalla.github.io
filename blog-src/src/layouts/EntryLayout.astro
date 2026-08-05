@@ -1,0 +1,208 @@
+---
+import BaseLayout from './BaseLayout.astro';
+import { getSeries, slugOf, type Entry } from '../lib/series';
+import type { MarkdownHeading } from 'astro';
+
+interface Props {
+  seriesId: string;
+  entry: Entry;
+  headings: MarkdownHeading[];
+  prev?: Entry;
+  next?: Entry;
+}
+
+const { seriesId, entry, headings, prev, next } = Astro.props;
+const { n, title, blurb, part, minutes } = entry.data;
+const series = getSeries(seriesId);
+const partMeta = series.parts.find((p) => p.id === part)!;
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const href = (e: Entry) => `${base}/${seriesId}/${slugOf(e)}/`;
+---
+
+<BaseLayout
+  title={`${n}. ${title} — ${series.title}`}
+  description={blurb}
+  seriesId={seriesId}
+  current={entry.id}
+  headings={headings}
+  crumb={`Part ${part} · ${partMeta.title} › ${title}`}
+>
+  <article class="wrap" data-article>
+    <header class="mhead">
+      <p class="mhead-kicker">
+        <span class="mhead-n">{series.unit} {n}</span>
+        <span class="mhead-dot">·</span>
+        Part {part} — {partMeta.title}
+        <span class="mhead-dot">·</span>
+        {minutes} min
+      </p>
+      <h1 class="mhead-title">{title}</h1>
+      <p class="mhead-blurb">{blurb}</p>
+    </header>
+
+    <div class="prose">
+      <slot />
+    </div>
+
+    <footer class="mfoot">
+      <button class="mark" data-mark={entry.id} aria-pressed="false">Mark as reviewed</button>
+
+      <nav class="pager">
+        {
+          prev ? (
+            <a class="pager-link" href={href(prev)} data-prev>
+              <span class="pager-dir">← Previous</span>
+              <span class="pager-title">
+                {prev.data.n}. {prev.data.title}
+              </span>
+            </a>
+          ) : (
+            <span />
+          )
+        }
+        {
+          next ? (
+            <a class="pager-link is-next" href={href(next)} data-next>
+              <span class="pager-dir">Next →</span>
+              <span class="pager-title">
+                {next.data.n}. {next.data.title}
+              </span>
+            </a>
+          ) : (
+            <span />
+          )
+        }
+      </nav>
+    </footer>
+  </article>
+</BaseLayout>
+
+<style>
+  .wrap {
+    padding: 3rem 1.25rem 6rem;
+    max-width: 68ch;
+    margin-inline: auto;
+  }
+
+  @media (min-width: 1024px) {
+    .wrap {
+      /* Centred in the space left of the rail, book-style. */
+      padding-inline: 3rem;
+      max-width: calc(68ch + 6rem);
+    }
+  }
+
+  .mhead {
+    padding-block-end: 1.75rem;
+    margin-block-end: 0.5rem;
+    border-block-end: 1px solid var(--rule);
+  }
+
+  .mhead-kicker {
+    font-family: var(--font-sans);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-faint);
+    margin: 0 0 0.85rem;
+  }
+
+  .mhead-n {
+    color: var(--accent);
+    font-weight: 640;
+  }
+
+  .mhead-dot {
+    padding-inline: 0.35rem;
+    opacity: 0.5;
+  }
+
+  .mhead-title {
+    font-family: var(--font-sans);
+    font-size: clamp(1.75rem, 1.3rem + 1.9vw, 2.375rem);
+    font-weight: 660;
+    letter-spacing: -0.027em;
+    line-height: 1.12;
+    color: var(--ink-strong);
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  .mhead-blurb {
+    margin: 0.85rem 0 0;
+    font-size: 1.0625rem;
+    line-height: 1.6;
+    color: var(--ink-muted);
+    max-width: 58ch;
+  }
+
+  .mfoot {
+    margin-block-start: 4rem;
+    padding-block-start: 1.75rem;
+    border-block-start: 1px solid var(--rule);
+  }
+
+  .mark {
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    font-weight: 550;
+    padding: 0.4rem 0.85rem;
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+    background: var(--bg-raised);
+    color: var(--ink-muted);
+    cursor: pointer;
+  }
+
+  .mark:hover {
+    color: var(--ink-strong);
+    border-color: var(--ink-faint);
+  }
+
+  .mark[aria-pressed='true'] {
+    color: var(--bridge);
+    border-color: color-mix(in oklab, var(--bridge) 45%, var(--rule));
+  }
+
+  .pager {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-block-start: 2rem;
+  }
+
+  .pager-link {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.75rem 0.9rem;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    text-decoration: none;
+    font-family: var(--font-sans);
+  }
+
+  .pager-link:hover {
+    border-color: var(--ink-faint);
+    background: var(--bg-raised);
+  }
+
+  .pager-link.is-next {
+    text-align: end;
+  }
+
+  .pager-dir {
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--ink-faint);
+  }
+
+  .pager-title {
+    font-size: 0.8125rem;
+    font-weight: 550;
+    line-height: 1.35;
+    color: var(--ink-strong);
+  }
+</style>

@@ -1,0 +1,258 @@
+---
+n: 5
+title: 'Tail latency and determinism'
+blurb: 'Why the mean describes no request that ever happened, where jitter actually comes from, and the measurement error that makes your p99 a fiction.'
+part: 'B'
+minutes: 16
+draft: false
+tags:
+  ['p99', 'tail latency', 'jitter', 'huge pages', 'coordinated omission', 'DVFS', 'C-states', 'core pinning', 'busy poll', 'SMI']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+The mean is the wrong statistic because the distribution is not one distribution. It is a fast path
+plus a set of rare, large excursions caused by machinery that has nothing to do with your code. The
+mean blends them into a number that describes no request that ever happened: with 99% of requests
+at 2 µs and 1% at 200 µs the mean is 4 µs, a value that occurs never. What you actually want is
+p50 to tell you whether the fast path is fast, p99 and p99.9 to tell you how often you fall off it,
+and the **ratio p99/p50 as the jitter metric** — because a 20× ratio and a 1.2× ratio are different
+engineering problems even at identical means.
+
+Tails matter more than intuition allows because they amplify. A request touching $N$ independent
+components experiences roughly the maximum of $N$ latencies, so the probability of hitting at least
+one p99 event is $1 - 0.99^N$: 9.6% at $N = 10$, **63% at $N = 100$**. In a fan-out system the p99
+of a component becomes close to the *median* of the request. This is also why Module 4's barrier
+warning matters — every join is a max, and every max is a tail sample.
+
+Determinism is achieved by **removing mechanisms, not adding them**. Nearly every jitter source is
+some piece of adaptive machinery doing bookkeeping on your behalf: demand paging, TLB fills,
+interrupts, scheduler preemption, frequency and C-state transitions, cache eviction by a neighbour,
+allocator slow paths, and on x86 the System Management Interrupt, which steals the core for
+hundreds of microseconds and is invisible to the operating system entirely. So the fast path
+preallocates everything, uses explicit huge pages, pins to isolated cores, busy-polls instead of
+taking interrupts, disables frequency and idle-state transitions, never takes a lock and never
+enters the kernel. And it is kept warm, because a cold instruction cache, a cold branch predictor
+and a cold TLB are together worth tens of microseconds on the first request through.
+
+<Callout type="trap" title="coordinated omission">
+  A closed-loop load generator sends a request, waits for the reply, then sends the next. When the
+  system stalls, the generator stalls too — so a one-second stall is recorded as **one** slow
+  sample instead of the thousand requests that were due during it. Your p99 then describes a system
+  that does not exist. Fix it by generating open-loop against an intended schedule, or by
+  correcting in the recorder (`recordValueWithExpectedInterval`).
+</Callout>
+
+## Numbers worth memorizing
+
+| Jitter source                     | Cost                    | Notes                                    |
+| --------------------------------- | ----------------------- | ---------------------------------------- |
+| Timer tick                        | 1–4 µs, every 1–4 ms    | removed by `nohz_full`                   |
+| Context switch                    | 1–5 µs direct           | plus 10s of µs of cache/TLB after-effects |
+| Minor page fault                  | 1–2 µs                  | prevented by pre-faulting + `mlock`      |
+| Major page fault                  | milliseconds            | never acceptable on a fast path          |
+| TLB miss (page walk)              | 100–500 ns              | up to four dependent memory accesses     |
+| Interrupt delivery                | 1–3 µs                  | before your handler runs                 |
+| C1 exit                           | ~1 µs                   | tolerable                                |
+| **C6 exit**                       | **50–100 µs**           | the classic idle-system disaster         |
+| DVFS transition                   | 10s of µs               | plus AVX license changes (Module 6)      |
+| **SMI**                           | **100 µs – 1 ms**       | invisible to the OS; count via MSR       |
+| NUMA remote access                | +50–80%                 | Module 7                                 |
+
+Coverage and measurement:
+
+| Quantity                        | Value                             | Consequence                       |
+| ------------------------------- | --------------------------------- | --------------------------------- |
+| dTLB reach, 4 KB pages          | ~1500 entries ≈ 6 MB              | any larger working set walks constantly |
+| dTLB reach, 2 MB pages          | GBs                               | the reason huge pages matter      |
+| Samples needed for p99          | ≥ 10⁴                             | 10–100× the reciprocal of the tail probability |
+| Samples needed for p99.9        | ≥ 10⁵–10⁶                         | quoting p99.9 from 1000 samples is noise |
+| Tail amplification, $N$ hops    | $1-(1-p)^N$                       | 63% at $p=0.01$, $N=100$          |
+
+## Critical thinking
+
+<Probe q="p50 is 2 µs and p99 is 40 µs. Where do you look, and in what order?">
+
+A 20× ratio means you are *falling off* the fast path rather than being slow on it, so do not
+profile the fast path — find the mechanism that ejects you from it. The discriminator is the
+**shape** of the latency-versus-time plot, which is why the first action is always to plot it
+rather than to summarise it.
+
+- **Periodic spikes** at a fixed interval: timer tick (1–4 ms), scheduler (typically ~10 ms), or a
+  housekeeping thread. Fix with `nohz_full`, `isolcpus`, and moving housekeeping off the core.
+- **Isolated large spikes with no pattern**: SMI or C-state exit. Read the SMI counter MSR before
+  and after; check `powertop` or the `cpuidle` sysfs residency counters. An SMI is the only one
+  where the OS itself cannot see the theft, so an unexplained gap with no OS-visible cause is
+  strong evidence.
+- **First-N-requests slow**: cold caches, cold branch predictors, lazy allocation, or a JIT. Fix by
+  warming (next probe).
+- **Correlated with load**: queueing, which is Module 4 and means you are running at too high a
+  $\rho$.
+- **Correlated with a neighbour's activity**: cache or memory-bandwidth interference. Check whether
+  the noisy process shares an L3 or a memory controller.
+
+Then confirm with counters rather than inference: `perf stat` for context switches, page faults and
+migrations; `/proc/interrupts` for IRQ affinity; C-state residency; SMI count.
+
+</Probe>
+
+<Probe q="How do you keep a path warm that only executes when the market moves?">
+
+Run it. Continuously, with synthetic input, with the final side effect suppressed.
+
+This is standard practice and the reason is that "warm" means five different caches at once:
+the L1 instruction cache holding the code, the L1 data cache holding the book and feature state,
+the TLB entries covering both, the branch predictor and BTB entries for every branch on the path,
+and on the device side the NIC's descriptor rings and the DMA mappings. Only executing the real
+path populates all of them correctly.
+
+Two failure modes worth knowing:
+
+- **Warming the wrong path.** A synthetic loop that exercises *similar* code warms different lines
+  and can *evict* the ones you needed. The warming path must be the production path with the send
+  gated at the last possible stage, not a reimplementation of it.
+- **Warming so hard you pollute.** Pushing large synthetic datasets through evicts the real state.
+  The dummy input should look like real input in size and access pattern.
+
+The general principle is that a fast path with a warm/cold bimodality has two performance regimes,
+and if the rare, valuable event is the one that finds you cold, your measured p50 is describing the
+case you do not care about. Warming collapses the bimodality, which is worth more than any
+constant-factor optimisation of the warm case.
+
+</Probe>
+
+<Probe q="Busy-poll or interrupts? Argue it with numbers, then say what it costs you.">
+
+Busy-poll, for anything with a budget in the low microseconds, and the numbers are not close.
+
+An interrupt costs 1–3 µs to deliver before your handler executes. Worse, an idle core is usually
+in a deep C-state, and **C6 exit is 50–100 µs** — so the very idleness that makes interrupts seem
+efficient is what makes them catastrophic. Then you pay a wakeup, possibly a context switch, and
+you resume with cold caches.
+
+Polling keeps the core in C0, keeps every cache and predictor warm, and removes the wakeup path
+entirely. Latency becomes the poll interval, which is a few hundred nanoseconds if the loop is
+tight.
+
+What it costs:
+
+- **A whole core per stream**, at 100% CPU, forever.
+- **Power and heat**, which is not merely an operating expense: sustained power can push a package
+  into thermal or turbo limits and downclock *neighbouring* cores, so a polling loop can create
+  jitter elsewhere.
+- **No graceful degradation.** With interrupts, an overloaded system slows down; with polling it
+  behaves identically until it drops.
+
+For a millisecond-scale service, interrupts are correct and polling is waste. The crossover is
+around the point where wakeup cost becomes comparable to the deadline, so roughly tens of
+microseconds.
+
+</Probe>
+
+<Probe q="Make coordinated omission concrete with numbers.">
+
+Take a system that normally serves a request in 1 ms, and a closed-loop generator intending 1000
+requests per second for 100 seconds. At $t = 50$ s the system stalls for 1 second.
+
+**What the generator records.** It issues a request, which takes 1 s. Then it resumes. Total
+samples: about 99,000 at 1 ms plus one at 1000 ms. p99 is 1 ms. p99.9 is 1 ms. The single slow
+sample sits at the 99.999th percentile and disappears.
+
+**What actually happened.** During that second, 1000 requests were *due*. Had they been sent, the
+first would have waited 1000 ms, the next 999 ms, and so on down to 1 ms. The true distribution
+contains 1000 samples spread from 1 ms to 1 s, so the real p99 is around **500 ms**, not 1 ms.
+
+The error is 500×, and it is systematic rather than noisy: it always makes the system look better,
+and it hides exactly the stalls you built the measurement to find. The generator stopped sending
+because the system stopped responding, so the system's failure suppressed its own evidence.
+
+Two fixes: generate **open-loop**, sending on a schedule regardless of outstanding replies (and
+measuring from intended send time); or correct in the recorder, which is what HdrHistogram's
+`recordValueWithExpectedInterval` does by synthesising the missing samples. Open-loop is better,
+because a corrected recorder still cannot observe backpressure the generator never applied.
+
+</Probe>
+
+<Probe q="Huge pages: why they help, and the configuration that turns them into a tail-latency disaster.">
+
+They help because of **TLB reach**. Roughly 1500 dTLB entries at 4 KB covers about 6 MB; a working
+set larger than that page-walks constantly, and each walk is up to four dependent memory accesses
+at 100–500 ns. At 2 MB per page the same entries cover gigabytes, and the walks stop.
+
+The disaster is **transparent huge pages set to `always`**. THP allocates huge pages
+opportunistically, and when memory is fragmented it will run compaction — moving pages around to
+assemble a contiguous 2 MB region — **synchronously, inside your page fault**. That is a
+multi-millisecond stall appearing at an unpredictable moment in a path budgeted in microseconds.
+The mechanism designed to improve your mean latency is one of the worst tail-latency sources on a
+Linux box, and it is on by default on many distributions.
+
+The correct configuration is explicit rather than transparent: reserve hugetlbfs pages at boot
+while memory is unfragmented, map them explicitly, pre-fault and `mlock` everything, and set THP to
+`never` or `madvise` so nothing is done on your behalf during a fault.
+
+This is the module's thesis in one setting. The adaptive, mean-optimising mechanism is the enemy;
+you want the allocation decided once, up front, deterministically, and never revisited.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="Why is the mean the wrong statistic, and what do you report instead?">
+
+Because the distribution is bimodal — a fast path plus rare large excursions — so the mean names a
+value that never occurs. With 99% at 2 µs and 1% at 200 µs the mean is 4 µs, which describes no
+request. Report p50 (is the fast path fast), p99 and p99.9 (how often do you leave it), and the
+**p99/p50 ratio** as the jitter metric, since equal means can hide very different distributions.
+
+</SelfCheck>
+
+<SelfCheck q="A request touches 100 services each with a 1% chance of a slow response. How often is it slow?">
+
+$1 - 0.99^{100} \approx 63\%$. The p99 of a component becomes roughly the median of the fan-out
+request. This is why tail latency dominates distributed system design, and it is the same
+mathematics as Module 4's warning that a barrier's latency is the maximum over its participants.
+
+</SelfCheck>
+
+<SelfCheck q="Rank C6 exit, an interrupt, a minor page fault and a context switch by cost.">
+
+C6 exit **50–100 µs**; context switch 1–5 µs direct plus tens of microseconds of cache and TLB
+after-effects; interrupt delivery 1–3 µs; minor page fault 1–2 µs. The deep C-state dominates by
+more than an order of magnitude, which is the argument for busy-polling: the idleness that looks
+efficient is what creates the worst excursion.
+
+</SelfCheck>
+
+<SelfCheck q="Explain coordinated omission and give the size of the error it produces.">
+
+A closed-loop generator waits for each reply before sending the next, so when the system stalls the
+generator stalls with it and the stall is recorded as one slow sample rather than the many requests
+that were due during it. In the standard example — 1000 req/s, a 1 s stall — the measured p99 is
+1 ms while the true p99 is about 500 ms, an error of roughly **500×**, and always in the flattering
+direction. Fix by generating open-loop against an intended schedule, or by correcting in the
+recorder.
+
+</SelfCheck>
+
+<SelfCheck q="Why can transparent huge pages make p99 dramatically worse?">
+
+Because with `always`, THP will synchronously compact memory inside a page fault to assemble a
+contiguous 2 MB region, producing multi-millisecond stalls at unpredictable times. Use explicit
+hugetlbfs pages reserved at boot, pre-faulted and `mlock`ed, with THP set to `never` or `madvise` —
+so the allocation decision is made once, deterministically, rather than adaptively during your hot
+path.
+
+</SelfCheck>
+
+<SelfCheck q="Name the jitter source the operating system itself cannot observe.">
+
+The System Management Interrupt. Firmware takes the core into System Management Mode for anything
+from 100 µs to a millisecond, and the OS has no visibility into it — so an unexplained latency gap
+with no corresponding OS counter movement is strong evidence of one. It is countable through a
+model-specific register, and mitigated by BIOS configuration rather than by anything in software.
+
+</SelfCheck>

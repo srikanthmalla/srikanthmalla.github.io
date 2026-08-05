@@ -1,0 +1,258 @@
+---
+n: 4
+title: 'Sampling is solving an ODE'
+blurb: 'The reverse SDE has a deterministic twin with the same marginals. Once you see the probability-flow ODE, DDIM stops being a trick and becomes Euler.'
+part: 'G'
+minutes: 15
+draft: false
+tags: ['DDPM', 'DDIM', 'probability flow ODE', 'reverse SDE', 'sampler', 'determinism', 'inversion']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+The forward process is an SDE, and every diffusion SDE has a reverse-time SDE that undoes it, whose
+drift needs exactly one unknown quantity — the score, which Module 1 showed your network already
+estimates. That reverse SDE is DDPM sampling. The important result is the next one: **there is a
+deterministic ODE with the same marginal distributions at every time**,
+
+$$
+\frac{dx}{dt} = f(x,t) - \tfrac{1}{2} g(t)^2 \nabla_x \log p_t(x),
+$$
+
+the *probability-flow ODE*. Same marginals means that if you start from the same prior and
+integrate it exactly, you sample from the same distribution as the SDE — you have simply removed
+the injected noise and put the randomness entirely in the initial condition.
+
+That reframing pays immediately, and it is worth being explicit about why. Sampling is now
+**numerical integration of a smooth vector field**, so the entire ODE-solver literature applies:
+step-size control, higher-order methods, local truncation error, stiffness. The step count stops
+being a mysterious quality knob and becomes a discretisation budget with known error behaviour.
+DDIM, which was originally derived as a non-Markovian variant of DDPM, turns out to be exactly the
+first-order Euler discretisation of this ODE in a particular parameterisation — which is why it
+works with far fewer steps than DDPM and why its output is a deterministic function of the initial
+noise.
+
+Determinism is the second payoff and it is not merely aesthetic. A deterministic map from $x_T$ to
+$x_0$ is invertible: run the ODE backwards from a real image to recover the noise that would
+produce it (DDIM inversion), which is the basis of real-image editing, and it makes the latent
+space genuinely navigable — interpolating between two noises produces a smooth semantic
+interpolation, which is not true of the stochastic sampler. The cost is that stochasticity was
+doing something useful: injected noise **corrects accumulated error**, because it keeps pulling the
+trajectory back toward the true marginal. Purely deterministic sampling has no such mechanism, so
+its errors compound.
+
+<Callout type="bridge" title="the same idea you know from normalizing flows">
+  The probability-flow ODE is a continuous normalising flow whose vector field you obtained by
+  score matching instead of by maximum likelihood through the change-of-variables formula. That is
+  why you can compute exact likelihoods with it, and why flow matching (Module 9's neighbour) ends
+  up looking so similar.
+</Callout>
+
+## Numbers worth memorizing
+
+| Sampler                 | Order | Steps for good quality | Deterministic |
+| ----------------------- | ----- | ---------------------- | ------------- |
+| DDPM (ancestral)        | 1     | 250–1000               | no            |
+| **DDIM**                | 1     | 20–50                  | yes ($\eta=0$) |
+| Heun / EDM              | 2     | 20–36 (2 NFE per step) | yes           |
+| DPM-Solver++ (2M)       | 2     | **15–25**              | yes           |
+| UniPC                   | 2–3   | 10–20                  | yes           |
+| Ancestral / SDE variants| 1     | 30–100                 | no            |
+
+| Concept                      | Statement                                                    |
+| ---------------------------- | ------------------------------------------------------------ |
+| Reverse SDE drift            | $f - g^2\nabla\log p_t$, plus $g\,d\bar w$                    |
+| Probability-flow ODE drift   | $f - \tfrac12 g^2\nabla\log p_t$ — the factor of two is the whole difference |
+| DDIM update                  | $x_{t-1} = \sqrt{\bar\alpha_{t-1}}\hat x_0 + \sqrt{1-\bar\alpha_{t-1}}\,\hat\varepsilon$ |
+| DDIM $\eta$                  | $0$ = ODE, $1$ = DDPM; interpolates                           |
+| NFE                          | network evaluations — the only cost that matters              |
+| Local truncation error       | $O(h^{p+1})$ per step, $O(h^p)$ global, for order $p$         |
+
+<Callout type="trap" title="counting steps instead of NFE">
+  A second-order solver evaluates the network twice per step. Twenty Heun steps cost the same as
+  forty DDIM steps. Every sampler comparison must be made at equal **NFE**, and a surprising number
+  of published speedups evaporate when you do.
+</Callout>
+
+## Critical thinking
+
+<Probe q="If the ODE and the SDE have the same marginals, why keep the SDE at all?">
+
+Because "same marginals" holds for *exact* integration, and you are not integrating exactly.
+
+The stochastic sampler has a self-correcting property. Each step injects fresh noise and then
+partially denoises it, which repeatedly re-projects the trajectory toward the true marginal at that
+noise level. If a step lands you slightly off the manifold of plausible $x_t$, the next injection
+plus denoise pulls you back. Errors do not accumulate so much as get repeatedly washed out.
+
+The deterministic sampler has no such mechanism. Every local truncation error is carried forward and
+compounds, so with too few steps you get systematic artefacts rather than noisy ones — and because
+the map is deterministic, those artefacts are reproducible rather than averaging away.
+
+The practical trade, then:
+
+- **Few steps, need speed** → deterministic, higher-order solver. Error is dominated by
+  discretisation, and higher order attacks it directly.
+- **Many steps, want maximum quality/diversity** → some stochasticity. EDM's "churn" parameter
+  makes this explicit, adding a controlled amount of noise per step as a tunable knob rather than a
+  binary choice.
+- **Need invertibility, editing, or reproducibility** → deterministic, no option.
+
+EDM's framing is the right one: stochasticity is not part of the model, it is a **solver setting**
+that trades error correction against added variance, and it should be tuned like a step size.
+
+</Probe>
+
+<Probe q="Show that DDIM is Euler on the probability-flow ODE.">
+
+Write the DDIM update in its standard form:
+
+$$
+x_{t-1} = \sqrt{\bar\alpha_{t-1}}\,\hat x_0(x_t) + \sqrt{1-\bar\alpha_{t-1}}\,\hat\varepsilon(x_t),
+\qquad
+\hat x_0 = \frac{x_t - \sqrt{1-\bar\alpha_t}\,\hat\varepsilon}{\sqrt{\bar\alpha_t}} .
+$$
+
+Now change variables to $\bar x = x/\sqrt{\bar\alpha}$ and $\sigma = \sqrt{(1-\bar\alpha)/\bar\alpha}$
+— the VE coordinates from Module 1. Substituting, the update collapses to
+
+$$
+\bar x_{t-1} = \bar x_t + (\sigma_{t-1} - \sigma_t)\,\hat\varepsilon(x_t),
+$$
+
+which is precisely an Euler step of $d\bar x/d\sigma = \hat\varepsilon$ with step size
+$\sigma_{t-1}-\sigma_t$. And $\hat\varepsilon$ is the score up to a factor, so this is the
+probability-flow ODE.
+
+Three things follow that are not obvious from the original derivation:
+
+- **The step count is a discretisation budget**, so error is $O(h)$ globally and halving the step
+  size roughly halves the error. Higher-order solvers do better than that, which is the entire
+  point of Module 5.
+- **Non-uniform spacing is legitimate and expected** — Module 3's step placement is adaptive
+  quadrature, not a hack.
+- **DDIM is the worst solver you would ever choose** given the same NFE budget, because it is
+  first-order. It survives as a default only because it is simple and was first.
+
+</Probe>
+
+<Probe q="What does DDIM inversion actually give you, and where does it break?">
+
+It gives an approximate inverse of the sampling map: integrate the ODE *forward* in noise from a
+real image $x_0$ to obtain the $x_T$ that would regenerate it. That noise is then an editable
+handle — change the prompt, re-sample from the same $x_T$, and you get a modified version of the
+same image rather than an unrelated one. This is the foundation of most real-image editing
+pipelines.
+
+Where it breaks, in the order you will hit the problems:
+
+1. **Guidance.** Inversion assumes the vector field you integrate backward is the one you will
+   integrate forward. With classifier-free guidance at scale $w > 1$ (Module 6) the sampling field
+   is *not* the model's score field, so the round trip does not close. Reconstruction error grows
+   sharply with $w$, and this is why null-text inversion and its successors exist — they optimise
+   the unconditional embedding to make the round trip close under guidance.
+2. **Discretisation asymmetry.** Forward and reverse integration use the same step count but
+   linearise at different points, so the two trajectories differ at $O(h)$ even with perfect score.
+   More steps helps and costs linearly.
+3. **Off-manifold drift.** The recovered $x_T$ is usually not distributed like $\mathcal{N}(0,I)$;
+   it lands somewhere the model was never trained on, so edits can behave unpredictably.
+
+The framing that makes it tractable: inversion inherits every property of the solver. It is exact
+only in the limit of exact integration of the *same* field you will use going forward, and every
+deviation from that — guidance, step count, a different scheduler — shows up as reconstruction
+error.
+
+</Probe>
+
+<Probe q="How would you decide, empirically, whether your sampler or your model is the limiting factor?">
+
+Push the solver toward exactness and see whether the problem survives.
+
+**The test.** Sample with a high-order solver at very large NFE — say DPM-Solver++ at 200 steps, or
+Heun at 100 — and compare against your production setting. Anything that disappears was
+discretisation error; anything that remains is the model, and no sampler will fix it.
+
+That single experiment separates the two most commonly confused failure modes, and it is cheap
+because you only need enough samples to see the difference, not a full evaluation run.
+
+**Then localise it.** If it is the solver:
+
+- Sweep NFE and plot your metric. A curve still descending at your operating point means you are
+  simply under-integrating.
+- Compare solvers at **equal NFE**, never equal step count.
+- Check step placement (Module 3) before reaching for a fancier solver; misplaced steps often cost
+  more than solver order gains.
+
+If it is the model, the next question is which noise band is at fault, which sends you back to
+Module 2's per-$\lambda$ loss and Module 3's schedule.
+
+A useful sanity check on top: with a deterministic solver, fix the seed and vary only NFE. If the
+image's *content* changes rather than just its detail, you are integrating so coarsely that the
+trajectory is landing in a different basin — a much more serious regime than mere blur, and one
+that no amount of step tuning at the low-noise end will address.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="Write the probability-flow ODE and say what distinguishes it from the reverse SDE.">
+
+$dx/dt = f(x,t) - \tfrac12 g(t)^2\nabla_x \log p_t(x)$. The reverse SDE has $g^2$ rather than
+$\tfrac12 g^2$ in the drift, plus a $g\,d\bar w$ noise term. They share marginals at every $t$, so
+exact integration of either samples the same distribution — the ODE just moves all randomness into
+the initial condition.
+
+</SelfCheck>
+
+<SelfCheck q="Sketch why DDIM is Euler on that ODE.">
+
+In VE coordinates $\bar x = x/\sqrt{\bar\alpha}$, $\sigma = \sqrt{(1-\bar\alpha)/\bar\alpha}$, the
+DDIM update becomes $\bar x_{t-1} = \bar x_t + (\sigma_{t-1}-\sigma_t)\hat\varepsilon$ — an Euler
+step of $d\bar x/d\sigma = \hat\varepsilon$, and $\hat\varepsilon$ is the score up to a factor. So
+step count is a discretisation budget with $O(h)$ global error, non-uniform spacing is principled,
+and DDIM is the weakest solver you would pick at fixed NFE.
+
+</SelfCheck>
+
+<SelfCheck q="Why keep any stochasticity if the ODE has the same marginals?">
+
+Because equality of marginals assumes exact integration. Injected noise re-projects the trajectory
+toward the true marginal each step, washing out local error; the deterministic sampler compounds it
+into reproducible, systematic artefacts. So: few steps → deterministic higher-order; many steps and
+maximum quality → some churn; editing or reproducibility → deterministic necessarily. EDM treats
+stochasticity as a tunable solver setting rather than a property of the model.
+
+</SelfCheck>
+
+<SelfCheck q="Why must sampler comparisons be made at equal NFE?">
+
+Because a second-order solver evaluates the network twice per step, so 20 Heun steps cost the same
+as 40 DDIM steps. NFE is the only quantity that maps to wall-clock and money; step count does not.
+Comparisons at equal step count systematically flatter higher-order methods, and a number of
+published speedups do not survive the correction.
+
+</SelfCheck>
+
+<SelfCheck q="Name the main reason DDIM inversion fails to round-trip.">
+
+Classifier-free guidance. Inversion assumes you integrate back along the same vector field you will
+integrate forward, but at guidance scale $w>1$ the sampling field is not the model's score field,
+so the round trip does not close and reconstruction error grows with $w$. Secondary causes:
+$O(h)$ discretisation asymmetry between the two directions, and the recovered $x_T$ not being
+distributed like $\mathcal{N}(0,I)$.
+
+</SelfCheck>
+
+<SelfCheck q="How do you tell whether the sampler or the model is your bottleneck?">
+
+Sample at very high NFE with a high-order solver and compare against production settings. Whatever
+disappears was discretisation error; whatever remains is the model. Then sweep NFE and plot the
+metric, compare solvers at equal NFE, and check step placement before reaching for a fancier
+solver. If content rather than detail changes as NFE varies at fixed seed, you are integrating so
+coarsely that trajectories land in different basins.
+
+</SelfCheck>

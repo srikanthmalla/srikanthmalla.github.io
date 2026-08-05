@@ -1,0 +1,244 @@
+---
+n: 6
+title: 'Guidance, and what it does to the distribution'
+blurb: 'CFG does not sample a sharpened posterior — it samples from no normalized distribution at all. Why it works anyway, and what it costs.'
+part: 'H'
+minutes: 14
+draft: false
+tags: ['classifier-free guidance', 'CFG', 'classifier guidance', 'diversity', 'rescaling', 'negative prompt']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+Classifier guidance came first and its derivation is clean. Bayes gives
+$\nabla\log p(x \mid c) = \nabla\log p(x) + \nabla\log p(c \mid x)$, so adding the gradient of a
+classifier trained on noisy inputs steers the unconditional score toward class $c$. Scaling that
+second term by $w$ samples from something proportional to $p(x)\,p(c\mid x)^w$ — a genuine
+distribution, just sharpened.
+
+Classifier-free guidance removes the separate classifier by training one network with the condition
+randomly dropped (typically 10–20% of the time), so it learns both $\varepsilon_\theta(x_t, c)$ and
+$\varepsilon_\theta(x_t, \varnothing)$. Then
+
+$$
+\tilde\varepsilon = \varepsilon_\theta(x_t,\varnothing) + w\bigl(\varepsilon_\theta(x_t,c) - \varepsilon_\theta(x_t,\varnothing)\bigr).
+$$
+
+The implicit-classifier reading says this is equivalent to classifier guidance with
+$\nabla\log p(c\mid x)$ estimated as the difference of the two scores, targeting
+$p(x\mid c)\,p(c\mid x)^{w-1}$. That derivation is correct **only if both branches are exact
+scores**, and they are not. Two separately-approximated networks are subtracted and the difference
+scaled by $w$, so the result is a vector field that is generally **not the gradient of any
+normalised density**. There is no distribution being sampled. This matters more than it sounds:
+guidance is not a sharper posterior, it is a heuristically modified vector field that happens to
+produce images people prefer.
+
+Which explains its characteristic pathologies rather than treating them as surprises. **Diversity
+collapses** because the field is pushed toward high-likelihood modes far more aggressively than any
+tempered posterior would. **Colours over-saturate and values clip** because scaling a difference of
+$\varepsilon$ predictions systematically inflates the implied $\hat x_0$ magnitude — which is why
+the standard fix is to rescale $\hat x_0$ back to the un-guided standard deviation. And **DDIM
+inversion stops round-tripping** (Module 4), because the field you integrate forward is no longer
+the model's score field. All three fall out of the same fact.
+
+<Callout type="bridge" title="it is the same move as logit arithmetic in an LLM">
+  Contrastive decoding, negative prompting, and CFG are one technique: take the difference between
+  two conditionings as a direction, and extrapolate along it. The direction is meaningful; the
+  extrapolated point is not a sample from anything you can write down.
+</Callout>
+
+## Numbers worth memorizing
+
+| Quantity                      | Value / statement                                          |
+| ----------------------------- | ---------------------------------------------------------- |
+| CFG formula                   | $\varepsilon_\varnothing + w(\varepsilon_c - \varepsilon_\varnothing)$ |
+| $w = 1$                       | no guidance — the plain conditional model                   |
+| Typical text-to-image         | $w = 5$–$8$                                                 |
+| Class-conditional ImageNet    | $w \approx 1.5$–$3$                                         |
+| Distilled / few-step models   | $w \approx 1$–$2$ (guidance often baked in)                 |
+| **Cost**                      | **2 NFE per step** — guidance doubles inference cost         |
+| Condition dropout in training | 10–20%                                                      |
+| Implicit target               | $\propto p(x\mid c)\,p(c\mid x)^{w-1}$ — only if scores were exact |
+
+Failure modes as $w$ rises:
+
+| Symptom                        | Mechanism                                        | Mitigation                    |
+| ------------------------------ | ------------------------------------------------ | ----------------------------- |
+| Reduced diversity              | field over-drives toward modes                    | lower $w$, or interval guidance |
+| Over-saturation, clipping      | inflated $\hat x_0$ magnitude                     | rescale $\hat x_0$ std        |
+| Fine-detail artefacts          | field is not a score; sharpening amplifies error  | dynamic thresholding          |
+| Inversion no longer closes     | sampling field ≠ score field                      | null-text inversion           |
+| Solver instability at low NFE  | sharper field is stiffer                          | fewer steps need lower $w$    |
+
+<Callout type="trap" title="guidance doubles your NFE">
+  Every guided step evaluates the network twice, conditional and unconditional. A "20-step" guided
+  sample is 40 NFE. Every latency and cost estimate must account for this, and it is the single
+  largest lever on inference cost after step count (Module 9).
+</Callout>
+
+## Critical thinking
+
+<Probe q="Is CFG sampling from a sharpened posterior? Be precise.">
+
+No, and the precision matters because the approximation is where the artefacts come from.
+
+The implicit-classifier argument says the guided field equals the score of
+$p(x\mid c)\,p(c\mid x)^{w-1}$. That derivation requires $\varepsilon_\theta(x,c)$ and
+$\varepsilon_\theta(x,\varnothing)$ to be the *exact* scores of the conditional and unconditional
+distributions. They are two approximations from one finite network, and their difference is a
+difference of errors as much as a difference of scores.
+
+Formally: a vector field is a gradient only if its Jacobian is symmetric. There is no reason for
+$\varepsilon_\varnothing + w(\varepsilon_c - \varepsilon_\varnothing)$ to satisfy that for $w \neq 1$
+when the two branches are independently approximated. So the guided sampler integrates a field that
+is not conservative, and its stationary distribution is not $p^{\text{anything}}$ — there is no
+normalised density to point at.
+
+Why this is not merely pedantic:
+
+- You cannot compute likelihoods under guidance, and reported "guided likelihoods" are meaningless.
+- You cannot reason about the sample distribution's mode structure or diversity from the
+  probabilistic story, which is why measured diversity collapses far faster than tempering predicts.
+- Inversion breaks (Module 4), and it breaks *because of exactly this*, not for an unrelated
+  numerical reason.
+
+The honest description: CFG is an empirically excellent heuristic that extrapolates along a
+meaningful direction, and the probabilistic derivation is a motivation rather than a guarantee.
+
+</Probe>
+
+<Probe q="Why does high guidance over-saturate, and what is the principled fix?">
+
+Because the guided $\varepsilon$ has larger magnitude than any real noise vector, and the conversion
+to $\hat x_0$ turns that into out-of-range pixel values.
+
+Trace it: $\hat x_0 = (x_t - \sqrt{1-\bar\alpha}\,\tilde\varepsilon)/\sqrt{\bar\alpha}$. The true
+$\varepsilon$ is standard normal, so $\lVert\varepsilon\rVert \approx \sqrt{d}$. The extrapolated
+$\tilde\varepsilon$ has norm growing roughly linearly in $w$, since it adds $w$ times a difference
+vector. So $\hat x_0$ is systematically inflated, and at high $w$ its extreme values exceed the
+valid pixel range. Clipping then flattens exactly those regions, producing the blown-out highlights
+and posterised colours that are CFG's visual signature.
+
+The fixes, in increasing sophistication:
+
+1. **Static clipping** of $\hat x_0$ to $[-1,1]$ each step. Prevents divergence; causes the flat
+   patches.
+2. **Dynamic thresholding** (Imagen): clip at a high percentile of $|\hat x_0|$ per step, then
+   rescale by that threshold. Keeps relative contrast rather than flattening.
+3. **CFG rescaling**: compute the standard deviation of the guided and un-guided $\hat x_0$, and
+   rescale the guided one to match — usually blended, $\phi \approx 0.7$. This directly targets the
+   inflation rather than its symptom, and it is the standard companion to zero-terminal-SNR
+   training (Module 1).
+
+The general framing: guidance changes the *magnitude* of the update as well as its direction, and
+almost all of the visual damage comes from the magnitude. Fixes that restore the magnitude while
+keeping the direction recover most of the quality at high $w$.
+
+</Probe>
+
+<Probe q="A negative prompt is not the opposite of a positive prompt. What is it actually doing?">
+
+It replaces the unconditional branch. Instead of
+$\varepsilon_\varnothing + w(\varepsilon_c - \varepsilon_\varnothing)$ you compute
+$\varepsilon_{\text{neg}} + w(\varepsilon_c - \varepsilon_{\text{neg}})$, so the guidance direction
+becomes "away from the negative prompt and toward the positive one".
+
+Three consequences that follow, and that people routinely get wrong:
+
+- **It is a direction, not a filter.** Nothing suppresses the negative concept in an absolute sense;
+  the field is tilted away from it. If the positive prompt strongly implies the negative concept,
+  guidance will fight itself and you get incoherent output rather than a clean removal.
+- **It costs nothing extra.** You were already paying 2 NFE per step for the unconditional branch;
+  the negative prompt just changes what that branch is conditioned on. Using a negative prompt is
+  free, and *not* using one still costs the same.
+- **It amplifies with $w$.** The negative prompt's influence scales with the guidance weight,
+  because it enters through the same difference. A negative prompt that is mild at $w=3$ can
+  dominate at $w=12$.
+
+The transferable point: the unconditional branch was never special. It is a *reference point*
+against which the conditional direction is measured, and anything can play that role — an empty
+string, a negative prompt, a different image conditioning, or a weaker version of the same model
+(which is what autoguidance does). Once you see the branch as a free reference slot, a whole family
+of techniques becomes obvious.
+
+</Probe>
+
+<Probe q="Guidance costs 2 NFE per step. How would you get most of the benefit for less?">
+
+Four approaches, in roughly increasing order of implementation cost.
+
+1. **Interval guidance.** Apply guidance only in the middle band of noise levels and set $w=1$
+   elsewhere. Guidance contributes almost nothing at very high noise (both branches point at the
+   data mean) or very low noise (the content is already determined), so restricting it to
+   $\lambda$ near 0 recovers most of the effect at a fraction of the extra NFE — and often
+   *improves* diversity, because the high-noise steps where content is chosen stay unguided.
+2. **Guidance distillation.** Train a student to match the guided output in one branch, so
+   inference is 1 NFE per step with guidance baked in. This is standard in few-step models
+   (Module 9) and is why they typically expose little or no CFG scale.
+3. **Batch the two branches.** They are independent, so run them as one batch of 2. This does not
+   reduce FLOPs but improves utilisation, and at batch 1 it is close to free on a GPU that was
+   memory-bound anyway — a Module-1-style observation from the other series.
+4. **Autoguidance.** Use a smaller or less-trained version of the same model as the reference
+   branch instead of the unconditional one. It targets the model's *deficiencies* rather than the
+   class prior, which empirically improves quality without the diversity collapse — and the
+   reference branch can be genuinely cheap.
+
+The ranking depends on your constraint: interval guidance if you want a one-line change,
+distillation if you control training, autoguidance if quality at fixed diversity is the goal.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="Write the CFG update and state precisely what distribution it samples.">
+
+$\tilde\varepsilon = \varepsilon_\varnothing + w(\varepsilon_c - \varepsilon_\varnothing)$. It
+samples from **no normalised distribution**. The implicit-classifier target
+$p(x\mid c)p(c\mid x)^{w-1}$ requires both branches to be exact scores; with two approximations from
+one network the guided field is generally not conservative (no symmetric Jacobian), so no density
+has it as a gradient. Hence guided likelihoods are meaningless and diversity collapses faster than
+tempering predicts.
+
+</SelfCheck>
+
+<SelfCheck q="Explain the over-saturation mechanism and name the fix that targets it directly.">
+
+True $\varepsilon$ has norm $\approx\sqrt d$, but $\tilde\varepsilon$ grows roughly linearly in $w$,
+so $\hat x_0 = (x_t - \sqrt{1-\bar\alpha}\tilde\varepsilon)/\sqrt{\bar\alpha}$ is systematically
+inflated and its extremes exceed valid range; clipping flattens them. The direct fix is **CFG
+rescaling** — match the guided $\hat x_0$ standard deviation to the un-guided one (blend
+$\phi\approx0.7$). Dynamic thresholding is the percentile-based alternative; plain clipping only
+treats the symptom.
+
+</SelfCheck>
+
+<SelfCheck q="What does a negative prompt actually replace, and what follows?">
+
+The unconditional branch: $\varepsilon_{\text{neg}} + w(\varepsilon_c - \varepsilon_{\text{neg}})$.
+So it is a direction, not a filter — nothing is suppressed absolutely, and a negative prompt implied
+by the positive one makes the field fight itself. It costs no extra NFE, since that branch was
+already being computed. And its influence scales with $w$.
+
+</SelfCheck>
+
+<SelfCheck q="Why does guidance contribute little at very high and very low noise?">
+
+At very high noise both branches point essentially at the data mean, so their difference is small
+and carries little conditional information. At very low noise the content is already determined and
+only detail remains. The action is in the middle band near $\lambda \approx 0$ where content is
+chosen — which is what makes interval guidance work, and why restricting guidance there can improve
+diversity by leaving the content-choosing steps unguided.
+
+</SelfCheck>
+
+<SelfCheck q="Name the true inference cost of a “20-step guided” sample.">
+
+40 NFE. Every guided step evaluates the network twice, conditional and unconditional. After step
+count, guidance is the largest single lever on inference cost — which is why guidance distillation
+exists and why few-step models expose little or no CFG scale.
+
+</SelfCheck>

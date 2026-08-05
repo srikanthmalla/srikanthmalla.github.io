@@ -1,0 +1,229 @@
+---
+n: 5
+title: 'Solvers: why twenty steps is enough'
+blurb: 'Local truncation error, semi-linear structure, and the exponential integrators that make DPM-Solver work. Where the remaining error actually lives.'
+part: 'G'
+minutes: 13
+draft: false
+tags: ['DPM-Solver', 'Heun', 'exponential integrator', 'truncation error', 'NFE', 'multistep', 'EDM']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+Once sampling is integration (Module 4), the step count follows from error analysis rather than
+folklore. A solver of order $p$ has local truncation error $O(h^{p+1})$ per step and global error
+$O(h^p)$. Going from first to second order is therefore not a 2× improvement — at 20 steps it is
+closer to an order of magnitude, which is why DDIM needs 50 steps for what DPM-Solver++ does in 15.
+The entire progress of the sampler literature between 2021 and 2023 is the application of standard
+numerical analysis to a field that had been treating step count as a hyperparameter.
+
+The specific structure that makes diffusion ODEs unusually tractable is that they are
+**semi-linear**: the drift splits into a linear term in $x$ and a non-linear term that is only a
+function of the network output. A generic Runge–Kutta method treats the whole right-hand side as a
+black box and pays for approximating the linear part too. An **exponential integrator** solves the
+linear part *exactly* — analytically, since it is just an integrating factor — and only
+approximates the non-linear remainder. That is DPM-Solver's central idea, and it is why it beats a
+generic solver of the same order at the same NFE. In the right change of variables (Module 1's
+$\lambda$, log-SNR, again) the exact solution is a simple integral of $\hat\varepsilon$ against
+$e^{\lambda}$, and the solver approximates only that integral by Taylor expansion.
+
+The second structural fact is that the vector field is **smooth in $\lambda$ and expensive to
+evaluate**, which is exactly the regime where multistep methods win. A single-step second-order
+method like Heun needs two network evaluations per step; a multistep method like DPM-Solver++(2M)
+reuses the *previous* step's evaluation to estimate the derivative, achieving second order at one
+NFE per step. At equal NFE that is a factor-of-two advantage, and it is the reason the 2M variant is
+the practical default rather than the single-step one.
+
+<Callout type="bridge" title="this is just stiff-ODE practice">
+  Integrating factor for the linear part, Taylor expansion of the remainder, multistep reuse of past
+  evaluations to avoid extra function calls. If you have implemented an exponential
+  time-differencing scheme for a PDE, you have written DPM-Solver.
+</Callout>
+
+## Numbers worth memorizing
+
+| Solver              | Order | NFE per step | Total NFE for good quality |
+| ------------------- | ----- | ------------ | -------------------------- |
+| DDIM / Euler        | 1     | 1            | 50                         |
+| Heun / EDM          | 2     | **2**        | 36 (18 steps)              |
+| DPM-Solver-2 (single-step) | 2 | 2         | 30                         |
+| **DPM-Solver++(2M)** | 2    | **1**        | **15–25**                  |
+| UniPC               | 2–3   | 1            | 10–20                      |
+| Distilled (Module 9)| —     | 1            | 1–4                        |
+
+| Fact                          | Statement                                              |
+| ----------------------------- | ------------------------------------------------------ |
+| Global error, order $p$       | $O(h^p)$ — halving $h$ cuts error by $2^p$              |
+| First → second order at 20 steps | roughly an order of magnitude, not 2×                |
+| Semi-linear form              | $\frac{dx}{d\lambda} = a(\lambda)x + b(\lambda)\hat\varepsilon$ |
+| Exponential integrator        | solves $a(\lambda)x$ exactly, approximates the rest     |
+| Multistep                     | reuses previous NFE → order $p$ at 1 NFE/step           |
+| Karras spacing                | $\rho = 7$                                              |
+| EDM churn                     | $S_{\text{churn}}$, $S_{\text{tmin}}$, $S_{\text{tmax}}$, $S_{\text{noise}}$ |
+
+<Callout type="trap" title="high order at very low NFE">
+  Order-$p$ error bounds are asymptotic in small $h$. At 4–6 steps the steps are not small, the
+  Taylor expansion the solver relies on is invalid, and a third-order method can be *worse* than a
+  second-order one. Below about 10 NFE the right answer is not a better solver but a distilled
+  model (Module 9).
+</Callout>
+
+## Critical thinking
+
+<Probe q="Why does exploiting the semi-linear structure help, when a generic RK method is already high order?">
+
+Because order counts the *rate* at which error shrinks, not its constant, and the constant is where
+the win is.
+
+The diffusion ODE in log-SNR coordinates has the form
+$\frac{dx}{d\lambda} = a(\lambda)\,x + b(\lambda)\,\hat\varepsilon_\theta(x,\lambda)$. The first term
+is linear in $x$ with a known coefficient, so it can be integrated *exactly* with an integrating
+factor — no approximation, no error contribution at all. Only $\hat\varepsilon_\theta$ needs
+numerical treatment.
+
+A generic Runge–Kutta method sees one opaque right-hand side. It spends its approximation budget on
+the combined field, including the linear part it did not need to approximate, and its error constant
+includes contributions from a term that had a closed form. Being second order does not save you
+from a large constant.
+
+The measurable consequence: DPM-Solver at order 2 substantially outperforms a generic order-2 method
+at the same NFE, and the gap widens as NFE falls, because at large steps the constant dominates the
+asymptotic rate.
+
+The transferable lesson is a general one about numerical work: **exploit known structure before
+raising order.** Order is the last resort, after you have removed everything you can solve exactly.
+
+</Probe>
+
+<Probe q="Multistep or single-step, and why is the answer not obvious?">
+
+Multistep, in this setting, and the reason is the unusual cost asymmetry.
+
+A single-step second-order method (Heun) evaluates the field at the current point, takes a trial
+step, evaluates again at the trial point, and averages. Two NFE per step. A multistep method
+(DPM-Solver++(2M)) estimates the derivative from the *current* and *previous* evaluations, giving
+second order at one NFE per step. At equal NFE, multistep takes twice as many steps, so its step
+size is half, so its error is roughly four times smaller for the same cost.
+
+Why it is not obvious: in classical ODE work, multistep methods carry real disadvantages. They need
+a startup procedure, they have smaller stability regions, and they behave badly when the step size
+changes abruptly or the field is non-smooth. Those objections are what make Runge–Kutta the default
+in general-purpose solvers.
+
+They mostly do not bite here. The field is smooth in $\lambda$, the step schedule is fixed in
+advance rather than adapted, the integration is short (tens of steps, so error accumulation over
+long horizons is not a concern), and startup is a single first-order step whose error is
+subsequently swamped. Meanwhile the function evaluation is a full U-net or transformer forward pass
+— vastly more expensive than anything else in the loop — so halving NFE per step dominates every
+other consideration.
+
+The general point: solver selection depends on the **cost model**, not only on the mathematics. When
+function evaluation dominates by orders of magnitude, methods that reuse past evaluations win.
+
+</Probe>
+
+<Probe q="You drop from 20 NFE to 8 and quality collapses. What is happening and what do you do?">
+
+You have left the regime where the solver's error analysis applies.
+
+**What is happening.** Order-$p$ convergence is asymptotic as $h \to 0$; it assumes the field is
+well approximated by a Taylor expansion over one step. At 8 steps each step spans a large interval
+of log-SNR, and in the middle band the trajectory has real curvature (Module 3), so the expansion is
+simply invalid. Worse, high-order methods can *amplify* this — they extrapolate using derivative
+estimates that are themselves wrong, so a third-order solver at 6 steps can underperform a
+second-order one.
+
+**What to do, in order:**
+
+1. **Fix step placement first.** Karras spacing ($\rho=7$) or uniform-in-$\lambda$ rather than
+   uniform in $t$. At low NFE, placement matters more than order — you are choosing where your
+   handful of nodes go.
+2. **Drop to second order.** Not up. DPM-Solver++(2M) is the practical floor.
+3. **Reduce the guidance scale.** High CFG (Module 6) sharpens the field and makes it harder to
+   integrate; part of what looks like solver failure at low NFE is guidance-induced stiffness.
+4. **Below ~10 NFE, stop solving and start distilling.** No solver reaches 4 steps on a model
+   trained for 1000. Consistency models, progressive distillation and adversarial fine-tuning
+   (Module 9) change the *model* so a coarse trajectory is correct, rather than trying to integrate
+   the original one coarsely.
+
+The line worth internalising: **solvers buy you 1000 → 20; distillation buys you 20 → 4.** They are
+different mechanisms and the second cannot be reached by improving the first.
+
+</Probe>
+
+<Probe q="Where does the remaining error live at 20 NFE?">
+
+Split it into three sources, because each has a different remedy and conflating them wastes effort.
+
+1. **Discretisation error.** Reducible by more NFE, better placement, higher order. Measure it by
+   comparing against a 200-NFE reference with the same seed and solver family: the difference *is*
+   discretisation error, and it is usually concentrated in the middle band where curvature is
+   highest.
+2. **Score error.** The network is not the true score, particularly at noise levels where it got
+   little training weight (Module 2). This is irreducible by any sampler, and it is what the
+   200-NFE reference still gets wrong. Localise it by evaluating denoising MSE per $\lambda$ against
+   held-out data.
+3. **Guidance-induced distribution shift.** With CFG the field you integrate is not any model's
+   score, so the sample is not from the model distribution at all (Module 6). This shows up as
+   over-saturation and reduced diversity, and it is not error in the numerical sense — it is a
+   deliberate change of target that people forget they made.
+
+The diagnostic sequence: high-NFE reference to separate (1) from (2)+(3); then set guidance to 1 to
+separate (3) from (2). Two experiments, and they partition the error completely. Most teams jump
+straight to changing the solver, which only ever addresses the first of the three.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="Why is second order worth so much more than 2× at 20 steps?">
+
+Global error is $O(h^p)$, so halving the step cuts error by $2^p$ — and moving from $p=1$ to $p=2$
+changes the *rate* at which error falls with NFE, not just a constant. Empirically that is roughly
+an order of magnitude at practical step counts: DDIM needs ~50 NFE for what DPM-Solver++ delivers in
+15–25.
+
+</SelfCheck>
+
+<SelfCheck q="What is semi-linear structure and why does exploiting it beat raising order?">
+
+In log-SNR coordinates the ODE is $dx/d\lambda = a(\lambda)x + b(\lambda)\hat\varepsilon_\theta$: a
+linear term with known coefficient plus a non-linear term. An exponential integrator solves the
+linear part exactly via an integrating factor and approximates only $\hat\varepsilon_\theta$, so its
+error constant excludes a term that had a closed form. Order sets the rate; structure sets the
+constant, and at large steps the constant dominates.
+
+</SelfCheck>
+
+<SelfCheck q="Why is a multistep method preferred here despite its classical disadvantages?">
+
+Because the network evaluation dominates cost by orders of magnitude, and multistep reaches order 2
+at 1 NFE per step by reusing the previous evaluation, versus 2 NFE for single-step Heun. At equal
+NFE that halves the step size and cuts error roughly fourfold. The classical objections — startup,
+smaller stability region, poor behaviour under abrupt step changes — mostly do not apply: the field
+is smooth in $\lambda$, the schedule is fixed in advance, and the integration is short.
+
+</SelfCheck>
+
+<SelfCheck q="At 6 NFE a third-order solver underperforms a second-order one. Why?">
+
+Order bounds are asymptotic in small $h$. At 6 steps each step spans a large interval of log-SNR
+where the trajectory genuinely curves, so the Taylor expansion the method relies on is invalid — and
+high-order methods extrapolate using derivative estimates that are themselves wrong, amplifying the
+error. Below ~10 NFE the answer is distillation, not a better solver.
+
+</SelfCheck>
+
+<SelfCheck q="Partition the error at 20 NFE and give the two experiments that separate the parts.">
+
+Discretisation error (reducible by NFE, placement, order), score error (the network is not the true
+score — irreducible by any sampler), and guidance-induced distribution shift (not error at all, but
+a deliberately different target). Experiment one: compare against a 200-NFE reference at the same
+seed to isolate discretisation. Experiment two: set guidance to 1 to isolate the shift. What remains
+is score error, which sends you back to loss weighting and schedule.
+
+</SelfCheck>

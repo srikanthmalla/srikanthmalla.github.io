@@ -1,0 +1,90 @@
+import { getCollection, type CollectionEntry } from 'astro:content';
+
+export type Entry = CollectionEntry<'series'>;
+
+export interface Part {
+  id: string;
+  title: string;
+  note: string;
+}
+
+export interface Series {
+  /** URL segment and content directory name */
+  id: string;
+  title: string;
+  /** shown in the sidebar header and on the blog index */
+  subtitle: string;
+  /** long description for the index card */
+  description: string;
+  /** the word used for a unit of this series, e.g. "Module" */
+  unit: string;
+  parts: Part[];
+}
+
+export const SERIES: Series[] = [
+  {
+    id: 'refresher',
+    title: 'Refresher',
+    subtitle: 'ML hardware & low-latency systems',
+    description:
+      'Twelve modules, written for someone who already knows the basics. Starts from roofline and GPU throughput instincts, then inverts them for the batch-of-one regime: tail latency, CPU microarchitecture, PCIe and the wire, fixed-point numerics, and the workloads that answer in nanoseconds.',
+    unit: 'Module',
+    parts: [
+      { id: 'A', title: 'Foundations', note: 'Refresher — territory you already own.' },
+      { id: 'B', title: 'The pivot', note: 'Throughput instincts, inverted.' },
+      { id: 'C', title: 'Substrate', note: 'The CPU and the wire.' },
+      { id: 'D', title: 'Numerics', note: 'Below the framework quantizer.' },
+      { id: 'E', title: 'Workloads', note: 'What actually runs at nanosecond scale.' },
+    ],
+  },
+  {
+    id: 'diffusion',
+    title: 'Diffusion',
+    subtitle: 'From score matching to fast samplers',
+    description:
+      'Nine modules on diffusion models for people who have trained one and want the derivations to actually connect. The forward process and why it is designed the way it is, three equivalent views of the objective, the sampler as an ODE solver, guidance, latent and flow-matching formulations, and where inference time actually goes.',
+    unit: 'Module',
+    parts: [
+      { id: 'F', title: 'The process', note: 'What is actually being learned.' },
+      { id: 'G', title: 'Sampling', note: 'The generative half, as numerics.' },
+      { id: 'H', title: 'Control', note: 'Steering the trajectory.' },
+      { id: 'I', title: 'In practice', note: 'Latents, distillation, and cost.' },
+    ],
+  },
+];
+
+export function getSeries(id: string): Series {
+  const s = SERIES.find((x) => x.id === id);
+  if (!s) throw new Error(`Unknown series: ${id}`);
+  return s;
+}
+
+/** Entries of one series, in canonical order. */
+export async function seriesEntries(seriesId: string): Promise<Entry[]> {
+  const all = await getCollection('series');
+  return all
+    .filter((e) => e.id.startsWith(`${seriesId}/`))
+    .sort((a, b) => a.data.n - b.data.n);
+}
+
+/** Entries bucketed by Part, in Part order. */
+export async function entriesByPart(seriesId: string) {
+  const entries = await seriesEntries(seriesId);
+  return getSeries(seriesId).parts.map((part) => ({
+    ...part,
+    entries: entries.filter((e) => e.data.part === part.id),
+  }));
+}
+
+/** The slug segment after the series id, e.g. "01-roofline". */
+export function slugOf(entry: Entry): string {
+  return entry.id.split('/').slice(1).join('/');
+}
+
+export function neighbours(entries: Entry[], id: string) {
+  const i = entries.findIndex((e) => e.id === id);
+  return {
+    prev: i > 0 ? entries[i - 1] : undefined,
+    next: i >= 0 && i < entries.length - 1 ? entries[i + 1] : undefined,
+  };
+}

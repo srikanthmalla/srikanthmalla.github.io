@@ -1,0 +1,244 @@
+---
+n: 9
+title: 'Few-step models and the inference budget'
+blurb: 'Solvers get you to twenty steps; only changing the model gets you to four. Distillation, flow matching, and where the milliseconds actually go.'
+part: 'I'
+minutes: 14
+draft: false
+tags: ['distillation', 'consistency models', 'LCM', 'flow matching', 'rectified flow', 'adversarial', 'inference cost', 'NFE']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+Module 5 ended on a hard boundary: better solvers take you from 1000 steps to about 20, and no
+solver takes you to 4. The reason is structural. A solver approximates the *integral of a fixed
+vector field*, and when the trajectory genuinely curves, a coarse discretisation of it is simply
+wrong — that is not a numerical deficiency to engineer around, it is the field being what it is. To
+go below roughly ten steps you must change what is being integrated.
+
+Distillation does exactly that, and the variants differ in what the student is asked to match.
+**Progressive distillation** trains a student to reproduce two teacher steps in one, then repeats,
+halving the step count each round; it inherits the teacher's trajectory but re-parameterises time.
+**Consistency models** take a stronger position: train the network so that *every point on a
+trajectory maps to the same endpoint*, which makes one-step generation well defined by construction
+rather than by approximation. **Adversarial distillation** (SDXL-Turbo, ADD) adds a discriminator,
+because at one step MSE-to-teacher gives blurry averages and only an adversarial term restores
+sharpness — the same reason the latent autoencoder in Module 8 needs a GAN loss.
+
+Rectified flow and flow matching come at it from a different direction and end up in a useful place.
+Instead of distilling a curved trajectory, they *train the trajectory to be straight*: define the
+path between noise and data as a straight line, and learn the constant velocity along it. A straight
+path is exactly integrable in one Euler step, so few-step sampling is a property of the training
+objective rather than a distillation afterthought. This is why SD3 and Flux adopted it, and the
+right way to hold it is that the field's velocity parameterisation is closely related to
+$v$-prediction from Module 2 — the objectives are cousins, and reflow procedures then straighten
+further.
+
+<Callout type="bridge" title="the same trade as the other series">
+  Module 4 of the Refresher: you cannot fix a latency problem by making a throughput technique
+  faster; you change the objective to reduce critical-path depth. Here, NFE *is* the depth, and
+  distillation is the depth reduction. Solvers were the latency-hiding that ran out.
+</Callout>
+
+## Numbers worth memorizing
+
+| Approach                   | NFE      | Quality vs teacher            | Needs |
+| -------------------------- | -------- | ----------------------------- | ----- |
+| Best solver (DPM-Solver++) | 15–25    | matches                       | nothing |
+| Progressive distillation   | 4–8      | slight loss                   | teacher, repeated rounds |
+| Consistency / LCM          | 2–4      | noticeable loss               | teacher or from scratch |
+| LCM-LoRA                   | 4–8      | small loss, **composable**    | a LoRA only |
+| Adversarial (ADD, Turbo)   | **1–4**  | sharp, less diverse           | discriminator |
+| Rectified flow + reflow    | 1–4      | good, trained in              | flow objective from scratch |
+
+Where inference time actually goes, SDXL-class, 1024², A100:
+
+| Component                        | Cost                       |
+| -------------------------------- | -------------------------- |
+| One U-net forward, batch 1       | ~90–130 ms                 |
+| 20 steps, **guided** (40 NFE)    | ~4–5 s                     |
+| 20 steps, unguided (20 NFE)      | ~2–2.5 s                   |
+| 4-step distilled, unguided       | ~0.4–0.5 s                 |
+| VAE decode                       | ~80–150 ms — **once**      |
+| Text encode                      | ~10–20 ms — once           |
+
+The cost identity worth carrying:
+
+$$
+\text{time} \;\approx\; \underbrace{\text{NFE}}_{\text{steps} \times (2 \text{ if guided})} \times\, t_{\text{fwd}} \;+\; t_{\text{decode}} \;+\; t_{\text{encode}}
+$$
+
+<Callout type="trap" title="distilled models and guidance">
+  Few-step models usually have guidance **distilled in**, so a CFG scale on top either does nothing
+  or destroys the output. If a 4-step model looks terrible, check the guidance scale before
+  anything else — it is almost always meant to be 0 or 1.
+</Callout>
+
+## Critical thinking
+
+<Probe q="Why can no solver reach 4 steps, however clever?">
+
+Because a solver is constrained to approximate the integral of a *given* vector field, and the exact
+trajectory of that field is genuinely curved. Four nodes cannot represent a curve whose curvature is
+concentrated in the middle band (Module 3) — this is an approximation-theoretic limit, not an
+engineering one. Raising the order does not help, because high-order methods rely on Taylor
+expansions that are invalid when steps are large (Module 5).
+
+Distillation escapes by changing the problem. The student is not asked to integrate the teacher's
+field accurately; it is asked to **reproduce the teacher's endpoint map**. Those are different
+functions. The endpoint map — noise in, image out — can be smooth and well-approximable even when
+the path connecting them is not, and a network can represent it directly.
+
+Consistency models make this explicit: the training objective enforces
+$f(x_t, t) = f(x_{t'}, t')$ for any two points on the same trajectory, so the model *defines* a
+one-step map rather than approximating an integral of many steps.
+
+Rectified flow attacks the same problem from the other end: rather than approximating a curved path
+better, make the path straight, so that one Euler step is exact. Same recognition, opposite move.
+
+The transferable statement: **when a numerical method plateaus, question the problem it is solving
+rather than the method.** Here the problem was "integrate this field", and the better problem was
+"learn this map".
+
+</Probe>
+
+<Probe q="Why does one-step distillation need a discriminator?">
+
+Because MSE to the teacher's output produces a conditional mean, and at one step the conditional
+distribution is wide.
+
+Concretely: from a given $x_T$, the teacher's multi-step sampler could land on many plausible
+images, since the stochastic sampler is genuinely one-to-many and even the deterministic one is
+sensitive to the trajectory. A student trained under MSE against those targets learns their average
+— and the average of several plausible sharp images is a blurry image. This is the same failure that
+makes an L2-trained autoencoder blurry (Module 8) and the same reason regression-based image models
+were superseded.
+
+An adversarial loss changes the objective from "be close to the target on average" to "be
+indistinguishable from real". A discriminator penalises blur specifically, because blur is the most
+easily detectable deviation from the natural image manifold. So the student is pushed to commit to
+*one* sharp mode rather than hedging across several.
+
+The costs are the usual GAN costs and they are real: training instability, mode-seeking behaviour
+that reduces diversity, and a discriminator to tune. Which is why the strongest few-step results
+combine losses — distillation for the trajectory, adversarial for sharpness, and often a perceptual
+term — rather than relying on any one.
+
+The general principle: **MSE is correct only when the target is unimodal given the input.** At many
+steps the per-step conditional is nearly unimodal and MSE is fine, which is why ordinary diffusion
+training works at all. Compress to one step and it stops being true.
+
+</Probe>
+
+<Probe q="Where does a 4× inference speedup actually come from? Budget it.">
+
+Start from the identity: $\text{time} \approx \text{NFE} \times t_{\text{fwd}} + t_{\text{decode}} +
+t_{\text{encode}}$. Two independent factors sit inside NFE, and people conflate them.
+
+Take SDXL at 1024², 20 steps, guided: NFE = 40, roughly 4.5 s.
+
+| Change                            | New NFE | Time   | Speedup |
+| --------------------------------- | ------- | ------ | ------- |
+| Drop guidance (bake it in)        | 20      | ~2.3 s | **2×**  |
+| Distil to 4 steps                 | 4       | ~0.5 s | 9×      |
+| Both                              | 4       | ~0.5 s | ~9×     |
+
+The first row is the point worth internalising: **removing guidance is a free 2×** and it is
+independent of everything else. Guidance distillation is often easier than step distillation and is
+frequently the larger single win, yet it gets less attention because "20 steps" sounds like the
+number to attack.
+
+Below about 4 NFE the fixed costs start to dominate — the VAE decode at 80–150 ms is a *quarter* of
+a 4-step generation, and at 1 NFE it is comparable to the entire diffusion cost. So the ordering
+of optimisations changes as you speed up:
+
+1. **At 40 NFE:** attack NFE. Everything else is noise.
+2. **At 4 NFE:** the decoder and text encoder are now material; a faster decoder (TAESD or similar)
+   matters.
+3. **At 1 NFE:** you are memory-bandwidth-bound on weights, and the levers are quantisation and a
+   smaller model — the batch-1 regime from the other series.
+
+</Probe>
+
+<Probe q="Given a fixed quality bar, how do you actually choose among these options?">
+
+Decide by constraint rather than by benchmark, because the methods dominate in different regimes.
+
+**Do you control training?**
+
+- *No* → best solver plus tuned step placement (Modules 3, 5), and LCM-LoRA, which is the one
+  few-step method that composes with existing weights and can be applied to a model you did not
+  train.
+- *Yes* → distillation is available, and the question becomes which kind.
+
+**What is the quality bar relative to the teacher?**
+
+- *Must match* → do not distil. Use 20 NFE with a good solver and distil only the guidance, which
+  is a 2× win at essentially no quality cost.
+- *Small loss acceptable* → progressive or consistency distillation to 4–8 steps.
+- *Interactive latency is the product* → adversarial distillation to 1–4 steps, accepting reduced
+  diversity, which for interactive use is often unnoticeable since the user is re-rolling anyway.
+
+**Building from scratch?** → use a flow-matching objective. Straight trajectories make few-step
+sampling a property of training rather than a later distillation stage, and you avoid maintaining a
+teacher-student pipeline at all.
+
+The mistake to avoid is optimising NFE while ignoring that guidance doubles it, and ignoring that
+below 4 NFE the fixed costs you never measured become the budget.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="Why is 4-step generation out of reach for any solver?">
+
+A solver approximates the integral of a *given* field, and that field's trajectory genuinely curves —
+four nodes cannot represent it, and high-order methods fail because their Taylor expansions are
+invalid at large steps. Distillation changes the problem from "integrate this field" to "learn the
+endpoint map", which can be smooth even when the path is not. Rectified flow instead makes the path
+straight so one Euler step is exact.
+
+</SelfCheck>
+
+<SelfCheck q="Why does one-step distillation need an adversarial loss?">
+
+Because MSE learns the conditional mean, and at one step the conditional distribution over outputs
+given $x_T$ is wide — the average of several plausible sharp images is blurry. A discriminator
+changes the objective to "indistinguishable from real", penalising blur specifically and forcing the
+student to commit to one mode. The cost is GAN instability and reduced diversity. MSE is only
+correct when the target is unimodal given the input, which holds per-step at many steps and fails at
+one.
+
+</SelfCheck>
+
+<SelfCheck q="Write the inference cost identity and name the free 2×.">
+
+$\text{time} \approx \text{NFE}\times t_\text{fwd} + t_\text{decode} + t_\text{encode}$, where
+$\text{NFE} = \text{steps} \times 2$ if guided. The free 2× is **removing guidance** by distilling
+it in — independent of step count, often easier than step distillation, and frequently the larger
+single win despite getting less attention.
+
+</SelfCheck>
+
+<SelfCheck q="At 1–4 NFE, what becomes the bottleneck?">
+
+The fixed costs. VAE decode at 80–150 ms is about a quarter of a 4-step generation and comparable to
+the whole diffusion cost at 1 step, so a faster decoder (TAESD) becomes material. At 1 NFE you are
+memory-bandwidth-bound reading weights, and the levers become quantisation and model size — the
+batch-1 memory-bound regime.
+
+</SelfCheck>
+
+<SelfCheck q="Choose a method: you do not control training and need a 4× speedup.">
+
+Best solver with tuned step placement, plus **LCM-LoRA** — the one few-step approach that composes
+with weights you did not train. If you did control training and had to match teacher quality
+exactly, you would not distil steps at all; you would distil only the guidance for a 2× win at
+near-zero quality cost. Building from scratch, use a flow-matching objective so few-step sampling
+falls out of training.
+
+</SelfCheck>

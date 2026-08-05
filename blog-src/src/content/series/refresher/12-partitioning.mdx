@@ -1,0 +1,309 @@
+---
+n: 12
+title: 'Hardware/software partitioning and market microstructure'
+blurb: 'Order books, the tick-to-trade budget allocated stage by stage, the fast-path/slow-path contract, and risk checks that must not trust the strategy.'
+part: 'E'
+minutes: 20
+draft: false
+tags:
+  ['order book', 'market data', 'tick to trade', 'fast path', 'risk checks', 'FPGA', 'ITCH', 'price ladder', 'kill switch', 'partitioning']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+Everything in this series converges on one question: given a latency budget, which functions go on
+silicon and which stay on the host? The rule that survives contact with real systems has three
+conjuncts, and all three must hold. Put a function in hardware if **(a)** it is on the critical
+path, **(b)** its logic is stable over months rather than days, and **(c)** its execution time is
+bounded and data-independent. The third is the one people drop, and dropping it is how projects
+fail: variable-time hardware is worse than fixed-time software, because determinism was the entire
+reason to leave the CPU. A function whose duration depends on its input belongs on the host even if
+it is fast on average.
+
+The order book is where this becomes concrete. Exchanges send incremental updates — add, modify,
+delete at a price level — and you must maintain best bid and ask plus depth. The data structure is
+chosen by its **worst case**, not its average, which eliminates hash maps and trees immediately:
+both have variable probe counts, both chase pointers, and both can rehash or rebalance at the worst
+possible moment. The answer is a **price ladder**: an array indexed by price offset from a
+reference, with a bitmap of occupied levels and a priority encoder to find the best. Every operation
+is a fixed number of cycles. In hardware that is block RAM plus a leading-zero count over a few
+thousand bits — about four levels of logic — and it never varies.
+
+Then the budget, and the discipline of allocating it explicitly. Wire to MAC is 50–100 ns. Parsing
+a fixed-offset binary protocol costs almost nothing on an FPGA because fields are extracted by wire
+position as the packet streams, overlapping with reception. Book update 50–150 ns. Features 100–400
+ns, which Module 11 established is the dominant term. Model 20–30 ns. Encode and risk 50–150 ns.
+MAC to wire 50–100 ns. Total 350–900 ns for a full parse-to-send path, against 2–5 µs for a
+kernel-bypass CPU — and the gap is almost entirely the two PCIe crossings and the software stack,
+not arithmetic. When you see "sub-100 ns tick-to-trade" quoted, it is a **trigger path**: a
+precomputed order released by a single comparator, with the book and feature work done in advance
+or in parallel. That is a legitimate technique and a different measurement, and conflating the two
+makes budgets impossible to reason about.
+
+<Callout type="bridge" title="every previous module, assembled">
+  The latency ladder (1), layout and access patterns (2), $II$ and depth (3), depth as the objective
+  (4), determinism and worst cases (5), the host CPU (6), the wire (7), integer arithmetic that
+  replays bit-exactly (8), cheap nonlinearities (9), the model in gates (10), and the ensemble that
+  decides (11). This module is the wiring diagram.
+</Callout>
+
+<Callout type="trap" title="put the risk check inside the strategy so it is faster">
+  A risk check must be independent of what it protects against. The scenario it exists for is a
+  buggy strategy or a bad parameter push, so a check sharing code, state, or a deployment unit with
+  the strategy fails in exactly the case it was built for.
+</Callout>
+
+## Numbers worth memorizing
+
+Tick-to-trade, allocated:
+
+| Stage                          | FPGA on-path   | CPU + kernel bypass |
+| ------------------------------ | -------------- | ------------------- |
+| Wire → MAC                     | 50–100 ns      | 50–100 ns           |
+| NIC → host (PCIe)              | —              | ~1 µs               |
+| Parse market data              | 10–50 ns       | 100–500 ns          |
+| Book update                    | 50–150 ns      | 100 ns – 1 µs       |
+| Feature computation            | 100–400 ns     | 100–400 ns          |
+| Model evaluation               | 20–30 ns       | 100–500 ns          |
+| Order encode + risk            | 50–150 ns      | 50–150 ns           |
+| Host → NIC (PCIe)              | —              | ~300 ns – 1 µs      |
+| MAC → wire                     | 50–100 ns      | 50–100 ns           |
+| **Total**                      | **350–900 ns** | **2–5 µs**          |
+| Trigger path only              | 20–100 ns      | —                   |
+
+| Quantity                        | Value                    | Note                                |
+| ------------------------------- | ------------------------ | ----------------------------------- |
+| ITCH / SBE message size         | 20–50 B                  | fixed offsets, parse by wire position |
+| 64 B frame, 10 / 25 GbE         | 51 ns / 20 ns            | serialisation delay                 |
+| Normal feed rate                | 100 K msg/s              | design point                        |
+| **Microburst**                  | **1–5 M msg/s**          | what you must actually survive      |
+| Price ladder                    | 4096 levels × 32 b = 16 KB | fits in block RAM comfortably     |
+| Priority encoder over 4096 bits | ~4 levels                | fixed cost, no variance             |
+| Risk check                      | 6–10 comparators, 1–2 levels | ~10 ns                          |
+| FPGA full reconfiguration       | 100 ms – 1 s             | not an intraday operation           |
+| FPGA partial reconfiguration    | 1–10 ms                  | per-region                          |
+| Parameter register write        | nanoseconds              | **the thing to maximise**           |
+
+Protocol shape decides parse cost:
+
+| Encoding                    | Examples          | Hardware parse                   |
+| --------------------------- | ----------------- | -------------------------------- |
+| Fixed-offset binary         | ITCH, SBE, MDP3   | combinational field extraction, ~free |
+| Variable-length / encoded   | FIX/FAST          | sequential decode, much worse    |
+| Text                        | FIX tag=value     | avoid on any fast path           |
+
+## Critical thinking
+
+<Probe q="Draw the partition for a 500 ns tick-to-trade budget.">
+
+**Hardware, in the datapath:** feed arbitration and sequence-gap detection, market-data parse, book
+maintenance, feature computation, model evaluation, order encoding, pre-trade risk, TX.
+
+**Host:** parameter and model fitting, position and P&L reconciliation, logging and analytics,
+recovery and retransmission requests, new-instrument onboarding, and a conventional trading path
+for anything not latency-critical.
+
+**The interface, which is where the design actually lives:**
+
+- Host → FPGA: a parameter region written by DMA, **double-buffered with a single commit bit**. The
+  hardware reads bank A while the host writes bank B, then one atomic flip. Without this the fast
+  path can observe a torn update — half the old parameters and half the new — and act on a
+  combination that was never intended and never tested. This detail causes real incidents and it is
+  invisible until it happens.
+- FPGA → host: fills, plus a copy of **every decision including the ones not acted on**, so
+  analytics can reconstruct behaviour offline. This is also your only real debugging channel.
+- A kill register gating TX, writable by the host and by hardware watchdogs.
+
+**The statement that captures it:** the host is never in the loop of a trade decision. It sets up
+the conditions under which hardware will trade, and hardware trades. If the host stops, the fast
+path must **stop trading**, not continue blind — fail-safe, not fail-open. A heartbeat from host to
+FPGA with a timeout that disables TX is the standard mechanism, and it is not optional.
+
+</Probe>
+
+<Probe q="Why is a hash map the wrong order book structure, and what do you use instead?">
+
+Because its cost is variable and its worst case is unbounded, and in a deadline system **the worst
+case is the specification**. Collisions make probe counts data-dependent; a resize is a
+catastrophic pause at an arbitrary moment; and every lookup is a pointer chase whose latency
+depends on cache residency. An average of 20 ns with a p99.9 of 2 µs fails a 500 ns budget even
+though it "usually" fits. A tree is worse: $O(\log n)$ dependent pointer chases, plus rebalancing.
+
+Use a **price ladder**: an array indexed by (price − reference) / tick size, with a bitmap marking
+occupied levels. Update is a direct index — one access, fixed cost. Finding the best is a priority
+encode over the bitmap, about four levels of leading-zero logic over 4096 bits, also fixed. No
+pointers, no collisions, no rebalancing, no variance.
+
+Handling a price range too large for a full ladder is the interesting sub-problem. Use a **windowed
+ladder** around the current best — a few thousand ticks is ample for any liquid instrument — with a
+slow-path structure for distant prices. Two rules make this safe: the fast path must never *wait*
+on the slow path, and a price moving outside the window must be treated as a book-invalid event
+that stops trading that instrument rather than as something to handle inline.
+
+The general principle transfers well beyond order books: **choose data structures by their worst
+case and their variance, not their average.** Most of the standard library is optimised for the
+wrong statistic when a deadline is involved.
+
+</Probe>
+
+<Probe q="A 5 M msg/s microburst arrives. What breaks, and what is the dangerous failure?">
+
+Queueing at whatever stage has the least headroom — and by Module 4, a system sized for mean load
+is at high $\rho$ during the burst, where latency grows like $1/(1-\rho)$ and the queue takes far
+longer to drain than it took to build.
+
+The failure modes, in increasing order of danger:
+
+1. **You fall behind.** Decisions are made on stale book state. Bad, but detectable.
+2. **A buffer overflows and you drop a message.** Now your book is *wrong* and you do not
+   necessarily know it.
+3. **The dangerous one: you keep trading on a corrupted book.** Silent, confident, and wrong — the
+   only failure here that loses money at speed rather than merely missing opportunities.
+
+The defences, and the third is the one that matters:
+
+- **Size for the burst, not the mean.** Buffers, and $\rho \le 0.3$ at peak.
+- **A/B feed arbitration.** Exchanges publish two identical feeds; take whichever packet arrives
+  first and dedupe by sequence number. This is cheap in hardware and removes a whole class of tail
+  events, since a microburst or loss on one feed does not stall you.
+- **Detect sequence gaps and stop immediately.** Every message carries a sequence number; a gap
+  means the book is unreliable. The book should publish a **validity bit**, and the strategy should
+  be gated on it in hardware. Recovery — requesting retransmission, rebuilding from a snapshot —
+  belongs on the host, and trading in that instrument resumes only when the book is provably
+  correct again.
+
+The principle worth stating: in a system that acts on state, the most important property is not
+speed but **knowing when your state is untrustworthy**. A fast wrong answer is worse than no
+answer, and it is the only outcome in this list that is unbounded.
+
+</Probe>
+
+<Probe q="Why must pre-trade risk checks be in hardware, separate from the strategy?">
+
+Because a check must be independent of the failure it guards against, and the failure it guards
+against is *your own strategy misbehaving* — a bug, a bad parameter push, a model extrapolating
+somewhere it was never tested. A check that shares code, state, or a deployment unit with the
+strategy is disabled by exactly the events that would trigger it.
+
+So the risk stage sits **last, before TX**, with its own registers, its own limits, and no
+dependence on anything upstream. The non-negotiable checks are all comparisons and cost about 10 ns
+in total: maximum order size, maximum notional, a price collar against a reference, maximum open
+position per instrument, a message rate limit, an instrument whitelist, and self-trade prevention.
+Behind them sits a **kill switch** — a single register gating all outbound orders, writable by the
+host and by hardware watchdogs including the host-heartbeat timeout.
+
+It must be **fail-closed**. Sequence gap, heartbeat lost, watchdog expiry, parameter bank
+inconsistency: all disable TX. The default on any uncertainty is not to trade.
+
+Module 11's output bound is what makes this rigorous rather than merely defensive. Because a tree
+ensemble's reachable output range is computable at compile time, you can set limits *outside* what
+correct operation can produce — so a firing limit is unambiguously a fault signal rather than a
+clipped aggressive signal, and it can safely trigger a shutdown instead of a clamp. That is a much
+stronger safety property than a limit you are constantly brushing against.
+
+Knight Capital is the canonical illustration: an inconsistent deployment across servers activated
+dormant code, and 45 minutes without an effective kill switch cost about $440 million. The lesson
+is not "test more". It is that the stopping mechanism must be independent of, and simpler than, the
+thing it stops.
+
+</Probe>
+
+<Probe q="What is the honest limit of “put it all in hardware”?">
+
+Iteration speed, and it usually dominates the engineering outcome.
+
+An FPGA change is a synthesis and place-and-route run measured in hours, plus verification, plus a
+deployment window. A parameter change is a register write. So the partition should be designed to
+**maximise what can change without a rebuild**: thresholds, sizes, enables and limits in registers;
+model constants loadable rather than compiled where the update cadence demands it (accepting
+Module 10's 5–10× area penalty as the price of flexibility); feature computation parameterised
+rather than hard-coded. Deliberately spend area to keep things soft.
+
+The deeper point, and the one this whole series has been building toward: **latency is a constraint
+to satisfy, not a quantity to maximise.** Past the point where you are faster than the opportunity
+requires — the quote you are racing for only updates every 10 µs, the counterparty only responds
+every millisecond — additional speed earns nothing while continuing to cost area, power,
+development time and flexibility. The teams that win are rarely the ones with the single fastest
+path. They are the ones fast *enough* who can change what the path does most quickly, because the
+edge decays and the ability to redeploy against a new one is worth more than another 50 ns.
+
+Which reframes every optimisation in Parts B through E. They are worth doing until the constraint
+is met, and then they are worth stopping. Knowing where that line sits — for your venue, your
+strategy, your competitors — is the judgement that the technical material serves, and it is not
+itself a technical question.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="State the three-part rule for putting a function in hardware, and which part gets dropped.">
+
+Put it in hardware if it is on the critical path, its logic is stable over months, **and** its
+execution time is bounded and data-independent. The third is the one dropped. Variable-time
+hardware is worse than fixed-time software, because determinism was the reason to leave the CPU —
+so a function whose duration depends on its input belongs on the host even when it is fast on
+average.
+
+</SelfCheck>
+
+<SelfCheck q="Why a price ladder rather than a hash map, and how do you handle prices outside the window?">
+
+Because the worst case is the specification. Hash maps have data-dependent probe counts, resizes at
+arbitrary moments, and pointer chases; trees add $O(\log n)$ dependent loads and rebalancing. A
+ladder indexed by price offset with an occupancy bitmap gives fixed-cost updates and a fixed-cost
+priority encode (~4 levels over 4096 bits). For prices outside the window, use a slow-path
+structure the fast path never waits on, and treat a move beyond the window as a book-invalid event
+that stops trading rather than something handled inline.
+
+</SelfCheck>
+
+<SelfCheck q="What is the dangerous failure during a microburst, and what prevents it?">
+
+Continuing to trade on a silently corrupted book after a dropped message — the only failure that
+loses money at speed rather than merely missing opportunities. Prevented by detecting sequence gaps
+and publishing a book **validity bit** that gates the strategy in hardware, with recovery handled
+on the host and trading resuming only when the book is provably correct. Supported by A/B feed
+arbitration and by sizing for burst rather than mean load.
+
+</SelfCheck>
+
+<SelfCheck q="Why does the parameter interface need double buffering with a commit bit?">
+
+Otherwise the fast path can read a **torn update** — some old parameters and some new — producing a
+combination that was never intended and never tested. Hardware reads bank A while the host writes
+bank B, then a single atomic commit flips banks. The failure is invisible in normal operation and
+appears only during an update, which makes it exactly the kind of bug that reaches production.
+
+</SelfCheck>
+
+<SelfCheck q="Why must risk checks be independent of the strategy, and what makes them fail-closed?">
+
+Because the scenario they exist for is the strategy misbehaving — a bug, a bad parameter push, a
+model extrapolating — so any check sharing code, state or deployment with the strategy is disabled
+by the very event it guards against. It sits last before TX with its own registers and limits, plus
+a kill register gating all output. Fail-closed means a sequence gap, lost heartbeat, watchdog
+expiry or inconsistent parameter bank all disable TX: the default under uncertainty is not to
+trade.
+
+</SelfCheck>
+
+<SelfCheck q="Why is a tree ensemble's output bound relevant to the risk design?">
+
+Because the reachable range is computable at compile time (Module 11), you can set limits *outside*
+what correct operation can produce. A firing limit is then unambiguously a fault signal rather than
+a clipped aggressive signal, so it can safely trigger a shutdown instead of a clamp — a far
+stronger property than a limit you routinely approach.
+
+</SelfCheck>
+
+<SelfCheck q="Give the closing thesis of the series in one sentence.">
+
+Latency is a constraint to satisfy rather than a quantity to maximise: past the point where you are
+faster than the opportunity requires, more speed earns nothing while still costing area, power and —
+most expensively — the ability to change what the system does.
+
+</SelfCheck>

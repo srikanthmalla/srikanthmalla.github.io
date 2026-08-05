@@ -1,0 +1,312 @@
+<!DOCTYPE html><html lang="en" data-astro-cid-z4jru4n3><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Diffusion — From score matching to fast samplers</title><meta name="description" content="Nine modules on diffusion models for people who have trained one and want the derivations to actually connect. The forward process and why it is designed the way it is, three equivalent views of the objective, the sampler as an ODE solver, guidance, latent and flow-matching formulations, and where inference time actually goes."><link rel="icon" href="data:,"><script>
+      (() => {
+        try {
+          const t = localStorage.getItem('refresher:theme');
+          if (t === 'light') document.documentElement.classList.add('light');
+        } catch (e) {}
+      })();
+    </script><link rel="stylesheet" href="/blog/_astro/BaseLayout.BZ_NeV9N.css"><style>.home[data-astro-cid-qg5dpnst]{max-width:60rem;margin-inline:auto;padding:3.5rem 1.25rem 6rem}@media (width>=1024px){.home[data-astro-cid-qg5dpnst]{padding-inline:3rem}}.hero[data-astro-cid-qg5dpnst]{border-block-end:1px solid var(--rule);max-width:62ch;padding-block-end:2.5rem}.hero-kicker[data-astro-cid-qg5dpnst]{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.09em;color:var(--accent);margin:0 0 .9rem;font-size:.6875rem;font-weight:550}.hero-title[data-astro-cid-qg5dpnst]{font-family:var(--font-sans);letter-spacing:-.032em;color:var(--ink-strong);margin:0 0 1.1rem;font-size:clamp(2.25rem,1.6rem + 2.8vw,3.25rem);font-weight:660;line-height:1.05}.hero-sub[data-astro-cid-qg5dpnst]{color:var(--ink);margin:0;font-size:1.0625rem;line-height:1.65}.part[data-astro-cid-qg5dpnst]{margin-block-start:3rem}.part-head[data-astro-cid-qg5dpnst]{flex-wrap:wrap;align-items:baseline;gap:.75rem;margin-block-end:1rem;display:flex}.part-title[data-astro-cid-qg5dpnst]{font-family:var(--font-sans);letter-spacing:-.01em;color:var(--ink-strong);align-items:baseline;gap:.5rem;margin:0;font-size:.9375rem;font-weight:640;display:flex}.part-letter[data-astro-cid-qg5dpnst]{text-transform:uppercase;letter-spacing:.08em;color:var(--accent);font-size:.6875rem;font-weight:600}.part-note[data-astro-cid-qg5dpnst]{font-family:var(--font-sans);color:var(--ink-faint);margin:0;font-size:.75rem}.cards[data-astro-cid-qg5dpnst]{gap:.5rem;margin:0;padding:0;list-style:none;display:grid}@media (width>=780px){.cards[data-astro-cid-qg5dpnst]{grid-template-columns:1fr 1fr}}.card[data-astro-cid-qg5dpnst]{border:1px solid var(--rule);background:var(--bg-raised);border-radius:6px;grid-template-columns:auto 1fr auto;align-items:start;gap:.85rem;height:100%;padding:.9rem 1rem;text-decoration:none;display:grid}.card[data-astro-cid-qg5dpnst]:hover{border-color:color-mix(in oklab, var(--accent) 55%, var(--rule))}.card[data-astro-cid-qg5dpnst].is-draft{background:0 0;border-style:dashed}.card-n[data-astro-cid-qg5dpnst]{font-family:var(--font-mono);color:var(--accent);padding-block-start:.28rem;font-size:.6875rem}.card[data-astro-cid-qg5dpnst].is-draft .card-n[data-astro-cid-qg5dpnst]{color:var(--ink-faint)}.card-body[data-astro-cid-qg5dpnst]{min-width:0}.card-title[data-astro-cid-qg5dpnst]{font-family:var(--font-sans);color:var(--ink-strong);letter-spacing:-.008em;font-size:.875rem;font-weight:600;line-height:1.35;display:block}.card[data-astro-cid-qg5dpnst].is-draft .card-title[data-astro-cid-qg5dpnst]{color:var(--ink-muted)}.card-flag[data-astro-cid-qg5dpnst]{text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);border:1px solid var(--rule);vertical-align:.15em;white-space:nowrap;border-radius:3px;margin-inline-start:.45rem;padding:.05rem .3rem;font-size:.5625rem;font-weight:550}.card-blurb[data-astro-cid-qg5dpnst]{color:var(--ink-muted);margin-block-start:.3rem;font-size:.8125rem;line-height:1.5;display:block}.card-tick[data-astro-cid-qg5dpnst]{color:var(--bridge);padding-block-start:.2rem;font-size:.75rem}.card-tick[data-astro-cid-qg5dpnst][data-read]:before{content:"✓"}.home-foot[data-astro-cid-qg5dpnst]{border-block-start:1px solid var(--rule);margin-block-start:3.5rem;padding-block-start:1.25rem}.home-foot[data-astro-cid-qg5dpnst] p[data-astro-cid-qg5dpnst]{font-family:var(--font-sans);color:var(--ink-faint);max-width:62ch;margin:0;font-size:.75rem;line-height:2}
+</style></head><body data-astro-cid-z4jru4n3><a href="#content" class="skip" data-astro-cid-z4jru4n3>Skip to content</a><div class="shell" data-astro-cid-z4jru4n3><aside class="rail" data-rail data-astro-cid-z4jru4n3><nav class="rail-nav" aria-label="Diffusion contents" data-astro-cid-wv7whodv><div class="rail-head" data-astro-cid-wv7whodv><a href="/blog/" class="rail-up" data-astro-cid-wv7whodv>All series</a><a href="/blog/diffusion/" class="rail-home" data-astro-cid-wv7whodv><span class="rail-home-title" data-astro-cid-wv7whodv>Diffusion</span><span class="rail-home-sub" data-astro-cid-wv7whodv>From score matching to fast samplers</span></a><p class="rail-progress" data-astro-cid-wv7whodv><span class="rail-progress-bar" data-astro-cid-wv7whodv><span data-progress-fill data-astro-cid-wv7whodv></span></span><span class="rail-progress-text" data-astro-cid-wv7whodv><span data-progress-count data-astro-cid-wv7whodv>0</span>/9 reviewed</span></p></div><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part F</span>The process</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/diffusion/01-forward-process/" class="rail-link" title="The closed-form marginal is the whole design. Tweedie turns denoising into score estimation, and that identity is what makes everything downstream work." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>1</span><span class="rail-title" data-astro-cid-wv7whodv>The forward process, and why it is Gaussian</span><span class="rail-tick" data-tick="diffusion/01-forward-process" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/diffusion/02-objectives/" class="rail-link" title="ε, x₀, v and score are affine reparameterizations of the same quantity. Choosing between them is choosing an implicit loss weighting, which is choosing where capacity goes." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>2</span><span class="rail-title" data-astro-cid-wv7whodv>One network, four parameterizations</span><span class="rail-tick" data-tick="diffusion/02-objectives" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/diffusion/03-schedules/" class="rail-link" title="log-SNR is the real time axis. The same schedule destroys far less information at higher resolution, which is why schedules must shift with image size." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>3</span><span class="rail-title" data-astro-cid-wv7whodv>Schedules, SNR, and why resolution changes everything</span><span class="rail-tick" data-tick="diffusion/03-schedules" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part G</span>Sampling</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/diffusion/04-sampling-as-ode/" class="rail-link" title="The reverse SDE has a deterministic twin with the same marginals. Once you see the probability-flow ODE, DDIM stops being a trick and becomes Euler." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>4</span><span class="rail-title" data-astro-cid-wv7whodv>Sampling is solving an ODE</span><span class="rail-tick" data-tick="diffusion/04-sampling-as-ode" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/diffusion/05-solvers/" class="rail-link" title="Local truncation error, semi-linear structure, and the exponential integrators that make DPM-Solver work. Where the remaining error actually lives." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>5</span><span class="rail-title" data-astro-cid-wv7whodv>Solvers: why twenty steps is enough</span><span class="rail-tick" data-tick="diffusion/05-solvers" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part H</span>Control</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/diffusion/06-guidance/" class="rail-link" title="CFG does not sample a sharpened posterior — it samples from no normalized distribution at all. Why it works anyway, and what it costs." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>6</span><span class="rail-title" data-astro-cid-wv7whodv>Guidance, and what it does to the distribution</span><span class="rail-tick" data-tick="diffusion/06-guidance" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/diffusion/07-conditioning/" class="rail-link" title="Cross-attention, adapters, ControlNet and attention injection — four places to inject a signal, and what each one can and cannot control." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>7</span><span class="rail-title" data-astro-cid-wv7whodv>Conditioning and control</span><span class="rail-tick" data-tick="diffusion/07-conditioning" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part I</span>In practice</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/diffusion/08-latent-diffusion/" class="rail-link" title="Compressing 48× before diffusing is why any of this is affordable. The autoencoder sets a hard ceiling on quality that no amount of diffusion training can lift." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>8</span><span class="rail-title" data-astro-cid-wv7whodv>Latent diffusion and what the VAE costs</span><span class="rail-tick" data-tick="diffusion/08-latent-diffusion" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/diffusion/09-few-step-and-cost/" class="rail-link" title="Solvers get you to twenty steps; only changing the model gets you to four. Distillation, flow matching, and where the milliseconds actually go." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>9</span><span class="rail-title" data-astro-cid-wv7whodv>Few-step models and the inference budget</span><span class="rail-tick" data-tick="diffusion/09-few-step-and-cost" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-other" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv>Other series</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/refresher/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>Refresher</span></a></li></ul></section><div class="rail-foot" data-astro-cid-wv7whodv><p data-astro-cid-wv7whodv><kbd data-astro-cid-wv7whodv>j</kbd> <kbd data-astro-cid-wv7whodv>k</kbd> section · <kbd data-astro-cid-wv7whodv>/</kbd> search · <kbd data-astro-cid-wv7whodv>[</kbd><kbd data-astro-cid-wv7whodv>]</kbd> module</p></div></nav></aside><div class="col" data-astro-cid-z4jru4n3><header class="topbar" data-astro-cid-z4jru4n3><button class="icon-btn only-narrow" data-rail-toggle aria-label="Toggle contents" data-astro-cid-z4jru4n3><svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M1.5 3.5h12M1.5 7.5h12M1.5 11.5h12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg></button><p class="crumb" data-astro-cid-z4jru4n3>Contents</p><div class="topbar-actions" data-astro-cid-z4jru4n3><button class="search-btn" data-search-open aria-label="Search" data-astro-cid-z4jru4n3><span aria-hidden="true" data-astro-cid-z4jru4n3>⌕</span><span class="search-btn-label" data-astro-cid-z4jru4n3>Search</span><kbd data-astro-cid-z4jru4n3>/</kbd></button><button class="icon-btn" data-theme-toggle aria-label="Toggle theme" data-astro-cid-z4jru4n3><svg class="i-sun" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><circle cx="7.5" cy="7.5" r="3" stroke="currentColor" stroke-width="1.2" data-astro-cid-z4jru4n3></circle><path d="M7.5 .8v1.7M7.5 12.5v1.7M14.2 7.5h-1.7M2.5 7.5H.8M12.24 2.76l-1.2 1.2M3.96 11.04l-1.2 1.2M12.24 12.24l-1.2-1.2M3.96 3.96l-1.2-1.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg><svg class="i-moon" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M13 9.3A5.8 5.8 0 0 1 5.7 2 5.9 5.9 0 1 0 13 9.3Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" data-astro-cid-z4jru4n3></path></svg></button><a class="site-link" href="/learning.html" data-astro-cid-z4jru4n3>srikanthmalla.com</a></div></header><main id="content" data-astro-cid-z4jru4n3><div class="home" data-article data-astro-cid-qg5dpnst><header class="hero" data-astro-cid-qg5dpnst><p class="hero-kicker" data-astro-cid-qg5dpnst>9 modules · 4 parts · ~122 min</p><h1 class="hero-title" data-astro-cid-qg5dpnst>Diffusion</h1><p class="hero-sub" data-astro-cid-qg5dpnst>Nine modules on diffusion models for people who have trained one and want the derivations to actually connect. The forward process and why it is designed the way it is, three equivalent views of the objective, the sampler as an ODE solver, guidance, latent and flow-matching formulations, and where inference time actually goes.</p></header><section class="part" data-astro-cid-qg5dpnst><div class="part-head" data-astro-cid-qg5dpnst><h2 class="part-title" data-astro-cid-qg5dpnst><span class="part-letter" data-astro-cid-qg5dpnst>Part F</span>The process</h2><p class="part-note" data-astro-cid-qg5dpnst>What is actually being learned.</p></div><ul class="cards" data-astro-cid-qg5dpnst><li data-astro-cid-qg5dpnst><a href="/blog/diffusion/01-forward-process/" class="card" data-astro-cid-qg5dpnst><span class="card-n" data-astro-cid-qg5dpnst>01</span><span class="card-body" data-astro-cid-qg5dpnst><span class="card-title" data-astro-cid-qg5dpnst>The forward process, and why it is Gaussian</span><span class="card-blurb" data-astro-cid-qg5dpnst>The closed-form marginal is the whole design. Tweedie turns denoising into score estimation, and that identity is what makes everything downstream work.</span></span><span class="card-tick" data-tick="diffusion/01-forward-process" aria-hidden="true" data-astro-cid-qg5dpnst></span></a></li><li data-astro-cid-qg5dpnst><a href="/blog/diffusion/02-objectives/" class="card" data-astro-cid-qg5dpnst><span class="card-n" data-astro-cid-qg5dpnst>02</span><span class="card-body" data-astro-cid-qg5dpnst><span class="card-title" data-astro-cid-qg5dpnst>One network, four parameterizations</span><span class="card-blurb" data-astro-cid-qg5dpnst>ε, x₀, v and score are affine reparameterizations of the same quantity. Choosing between them is choosing an implicit loss weighting, which is choosing where capacity goes.</span></span><span class="card-tick" data-tick="diffusion/02-objectives" aria-hidden="true" data-astro-cid-qg5dpnst></span></a></li><li data-astro-cid-qg5dpnst><a href="/blog/diffusion/03-schedules/" class="card" data-astro-cid-qg5dpnst><span class="card-n" data-astro-cid-qg5dpnst>03</span><span class="card-body" data-astro-cid-qg5dpnst><span class="card-title" data-astro-cid-qg5dpnst>Schedules, SNR, and why resolution changes everything</span><span class="card-blurb" data-astro-cid-qg5dpnst>log-SNR is the real time axis. The same schedule destroys far less information at higher resolution, which is why schedules must shift with image size.</span></span><span class="card-tick" data-tick="diffusion/03-schedules" aria-hidden="true" data-astro-cid-qg5dpnst></span></a></li></ul></section><section class="part" data-astro-cid-qg5dpnst><div class="part-head" data-astro-cid-qg5dpnst><h2 class="part-title" data-astro-cid-qg5dpnst><span class="part-letter" data-astro-cid-qg5dpnst>Part G</span>Sampling</h2><p class="part-note" data-astro-cid-qg5dpnst>The generative half, as numerics.</p></div><ul class="cards" data-astro-cid-qg5dpnst><li data-astro-cid-qg5dpnst><a href="/blog/diffusion/04-sampling-as-ode/" class="card" data-astro-cid-qg5dpnst><span class="card-n" data-astro-cid-qg5dpnst>04</span><span class="card-body" data-astro-cid-qg5dpnst><span class="card-title" data-astro-cid-qg5dpnst>Sampling is solving an ODE</span><span class="card-blurb" data-astro-cid-qg5dpnst>The reverse SDE has a deterministic twin with the same marginals. Once you see the probability-flow ODE, DDIM stops being a trick and becomes Euler.</span></span><span class="card-tick" data-tick="diffusion/04-sampling-as-ode" aria-hidden="true" data-astro-cid-qg5dpnst></span></a></li><li data-astro-cid-qg5dpnst><a href="/blog/diffusion/05-solvers/" class="card" data-astro-cid-qg5dpnst><span class="card-n" data-astro-cid-qg5dpnst>05</span><span class="card-body" data-astro-cid-qg5dpnst><span class="card-title" data-astro-cid-qg5dpnst>Solvers: why twenty steps is enough</span><span class="card-blurb" data-astro-cid-qg5dpnst>Local truncation error, semi-linear structure, and the exponential integrators that make DPM-Solver work. Where the remaining error actually lives.</span></span><span class="card-tick" data-tick="diffusion/05-solvers" aria-hidden="true" data-astro-cid-qg5dpnst></span></a></li></ul></section><section class="part" data-astro-cid-qg5dpnst><div class="part-head" data-astro-cid-qg5dpnst><h2 class="part-title" data-astro-cid-qg5dpnst><span class="part-letter" data-astro-cid-qg5dpnst>Part H</span>Control</h2><p class="part-note" data-astro-cid-qg5dpnst>Steering the trajectory.</p></div><ul class="cards" data-astro-cid-qg5dpnst><li data-astro-cid-qg5dpnst><a href="/blog/diffusion/06-guidance/" class="card" data-astro-cid-qg5dpnst><span class="card-n" data-astro-cid-qg5dpnst>06</span><span class="card-body" data-astro-cid-qg5dpnst><span class="card-title" data-astro-cid-qg5dpnst>Guidance, and what it does to the distribution</span><span class="card-blurb" data-astro-cid-qg5dpnst>CFG does not sample a sharpened posterior — it samples from no normalized distribution at all. Why it works anyway, and what it costs.</span></span><span class="card-tick" data-tick="diffusion/06-guidance" aria-hidden="true" data-astro-cid-qg5dpnst></span></a></li><li data-astro-cid-qg5dpnst><a href="/blog/diffusion/07-conditioning/" class="card" data-astro-cid-qg5dpnst><span class="card-n" data-astro-cid-qg5dpnst>07</span><span class="card-body" data-astro-cid-qg5dpnst><span class="card-title" data-astro-cid-qg5dpnst>Conditioning and control</span><span class="card-blurb" data-astro-cid-qg5dpnst>Cross-attention, adapters, ControlNet and attention injection — four places to inject a signal, and what each one can and cannot control.</span></span><span class="card-tick" data-tick="diffusion/07-conditioning" aria-hidden="true" data-astro-cid-qg5dpnst></span></a></li></ul></section><section class="part" data-astro-cid-qg5dpnst><div class="part-head" data-astro-cid-qg5dpnst><h2 class="part-title" data-astro-cid-qg5dpnst><span class="part-letter" data-astro-cid-qg5dpnst>Part I</span>In practice</h2><p class="part-note" data-astro-cid-qg5dpnst>Latents, distillation, and cost.</p></div><ul class="cards" data-astro-cid-qg5dpnst><li data-astro-cid-qg5dpnst><a href="/blog/diffusion/08-latent-diffusion/" class="card" data-astro-cid-qg5dpnst><span class="card-n" data-astro-cid-qg5dpnst>08</span><span class="card-body" data-astro-cid-qg5dpnst><span class="card-title" data-astro-cid-qg5dpnst>Latent diffusion and what the VAE costs</span><span class="card-blurb" data-astro-cid-qg5dpnst>Compressing 48× before diffusing is why any of this is affordable. The autoencoder sets a hard ceiling on quality that no amount of diffusion training can lift.</span></span><span class="card-tick" data-tick="diffusion/08-latent-diffusion" aria-hidden="true" data-astro-cid-qg5dpnst></span></a></li><li data-astro-cid-qg5dpnst><a href="/blog/diffusion/09-few-step-and-cost/" class="card" data-astro-cid-qg5dpnst><span class="card-n" data-astro-cid-qg5dpnst>09</span><span class="card-body" data-astro-cid-qg5dpnst><span class="card-title" data-astro-cid-qg5dpnst>Few-step models and the inference budget</span><span class="card-blurb" data-astro-cid-qg5dpnst>Solvers get you to twenty steps; only changing the model gets you to four. Distillation, flow matching, and where the milliseconds actually go.</span></span><span class="card-tick" data-tick="diffusion/09-few-step-and-cost" aria-hidden="true" data-astro-cid-qg5dpnst></span></a></li></ul></section><footer class="home-foot" data-astro-cid-qg5dpnst><p data-astro-cid-qg5dpnst><kbd data-astro-cid-qg5dpnst>/</kbd> to search · <kbd data-astro-cid-qg5dpnst>j</kbd> <kbd data-astro-cid-qg5dpnst>k</kbd> between sections ·<kbd data-astro-cid-qg5dpnst>[</kbd> <kbd data-astro-cid-qg5dpnst>]</kbd> for previous and next. Progress is kept in this browser only.</p></footer></div></main></div></div><div class="search-overlay" data-search hidden data-astro-cid-ac66eqjo><div class="search-backdrop" data-search-close data-astro-cid-ac66eqjo></div><div class="search-panel" role="dialog" aria-modal="true" aria-label="Search modules" data-astro-cid-ac66eqjo><div class="search-input-row" data-astro-cid-ac66eqjo><span class="search-icon" aria-hidden="true" data-astro-cid-ac66eqjo>⌕</span><input type="text" class="search-input" placeholder="Search all modules…" autocomplete="off" spellcheck="false" data-search-input data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>esc</kbd></div><ul class="search-results" data-search-results data-astro-cid-ac66eqjo></ul><p class="search-empty" data-search-empty hidden data-astro-cid-ac66eqjo>No matches.</p><p class="search-hint" data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>↑</kbd><kbd data-astro-cid-ac66eqjo>↓</kbd> move · <kbd data-astro-cid-ac66eqjo>↵</kbd> open</p></div></div><script>(function(){const indexUrl = "/blog/search.json";
+
+  (() => {
+    const overlay = document.querySelector('[data-search]');
+    if (!overlay) return;
+    const input = overlay.querySelector('[data-search-input]');
+    const list = overlay.querySelector('[data-search-results]');
+    const empty = overlay.querySelector('[data-search-empty]');
+
+    let index = null;
+    let loading = null;
+    let active = 0;
+
+    const load = () => {
+      if (index) return Promise.resolve(index);
+      if (!loading) {
+        loading = fetch(indexUrl)
+          .then((r) => r.json())
+          .then((d) => (index = d))
+          .catch(() => (index = []));
+      }
+      return loading;
+    };
+
+    function open() {
+      overlay.hidden = false;
+      document.documentElement.style.overflow = 'hidden';
+      load().then(() => input.focus());
+      input.focus();
+      input.select();
+    }
+
+    function close() {
+      overlay.hidden = true;
+      document.documentElement.style.overflow = '';
+    }
+
+    function escapeHtml(s) {
+      return s.replace(
+        /[&<>"]/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]
+      );
+    }
+
+    // Excerpt around the first matched term, with the term marked.
+    function excerpt(text, terms) {
+      const lower = text.toLowerCase();
+      let at = -1;
+      for (const t of terms) {
+        const i = lower.indexOf(t);
+        if (i !== -1 && (at === -1 || i < at)) at = i;
+      }
+      if (at === -1) at = 0;
+      const start = Math.max(0, at - 60);
+      let slice = text.slice(start, start + 190);
+      if (start > 0) slice = '…' + slice;
+      if (start + 190 < text.length) slice += '…';
+      let html = escapeHtml(slice);
+      for (const t of terms) {
+        html = html.replace(
+          new RegExp(`(${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'),
+          '<mark>$1</mark>'
+        );
+      }
+      return html;
+    }
+
+    function score(rec, terms) {
+      let s = 0;
+      const hay = (rec.m + ' ' + rec.h + ' ' + (rec.s || '') + ' ' + (rec.k || '')).toLowerCase();
+      const body = rec.t.toLowerCase();
+      for (const t of terms) {
+        if (hay.includes(t)) s += 12;
+        const i = body.indexOf(t);
+        if (i !== -1) s += 4 + Math.max(0, 3 - Math.floor(i / 400));
+        else if (!hay.includes(t)) return 0; // every term must appear
+      }
+      return s;
+    }
+
+    function render(results, terms) {
+      active = 0;
+      list.innerHTML = results
+        .map(
+          (r, i) => `
+          <li>
+            <a href="${r.u}" class="search-hit${i === 0 ? ' is-active' : ''}" data-hit>
+              <span class="search-hit-crumb"><span class="search-hit-series">${escapeHtml(r.s||"")}</span><span class="search-hit-n">${r.n}</span>${escapeHtml(r.m)} <span class="search-hit-sep">›</span> ${escapeHtml(r.h)}</span>
+              <span class="search-hit-text">${excerpt(r.t, terms)}</span>
+            </a>
+          </li>`
+        )
+        .join('');
+      empty.hidden = results.length > 0;
+    }
+
+    function run() {
+      const q = input.value.trim().toLowerCase();
+      if (!q || !index) {
+        list.innerHTML = '';
+        empty.hidden = true;
+        return;
+      }
+      const terms = q.split(/\s+/).filter(Boolean);
+      const results = index
+        .map((r) => ({ r, s: score(r, terms) }))
+        .filter((x) => x.s > 0)
+        .sort((a, b) => b.s - a.s || a.r.n - b.r.n)
+        .slice(0, 12)
+        .map((x) => x.r);
+      render(results, terms);
+    }
+
+    function move(delta) {
+      const hits = list.querySelectorAll('[data-hit]');
+      if (!hits.length) return;
+      hits[active]?.classList.remove('is-active');
+      active = (active + delta + hits.length) % hits.length;
+      hits[active].classList.add('is-active');
+      hits[active].scrollIntoView({ block: 'nearest' });
+    }
+
+    input.addEventListener('input', () => {
+      load().then(run);
+      run();
+    });
+
+    overlay.querySelector('[data-search-close]').addEventListener('click', close);
+
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        move(1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        move(-1);
+      } else if (e.key === 'Enter') {
+        const hit = list.querySelectorAll('[data-hit]')[active];
+        if (hit) {
+          e.preventDefault();
+          window.location.href = hit.getAttribute('href');
+        }
+      }
+    });
+
+    document.querySelectorAll('[data-search-open]').forEach((b) =>
+      b.addEventListener('click', open)
+    );
+
+    window.__openSearch = open;
+  })();
+})();</script><script>(function(){const base = "/blog";
+
+      (() => {
+        const root = document.documentElement;
+
+        /* ---- theme ---------------------------------------------------- */
+        document.querySelector('[data-theme-toggle]')?.addEventListener('click', () => {
+          const light = root.classList.toggle('light');
+          try {
+            localStorage.setItem('refresher:theme', light ? 'light' : 'dark');
+          } catch (e) {}
+        });
+
+        /* ---- progress (localStorage) ---------------------------------- */
+        const KEY = 'refresher:progress';
+        const readSet = () => {
+          try {
+            return new Set(JSON.parse(localStorage.getItem(KEY) || '[]'));
+          } catch (e) {
+            return new Set();
+          }
+        };
+        const writeSet = (s) => {
+          try {
+            localStorage.setItem(KEY, JSON.stringify([...s]));
+          } catch (e) {}
+        };
+
+        function paintProgress() {
+          const done = readSet();
+          const ticks = document.querySelectorAll('[data-tick]');
+          // A module can own more than one tick (rail + contents card), so
+          // count distinct module ids rather than elements.
+          const ids = new Set();
+          ticks.forEach((t) => {
+            const id = t.getAttribute('data-tick');
+            ids.add(id);
+            if (done.has(id)) t.setAttribute('data-read', '');
+            else t.removeAttribute('data-read');
+          });
+          const n = [...ids].filter((id) => done.has(id)).length;
+          const total = ids.size || 1;
+          const fill = document.querySelector('[data-progress-fill]');
+          if (fill) fill.style.width = `${(n / total) * 100}%`;
+          const count = document.querySelector('[data-progress-count]');
+          if (count) count.textContent = String(n);
+          document.querySelectorAll('[data-mark]').forEach((btn) => {
+            const id = btn.getAttribute('data-mark');
+            const on = done.has(id);
+            btn.setAttribute('aria-pressed', String(on));
+            btn.textContent = on ? '✓ Reviewed' : 'Mark as reviewed';
+          });
+        }
+
+        document.querySelectorAll('[data-mark]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-mark');
+            const s = readSet();
+            s.has(id) ? s.delete(id) : s.add(id);
+            writeSet(s);
+            paintProgress();
+          });
+        });
+
+        paintProgress();
+
+        /* ---- scrollspy over h2s, mirrored into the rail --------------- */
+        const article = document.querySelector('[data-article]');
+        const heads = article ? [...article.querySelectorAll('h2[id]')] : [];
+        const subLinks = new Map(
+          [...document.querySelectorAll('[data-toc]')].map((a) => [
+            a.getAttribute('data-toc'),
+            a,
+          ])
+        );
+
+        if (heads.length && subLinks.size) {
+          let currentId = null;
+          const spy = () => {
+            let found = heads[0].id;
+            for (const h of heads) {
+              if (h.getBoundingClientRect().top <= 96) found = h.id;
+              else break;
+            }
+            if (found === currentId) return;
+            subLinks.get(currentId)?.classList.remove('is-current');
+            currentId = found;
+            const el = subLinks.get(currentId);
+            if (el) {
+              el.classList.add('is-current');
+              el.scrollIntoView({ block: 'nearest' });
+            }
+          };
+          spy();
+          addEventListener('scroll', spy, { passive: true });
+        }
+
+        /* ---- keyboard ------------------------------------------------- */
+        const stops = article
+          ? [...article.querySelectorAll('h2[id], h3[id]')]
+          : [];
+
+        function jump(delta) {
+          if (!stops.length) return;
+          // The heading we are "in": the last one scrolled past the threshold.
+          let cur = -1;
+          for (let i = 0; i < stops.length; i++) {
+            if (stops[i].getBoundingClientRect().top <= 100) cur = i;
+            else break;
+          }
+          const target = cur + delta;
+          if (target < 0) return scrollTo({ top: 0, behavior: 'smooth' });
+          if (target >= stops.length) return;
+          stops[target].scrollIntoView({ block: 'start' });
+        }
+
+        addEventListener('keydown', (e) => {
+          const tag = (e.target.tagName || '').toLowerCase();
+          if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+          if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+          if (e.key === '/') {
+            e.preventDefault();
+            window.__openSearch?.();
+          } else if (e.key === 'j') {
+            e.preventDefault();
+            jump(1);
+          } else if (e.key === 'k') {
+            e.preventDefault();
+            jump(-1);
+          } else if (e.key === '[' || e.key === ']') {
+            const sel = e.key === '[' ? '[data-prev]' : '[data-next]';
+            const a = document.querySelector(sel);
+            if (a) {
+              e.preventDefault();
+              window.location.href = a.getAttribute('href');
+            }
+          }
+        });
+
+        /* ---- narrow-screen rail --------------------------------------- */
+        const rail = document.querySelector('[data-rail]');
+        document.querySelector('[data-rail-toggle]')?.addEventListener('click', () => {
+          rail.classList.toggle('is-open');
+        });
+        rail?.addEventListener('click', (e) => {
+          if (e.target.closest('a')) rail.classList.remove('is-open');
+        });
+      })();
+    })();</script></body></html>

@@ -219,10 +219,10 @@ h3 {
   .header { padding-top: 20px; }
   .header h1 { font-size: 1.9em; }
 
-  /* 3 + 3 reads better than the 4 + 2 that flex-wrap produces here. */
+  /* Four profile links land as a clean 2 x 2 on a phone. */
   .navigation {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
     gap: 10px 0;
   }
 
@@ -247,6 +247,9 @@ h3 {
 </head>
 
 <body>
+<div id="nav_bar"></div>
+<script src="/js/nav.js"></script>
+
 <div class="container">
 
   <header class="header">
@@ -254,14 +257,12 @@ h3 {
     <p class="tagline">Staff AI/ML Engineer, Samsung Semiconductor US</p>
   </header>
 
+  <!-- External profiles only. Site sections live in the shared nav above, so
+       there is exactly one place each destination is listed. -->
   <nav class="navigation">
     <div>
       <a href="files/SrikanthMalla_Resume.pdf" target="_blank" rel="noopener" title="Resume"><img src="files/resume_icon.png" alt="Resume"></a>
       <p>Resume</p>
-    </div>
-    <div>
-      <a href="projects.html" title="Projects"><img src="files/projects_icon.png" alt="Projects"></a>
-      <p>Projects</p>
     </div>
     <div>
       <a href="https://scholar.google.com/citations?user=TjIKwLcAAAAJ&amp;hl=en" target="_blank" rel="noopener" title="Google Scholar"><img src="files/google_scholar_logo.png" alt="Google Scholar"></a>
@@ -274,10 +275,6 @@ h3 {
     <div>
       <a href="https://github.com/srikanthmalla/" target="_blank" rel="noopener" title="GitHub"><img src="files/github.png" alt="GitHub"></a>
       <p>Github</p>
-    </div>
-    <div>
-      <a href="learning.html" title="Blog"><img src="files/learning.png" alt="Blog"></a>
-      <p>Blog</p>
     </div>
   </nav>
 
@@ -298,7 +295,7 @@ h3 {
 
   <hr class="solid">
 
-  <h3>Publications</h3>
+  <h3 id="publications">Publications</h3>
 
   <h4 class="pub-year">2025</h4>
 

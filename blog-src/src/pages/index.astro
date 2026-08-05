@@ -1,0 +1,159 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { SERIES, seriesEntries } from '../lib/series';
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+const cards = await Promise.all(
+  SERIES.map(async (s) => {
+    const entries = await seriesEntries(s.id);
+    return {
+      ...s,
+      count: entries.length,
+      minutes: entries.reduce((m, e) => m + e.data.minutes, 0),
+      partCount: s.parts.filter((p) => entries.some((e) => e.data.part === p.id)).length,
+    };
+  })
+);
+---
+
+<BaseLayout
+  title="Series — Srikanth Malla"
+  description="Long-form technical series on ML hardware, low-latency systems and diffusion models."
+  crumb="Series"
+>
+  <div class="wrap">
+    <header class="hero">
+      <a class="back" href="/learning.html">All writing</a>
+      <h1>Series</h1>
+      <p>
+        Multi-part technical writing, each built the same way: a mental model, the
+        numbers worth memorizing, critical-thinking probes, and self-checks with the
+        answers hidden.
+      </p>
+    </header>
+
+    <ul class="list">
+      {
+        cards.map((s) => (
+          <li>
+            <a class="card" href={`${base}/${s.id}/`}>
+              <span class="card-meta">
+                {s.count} modules · {s.partCount} parts · ~{s.minutes} min
+              </span>
+              <span class="card-title">{s.title}</span>
+              <span class="card-sub">{s.subtitle}</span>
+              <span class="card-desc">{s.description}</span>
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</BaseLayout>
+
+<style>
+  .wrap {
+    max-width: 56rem;
+    margin-inline: auto;
+    padding: 3.5rem 1.5rem 6rem;
+  }
+
+  .hero {
+    padding-block-end: 2rem;
+    border-block-end: 1px solid var(--rule);
+    max-width: 60ch;
+  }
+
+  .back {
+    display: inline-block;
+    font-family: var(--font-sans);
+    font-size: 0.6875rem;
+    color: var(--ink-faint);
+    text-decoration: none;
+    margin-block-end: 1rem;
+  }
+
+  .back::before {
+    content: '← ';
+  }
+
+  .back:hover {
+    color: var(--accent);
+  }
+
+  .hero h1 {
+    font-family: var(--font-sans);
+    font-size: clamp(2rem, 1.5rem + 2.4vw, 2.75rem);
+    font-weight: 660;
+    letter-spacing: -0.03em;
+    line-height: 1.08;
+    color: var(--ink-strong);
+    margin: 0 0 0.9rem;
+  }
+
+  .hero p {
+    margin: 0;
+    font-size: 1.0625rem;
+    line-height: 1.65;
+    color: var(--ink-muted);
+  }
+
+  .list {
+    list-style: none;
+    margin: 2rem 0 0;
+    padding: 0;
+    display: grid;
+    gap: 1rem;
+  }
+
+  .card {
+    display: block;
+    padding: 1.4rem 1.5rem;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    background: var(--bg-raised);
+    text-decoration: none;
+  }
+
+  .card:hover {
+    border-color: color-mix(in oklab, var(--accent) 55%, var(--rule));
+  }
+
+  .card-meta {
+    display: block;
+    font-family: var(--font-sans);
+    font-size: 0.6875rem;
+    font-weight: 550;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--accent);
+    margin-block-end: 0.6rem;
+  }
+
+  .card-title {
+    display: block;
+    font-family: var(--font-sans);
+    font-size: 1.375rem;
+    font-weight: 640;
+    letter-spacing: -0.02em;
+    color: var(--ink-strong);
+  }
+
+  .card-sub {
+    display: block;
+    font-family: var(--font-sans);
+    font-size: 0.8125rem;
+    color: var(--ink-faint);
+    margin-block-start: 0.15rem;
+  }
+
+  .card-desc {
+    display: block;
+    margin-block-start: 0.7rem;
+    font-size: 0.9375rem;
+    line-height: 1.6;
+    color: var(--ink-muted);
+    max-width: 68ch;
+  }
+</style>

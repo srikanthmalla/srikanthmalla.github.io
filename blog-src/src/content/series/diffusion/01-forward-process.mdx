@@ -1,0 +1,235 @@
+---
+n: 1
+title: 'The forward process, and why it is Gaussian'
+blurb: 'The closed-form marginal is the whole design. Tweedie turns denoising into score estimation, and that identity is what makes everything downstream work.'
+part: 'F'
+minutes: 14
+draft: false
+tags: ['forward process', 'Tweedie', 'score', 'VP', 'VE', 'SNR', 'terminal SNR', 'Gaussian']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+The forward process adds Gaussian noise on a schedule, and the single property that
+everything else is built on is that its **marginal has a closed form**:
+
+$$
+q(x_t \mid x_0) = \mathcal{N}\!\left(\sqrt{\bar\alpha_t}\,x_0,\; (1-\bar\alpha_t) I\right),
+\qquad
+x_t = \sqrt{\bar\alpha_t}\,x_0 + \sqrt{1-\bar\alpha_t}\,\varepsilon .
+$$
+
+You can jump to any noise level in one step without simulating the chain. That is what makes
+training a cheap Monte Carlo estimate: sample $x_0$, sample $t$, sample $\varepsilon$, take one
+gradient step. Without the closed form you would have to unroll hundreds of steps per training
+example and the whole approach would be uncompetitive. Every design choice in the forward process
+exists to protect this property.
+
+Gaussian is not an aesthetic preference either. Three things have to hold simultaneously, and the
+Gaussian is essentially the only convenient family where they all do. **Marginals stay in the
+family** under composition, giving the closed form above. **The reverse of a sufficiently small
+forward step is itself approximately Gaussian** — a classical result going back to Feller — so the
+reverse process is representable by a model that predicts a mean and a variance, rather than
+something arbitrarily complicated. And **the score of a Gaussian-smoothed distribution is
+recoverable from the conditional mean**, which is Tweedie's formula:
+
+$$
+\mathbb{E}[x_0 \mid x_t] = \frac{x_t + (1-\bar\alpha_t)\,\nabla_{x_t} \log p(x_t)}{\sqrt{\bar\alpha_t}} .
+$$
+
+Read that identity in the direction that matters: **a denoiser is a score model**. Train a network
+to predict the clean sample (or equivalently the noise) under MSE, and the optimum is the
+conditional expectation, which is an affine function of $\nabla \log p(x_t)$. You did not train a
+denoiser and then cleverly repurpose it; the denoiser was always estimating the score of the
+noise-perturbed data distribution, and the score is exactly the quantity the reverse SDE needs.
+This is the hinge the entire field turns on, and it is why "denoising diffusion" and "score-based
+generative modelling" turned out to be the same paper written twice.
+
+<Callout type="bridge" title="the two lineages are one">
+  DDPM derives a variational bound on a Markov chain. Score matching estimates
+  $\nabla \log p$ at multiple noise levels. Tweedie's formula is the change of variables that maps
+  one to the other, which is why VP and VE formulations differ only by scaling and a
+  reparameterisation of time.
+</Callout>
+
+## Numbers worth memorizing
+
+| Quantity                       | Definition / value                                        |
+| ------------------------------ | --------------------------------------------------------- |
+| Marginal                       | $x_t = \sqrt{\bar\alpha_t}x_0 + \sqrt{1-\bar\alpha_t}\varepsilon$ |
+| $\bar\alpha_t$                 | $\prod_{s\le t}(1-\beta_s)$                                |
+| **SNR**                        | $\mathrm{SNR}(t) = \bar\alpha_t / (1-\bar\alpha_t)$        |
+| Tweedie                        | $\hat x_0 = (x_t + (1-\bar\alpha_t)s_\theta)/\sqrt{\bar\alpha_t}$ |
+| Score from noise prediction    | $s_\theta = -\varepsilon_\theta/\sqrt{1-\bar\alpha_t}$     |
+| DDPM default                   | $T = 1000$, $\beta$ linear $10^{-4} \to 0.02$              |
+| $\bar\alpha_T$ (DDPM linear)   | $\approx 4\times10^{-5}$ — **not zero**                    |
+| Karras $\sigma$ range          | $0.002 \to 80$                                             |
+| log-SNR $= 0$                  | half signal, half noise — the middle of the process        |
+
+Two formulations, one process:
+
+| | Variance preserving (DDPM) | Variance exploding (NCSN) |
+| --- | --- | --- |
+| Marginal | $\sqrt{\bar\alpha}x_0 + \sqrt{1-\bar\alpha}\varepsilon$ | $x_0 + \sigma\varepsilon$ |
+| $\mathrm{Var}[x_t]$ | held at ~1 | grows to $\sigma_{\max}^2$ |
+| Terminal | $\mathcal{N}(0, I)$ | $\mathcal{N}(0, \sigma_{\max}^2 I)$ |
+| Relation | $x_t^{VP} = x_t^{VE}/\sqrt{1+\sigma^2}$ with $\sigma^2 = (1-\bar\alpha)/\bar\alpha$ | |
+
+<Callout type="trap" title="the terminal SNR is not zero">
+  With the standard linear schedule $\bar\alpha_T \approx 4\times 10^{-5}$, so $x_T$ still carries a
+  faint trace of $x_0$ — in particular its **mean brightness**. Training sees that leak; sampling
+  starts from pure $\mathcal{N}(0,I)$ and does not. The result is the well-documented inability of
+  such models to produce very dark or very bright images, and it is fixed by rescaling the schedule
+  to enforce zero terminal SNR.
+</Callout>
+
+## Critical thinking
+
+<Probe q="Why Gaussian noise? Give the reasons that would actually break if you chose something else.">
+
+Three requirements have to hold at once.
+
+1. **Closed-form marginals.** Composing Gaussians gives a Gaussian, so $q(x_t \mid x_0)$ is known
+   analytically and training samples $t$ directly. With almost any other noise family you would
+   have to simulate the chain per example — hundreds of forward passes per gradient step.
+2. **Gaussian reverse steps.** For a small enough step, the reverse conditional $q(x_{t-1} \mid x_t)$
+   is approximately Gaussian. This is what licenses a model that outputs a mean (and optionally a
+   variance) rather than an arbitrary distribution. If reverse steps were not approximately
+   Gaussian you would need a far more expressive per-step model, and the step count could not be
+   traded against quality the way it is.
+3. **Tweedie.** The score is recoverable from the posterior mean, so an MSE-trained denoiser *is* a
+   score model. This is a property of the exponential family, not a general fact.
+
+Discrete corruption processes — masking, absorbing states, multinomial diffusion — drop the second
+and third and replace them with a categorical machinery. They work, and they are the right choice
+for genuinely discrete data, but they lose the ODE view in Module 4 and with it most of the fast
+samplers.
+
+</Probe>
+
+<Probe q="What exactly does Tweedie's formula buy you?">
+
+It collapses two apparently different research programmes into one, and it tells you what your
+network is really computing.
+
+Concretely: train $\varepsilon_\theta(x_t, t)$ under $\mathbb{E}\lVert\varepsilon -
+\varepsilon_\theta\rVert^2$. The Bayes-optimal predictor of an MSE objective is the conditional
+expectation, so at convergence $\varepsilon_\theta = \mathbb{E}[\varepsilon \mid x_t]$. Substituting
+the forward marginal and rearranging,
+
+$$
+\nabla_{x_t} \log p(x_t) \;=\; -\frac{\varepsilon_\theta(x_t,t)}{\sqrt{1-\bar\alpha_t}} .
+$$
+
+So the noise prediction is the score up to a known scalar. Three consequences follow immediately.
+The reverse SDE and the probability-flow ODE (Module 4) can be written directly in terms of the
+network output, so every ODE solver in the numerical analysis literature becomes available.
+Guidance (Module 6) is score arithmetic — you add scaled score terms, which is only meaningful
+because the output *is* a score. And you can convert freely between $\varepsilon$-, $x_0$-, $v$-
+and score-parameterisations at inference, because they are affine reparameterisations of one
+quantity (Module 2).
+
+The mental shift worth making: the network is not learning "how to remove noise". It is learning a
+vector field — the gradient of the log-density of the data blurred at scale $t$ — and denoising is
+simply the cheapest supervised way to fit it.
+
+</Probe>
+
+<Probe q="Are VP and VE actually different models?">
+
+No. They are the same family under a change of variables, and treating them as rival designs is a
+historical artefact of the two lineages meeting late.
+
+Set $\sigma_t^2 = (1-\bar\alpha_t)/\bar\alpha_t$. Then the VP sample is exactly the VE sample
+rescaled: $x^{VP}_t = x^{VE}_t / \sqrt{1+\sigma_t^2}$, and the scores relate by the same factor.
+Karras et al. made this explicit by writing all of them as one ODE with a choice of scaling
+$s(t)$ and noise $\sigma(t)$, then arguing those choices should be made on numerical grounds
+rather than probabilistic ones.
+
+What genuinely differs is **conditioning of the numerics**, and that is not nothing. VP keeps the
+network's input variance around 1 at every noise level, which is friendly to normalisation layers.
+VE inputs span orders of magnitude, so it needs explicit input scaling and a $\sigma$-dependent
+output skip connection to stay well-conditioned — the preconditioning that the EDM formulation
+makes explicit.
+
+So the right question is never "VP or VE" but "what scaling keeps the network's inputs, targets and
+loss weighting well-conditioned across noise levels", which is Module 2.
+
+</Probe>
+
+<Probe q="Why can many diffusion models not generate a genuinely black image?">
+
+Because the terminal signal-to-noise ratio is not actually zero, so training and sampling start
+from different distributions.
+
+With the standard linear schedule, $\bar\alpha_T \approx 4\times10^{-5}$, giving
+$\sqrt{\bar\alpha_T} \approx 0.0063$. Tiny — but the mean brightness of an image is a very
+low-frequency, high-variance-across-dataset quantity, so that small surviving component is
+informative. During training the model always sees an $x_T$ that quietly encodes the image's mean
+level, and it learns to rely on it. At sampling time you hand it pure $\mathcal{N}(0, I)$, whose
+mean is zero. The model duly produces images with roughly average brightness, and cannot be
+prompted out of it.
+
+The fix is to rescale the schedule so $\bar\alpha_T = 0$ exactly, which requires also switching to
+a $v$-parameterisation (Module 2), because $\varepsilon$-prediction is degenerate at zero SNR —
+if there is no signal, predicting the noise is trivial and gives no gradient toward $x_0$.
+
+The general lesson is worth more than the specific bug: **any mismatch between the training
+distribution of $x_T$ and the sampling prior shows up as a systematic bias in the output**, and
+because it lives at the highest noise level it affects the most global attributes — brightness,
+colour balance, overall composition.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="Write the forward marginal and say which property of it makes training cheap.">
+
+$x_t = \sqrt{\bar\alpha_t}\,x_0 + \sqrt{1-\bar\alpha_t}\,\varepsilon$ with
+$\bar\alpha_t = \prod_{s \le t}(1-\beta_s)$. Being closed-form means you can jump to any $t$ in one
+step, so training is: sample $x_0$, sample $t$, sample $\varepsilon$, one forward pass. Without it
+you would simulate the chain per example and pay hundreds of passes per gradient step.
+
+</SelfCheck>
+
+<SelfCheck q="State Tweedie's formula and convert a noise prediction into a score.">
+
+$\mathbb{E}[x_0 \mid x_t] = \bigl(x_t + (1-\bar\alpha_t)\nabla\log p(x_t)\bigr)/\sqrt{\bar\alpha_t}$.
+Rearranged for a noise-prediction network,
+$\nabla_{x_t}\log p(x_t) = -\varepsilon_\theta(x_t,t)/\sqrt{1-\bar\alpha_t}$. So an MSE-trained
+denoiser is a score model up to a known scalar — the identity that makes ODE samplers and guidance
+possible.
+
+</SelfCheck>
+
+<SelfCheck q="Give the three properties of Gaussian noise that the framework depends on.">
+
+Closed-form composition, so marginals stay Gaussian and training can sample $t$ directly; small
+reverse steps are approximately Gaussian, so a mean-predicting network suffices; and Tweedie, so
+the score is recoverable from the posterior mean. Discrete corruption processes give up the second
+and third, which is why they lose the ODE view and the fast solvers built on it.
+
+</SelfCheck>
+
+<SelfCheck q="Relate VP and VE.">
+
+They are one process under a change of variables: with $\sigma_t^2 = (1-\bar\alpha_t)/\bar\alpha_t$,
+$x^{VP}_t = x^{VE}_t/\sqrt{1+\sigma_t^2}$. What genuinely differs is numerical conditioning — VP
+holds input variance near 1, while VE spans orders of magnitude and needs explicit input scaling
+and a $\sigma$-dependent skip connection to stay well-behaved.
+
+</SelfCheck>
+
+<SelfCheck q="Why does a non-zero terminal SNR bias the output, and why does fixing it force a parameterization change?">
+
+$\bar\alpha_T \approx 4\times10^{-5}$ leaves a faint trace of $x_0$ in $x_T$ — enough to encode mean
+brightness. Training uses that leak; sampling starts from pure noise which has none, so outputs
+regress to average brightness. Enforcing $\bar\alpha_T = 0$ fixes the mismatch, but at zero SNR
+predicting $\varepsilon$ is trivial and carries no information about $x_0$, so the objective must
+move to $v$-prediction.
+
+</SelfCheck>

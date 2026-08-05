@@ -1,0 +1,233 @@
+---
+n: 3
+title: 'Schedules, SNR, and why resolution changes everything'
+blurb: 'log-SNR is the real time axis. The same schedule destroys far less information at higher resolution, which is why schedules must shift with image size.'
+part: 'F'
+minutes: 13
+draft: false
+tags: ['noise schedule', 'cosine', 'log-SNR', 'resolution', 'shifted schedule', 'importance sampling']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+Timestep index is a bad coordinate. It is an arbitrary discretisation of a continuous process, and
+two schedules with the same $T$ can put wildly different amounts of work in the same range of $t$.
+The coordinate that means something is **log-SNR**, $\lambda_t = \log\bigl(\bar\alpha_t/(1-\bar\alpha_t)\bigr)$,
+because it measures how much of the signal actually survives. Once you plot everything against
+$\lambda$, schedule design becomes legible: a schedule is just a choice of how fast to sweep
+$\lambda$ from about $+10$ (nearly clean) to about $-10$ (nearly pure noise), and how much time to
+spend in each band.
+
+The linear $\beta$ schedule from DDPM sweeps $\lambda$ very unevenly — it spends a large fraction of
+its steps in a regime where the image is already destroyed and there is nothing left to learn. The
+cosine schedule was introduced precisely to fix that, holding more of the budget in the middle
+where structure is decided. Everything since is a variation on the same question: given a fixed
+number of training steps and a fixed number of sampling steps, where in log-SNR should they go?
+
+The part that trips people up when they scale is that **the answer depends on resolution**. Adding
+noise of a fixed variance per pixel destroys far less information in a large image than a small
+one, because natural images are spatially redundant: you can average neighbouring pixels to recover
+the low frequencies, and the more pixels you have, the more averaging is available. So at
+1024×1024, a noise level that would have obliterated a 64×64 image still leaves the global
+composition perfectly legible. Train a high-resolution model on a schedule tuned at low resolution
+and you will spend nearly all of your capacity on noise levels where the picture is already
+essentially decided — the model never learns to make global choices, because it never sees a
+training example where the global content is genuinely uncertain. The fix is to **shift the
+schedule toward higher noise as resolution grows**, by roughly $\log(n/n_{\text{ref}})$ in log-SNR
+for linear dimension $n$.
+
+<Callout type="bridge" title="the frequency view">
+  Diffusion is a coarse-to-fine process in frequency: high noise destroys high frequencies first
+  because they have the least energy in natural images. A schedule is therefore a plan for the
+  order in which frequency bands get decided, and resolution changes which noise level corresponds
+  to which band.
+</Callout>
+
+## Numbers worth memorizing
+
+| Quantity                     | Definition / value                                              |
+| ---------------------------- | --------------------------------------------------------------- |
+| log-SNR                      | $\lambda_t = \log\!\bigl(\bar\alpha_t/(1-\bar\alpha_t)\bigr)$    |
+| Useful range                 | $\lambda \in [-10, +10]$ covers essentially everything           |
+| $\lambda = 0$                | half signal, half noise — where structure is decided             |
+| Cosine schedule              | $\bar\alpha_t = \cos^2\!\bigl(\tfrac{t/T + s}{1+s}\cdot\tfrac{\pi}{2}\bigr)$, $s = 0.008$ |
+| Resolution shift             | $\lambda \mathrel{-}= 2\log(n/n_{\text{ref}})$ for linear size $n$ |
+| 64 → 1024 shift              | $2\log 16 \approx 5.5$ nats of log-SNR                            |
+| Karras $\sigma$ distribution | $\log\sigma \sim \mathcal{N}(P_{\text{mean}}, P_{\text{std}})$, $(-1.2, 1.2)$ |
+
+Schedule comparison, informally:
+
+| Schedule            | Behaviour                                       | Where it fails            |
+| ------------------- | ----------------------------------------------- | ------------------------- |
+| Linear $\beta$      | sweeps $\lambda$ fast at the end                | wastes steps on destroyed images; non-zero terminal SNR |
+| Cosine              | more budget in the middle                       | still resolution-blind    |
+| Shifted cosine      | cosine plus a resolution-dependent offset       | needs the shift tuned     |
+| Karras / EDM        | designed in $\sigma$ with explicit $\log\sigma$ sampling | requires the preconditioning to match |
+| Zero terminal SNR   | rescaled so $\bar\alpha_T = 0$                  | forces $v$-prediction     |
+
+<Callout type="trap" title="reusing a 256px schedule at 1024px">
+  The most common scaling failure. At the higher resolution most of the schedule sits in a regime
+  where the composition is already determined, so the model gets almost no training signal about
+  global structure and produces high-frequency-plausible, globally-incoherent images. The symptom
+  is "the textures look great and the layout is nonsense".
+</Callout>
+
+## Critical thinking
+
+<Probe q="Why does the same noise level destroy less information at higher resolution?">
+
+Because natural images are spatially redundant and the noise is not.
+
+Add i.i.d. noise of variance $\sigma^2$ per pixel. Now average over a $k \times k$ block. The signal
+survives almost intact — neighbouring pixels are highly correlated, so their mean is close to the
+true local mean — while the noise variance falls to $\sigma^2/k^2$. The effective SNR of the
+low-frequency content therefore improves by $k^2$ simply because more pixels are available to
+average.
+
+Concretely, doubling the linear resolution gives four times as many pixels per unit of image
+content, so the recoverable low-frequency signal gains a factor of about 4 in SNR — roughly 1.4
+nats of log-SNR per doubling, or about 5.5 nats going from 64 to 1024.
+
+Consequences worth stating:
+
+- A fixed schedule becomes *effectively less noisy* as resolution grows, so the model spends its
+  capacity in the wrong place.
+- The fix is a shift, not a rescale: subtract about $2\log(n/n_{\text{ref}})$ from log-SNR so that
+  the same *information* is destroyed at the same point in the schedule.
+- This also explains why latent diffusion (Module 8) needs less shifting — the latent has already
+  removed much of the spatial redundancy, so its effective resolution is much smaller than the
+  pixel resolution suggests.
+
+</Probe>
+
+<Probe q="Uniform sampling of t is a bad default. Why, and what do you do instead?">
+
+Because uniform in $t$ is not uniform in anything meaningful, and $t$ is not the axis on which the
+learning problem is defined.
+
+The mapping $t \mapsto \lambda$ is highly non-linear, so uniform $t$ concentrates samples wherever
+the schedule happens to move slowly through log-SNR. With the linear schedule that is the
+high-noise end, where the target is nearly degenerate and there is little to learn — you spend a
+large share of your compute on the easiest region.
+
+Three better options:
+
+1. **Uniform in log-SNR.** Sample $\lambda$ uniformly on its useful range and invert the schedule
+   to get $t$. Simple, principled, and usually an improvement on its own.
+2. **A distribution over $\log\sigma$.** EDM samples $\log\sigma \sim \mathcal{N}(-1.2, 1.2)$,
+   deliberately concentrating on the middle band where the model is most uncertain and the
+   sampler will later spend most of its steps.
+3. **Importance sampling by observed loss.** Maintain a running estimate of loss per $\lambda$ bin
+   and sample proportionally, which is a variance-reduction technique for the gradient estimator
+   and adapts automatically as training progresses.
+
+Note the interaction with Module 2: changing the $t$ distribution and changing the loss weighting
+have overlapping effects, since both scale the contribution of a noise level to the gradient. Do
+one deliberately rather than both accidentally, or you will not be able to attribute the result.
+
+</Probe>
+
+<Probe q="Given a fixed step budget at sampling time, where should the steps go?">
+
+Where the trajectory has the most curvature, which is not where the noise is highest.
+
+The probability-flow ODE (Module 4) is close to linear at very high noise — the score points more
+or less straight at the data mean, and large steps are accurate. It is also close to linear at very
+low noise, where the remaining update is a small refinement. The curvature is concentrated in the
+middle band, near $\lambda \approx 0$, which is exactly where the sample commits to what it is
+going to be.
+
+This is why practical step schedules are not uniform in $t$:
+
+- **Karras spacing** distributes $\sigma$ according to $\sigma_i \propto (\sigma_{\max}^{1/\rho} +
+  \frac{i}{N-1}(\sigma_{\min}^{1/\rho} - \sigma_{\max}^{1/\rho}))^{\rho}$ with $\rho = 7$, which
+  concentrates steps at low $\sigma$ while still taking a few large ones early.
+- Uniform-in-$\lambda$ spacing is a reasonable default and much better than uniform in $t$.
+- Very few steps at the very start is safe; very few in the middle is what produces the
+  characteristic "the composition changed between step counts" instability.
+
+The general framing is Module 4's: this is a numerical integration problem, and step placement is
+adaptive quadrature. You put nodes where the integrand varies.
+
+</Probe>
+
+<Probe q="Your 1024px model produces gorgeous texture and incoherent layout. What do you check first?">
+
+The schedule, before anything about architecture or data.
+
+The signature is diagnostic. Global incoherence with good local detail means the model was never
+trained in the regime where global structure is uncertain — it has effectively only ever seen
+"refine this mostly-decided image" problems. That is exactly what happens when a schedule tuned at
+low resolution is reused at high resolution, because the same per-pixel noise destroys far less
+information when there are more pixels to average over.
+
+**Check:** plot the *effective* log-SNR of your training distribution at this resolution. Better,
+look at samples of $x_t$ at several $t$ and ask a human at what point the composition becomes
+unrecoverable. If that point is at the extreme end of your schedule, almost all your training
+budget is downstream of the decision you care about.
+
+**Fix:** shift the schedule toward higher noise by roughly $2\log(n/n_{\text{ref}})$ in log-SNR.
+Related mitigations that address the same problem from other directions: cascaded generation (make
+global decisions at low resolution and upsample), and training at multiple resolutions with the
+shift applied per resolution.
+
+The general principle worth keeping: **when a model fails at one spatial scale and not another,
+suspect the noise schedule before the architecture**, because the schedule is what determines which
+scale each training example is asking about.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="Why is log-SNR the right time axis?">
+
+Because timestep index is an arbitrary discretisation, and two schedules with the same $T$ can place
+completely different amounts of work in the same range of $t$. log-SNR
+$\lambda = \log(\bar\alpha/(1-\bar\alpha))$ measures how much signal actually survives, so a
+schedule becomes legible as a plan for sweeping $\lambda$ from about $+10$ to $-10$ and choosing how
+long to linger in each band.
+
+</SelfCheck>
+
+<SelfCheck q="Quantify how resolution changes the effective noise level.">
+
+Averaging a $k\times k$ block leaves correlated signal nearly intact while cutting noise variance to
+$\sigma^2/k^2$, so low-frequency SNR improves by about $k^2$. Doubling linear resolution is roughly
+1.4 nats of log-SNR; 64 → 1024 is about $2\log 16 \approx 5.5$ nats. Schedules must shift toward
+higher noise by that much to destroy the same *information* at the same point.
+
+</SelfCheck>
+
+<SelfCheck q="What is wrong with sampling t uniformly?">
+
+The map $t \mapsto \lambda$ is strongly non-linear, so uniform $t$ over-samples wherever the
+schedule moves slowly through log-SNR — with a linear schedule, the high-noise end where targets are
+nearly degenerate. Better: sample uniformly in log-SNR, use EDM's $\log\sigma \sim
+\mathcal{N}(-1.2,1.2)$, or importance-sample by observed per-bin loss. Beware doing this *and*
+changing the loss weighting at once, since their effects overlap.
+
+</SelfCheck>
+
+<SelfCheck q="Given 20 sampling steps, where do they go and why?">
+
+Into the middle band near $\lambda \approx 0$, where the probability-flow ODE has the most
+curvature and the sample commits to its content. The trajectory is nearly linear at very high noise
+(the score points at the data mean) and at very low noise (small refinements), so large steps are
+accurate there. Karras spacing with $\rho = 7$ is the standard concrete choice; uniform-in-$\lambda$
+is a decent default and much better than uniform in $t$.
+
+</SelfCheck>
+
+<SelfCheck q="Great texture, incoherent layout at high resolution. First suspect?">
+
+The noise schedule, reused from a lower resolution. The same per-pixel noise destroys far less
+information when more pixels are available to average, so nearly the whole schedule sits in a
+regime where composition is already decided and the model never trains on genuinely uncertain
+global structure. Shift log-SNR by about $2\log(n/n_\text{ref})$. When a model fails at one spatial
+scale and not another, suspect the schedule before the architecture.
+
+</SelfCheck>
