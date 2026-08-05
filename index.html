@@ -1,495 +1,588 @@
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Srikanth Malla | Home</title>
-<meta charset="utf-8" />
-</head>
+
+<meta name="keywords" content="Srikanth, Malla, Computer Vision, Reinforcement Learning, Honda, Kinetic Automation, Research, Reviewer, Deep Learning, Honda Research Institute, Samsung Semiconductor">
+<meta name="description" content="Srikanth Malla — Staff AI/ML Engineer at Samsung Semiconductor US. Research in computer vision, trajectory prediction, and efficient machine learning.">
+
+<link rel="icon" href="files/favicon.svg" type="image/svg+xml">
+<link rel="canonical" href="https://www.srikanthmalla.com/">
+
+<!-- Link previews for Slack, LinkedIn, X, iMessage -->
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.srikanthmalla.com/">
+<meta property="og:title" content="Srikanth Malla">
+<meta property="og:description" content="Staff AI/ML Engineer at Samsung Semiconductor US. Research in computer vision, trajectory prediction, and efficient machine learning.">
+<meta property="og:image" content="https://www.srikanthmalla.com/files/profile_pic.jpg">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Srikanth Malla">
+<meta name="twitter:description" content="Staff AI/ML Engineer at Samsung Semiconductor US. Research in computer vision, trajectory prediction, and efficient machine learning.">
+<meta name="twitter:image" content="https://www.srikanthmalla.com/files/profile_pic.jpg">
+
+<!-- Self-hosted; only the .btn utility classes are used, so no Bootstrap JS
+     (and therefore no jQuery) is needed on this page. -->
 <link rel="stylesheet" type="text/css" href="css/bootstrap.css">
-<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css">
-<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
-<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
-
-
-<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
-<meta name="keywords" content="Srikanth, Malla, Computer Vision, Reinforcement Learning, Honda, Kinetic Automation, Research, Reviewer, Deep Learning, Honda Research Institute">
-<meta name="description" content="Srikanth Malla, Homepage, Honda Research, Computer Vision">
 
 <style type="text/css">
 a {
-color: #1772d0;
-text-decoration:none;
+  color: #1772d0;
+  text-decoration: none;
 }
 a:focus, a:hover {
-color: #f09228;
-text-decoration:none;
-}
-body,td,th {
-	    font-family: 'Arial', sans-serif;
-	    background-color: #f8f8f8;
-	    color: #333333;
-	    margin: 0;
-	    padding: 0;
-	    font-size: 15px;
-	
+  color: #f09228;
+  text-decoration: none;
 }
 
-td {
-	padding: 1em;
+body {
+  font-family: 'Arial', sans-serif;
+  background-color: #f8f8f8;
+  color: #333333;
+  margin: 0;
+  padding: 0;
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-text-size-adjust: 100%;
 }
-p {
-	font-size: 15px;
-}
-	.profile-pic {
-	    float: right;
-	    margin-left: 20px;
-	    border-radius: 10px;
-	}
-	
+
 .container {
-    max-width: 950px; /* Adjust the width as needed */
-    margin: auto;
-    padding: 0 10px; /* Add padding if needed */
+  max-width: 950px;
+  margin: auto;
+  padding: 0 16px;
 }
 
+/* ---------- header + icon nav ---------- */
 .header {
-    text-align: center;
-    padding: 20px 0;
+  text-align: center;
+  padding: 28px 0 4px;
 }
 
 .header h1 {
-    margin: 0;
-    font-size: 2.5em;
+  margin: 0;
+  font-size: 2.5em;
+  line-height: 1.15;
 }
 
-	   .navigation {
-	        display: flex;
-	        justify-content: center;
-	        align-items: center;
-	    }
-	
-	    .navigation div {
-	        margin: 0 10px; /* Adjust space between items */
-	        text-align: center;
-	    }
-        .navigation img {{
-            height: 40px;
-            margin: 0 10px;
-        }}
-	.footer {
-            text-align: center;
-            padding: 10px 0;
-            margin-top: 40px;
-            background-color: #ddd;
-        }
+.header .tagline {
+  margin: 6px 0 0;
+  color: #666;
+  font-size: 15px;
+}
+
+.navigation {
+  display: flex;
+  flex-wrap: wrap;              /* was overflowing off-screen on phones */
+  justify-content: center;
+  align-items: flex-start;
+  gap: 4px 6px;
+  padding: 18px 0 6px;
+}
+
+.navigation div {
+  width: 84px;
+  text-align: center;
+}
+
+.navigation img {
+  height: 40px;
+  width: auto;
+}
+
+.navigation p {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+/* ---------- intro ---------- */
+.intro {
+  padding-top: 8px;
+}
+
+.profile-pic {
+  float: right;
+  margin: 4px 0 12px 22px;
+  border-radius: 10px;
+  width: 170px;
+  height: auto;
+}
+
+.intro p {
+  margin: 0 0 14px;
+}
+
+.contact {
+  clear: both;
+  margin: 18px 0 0;
+}
+
+hr.solid {
+  border: 0;
+  border-top: 1px solid #ddd;
+  margin: 28px 0 8px;
+}
+
+h3 {
+  font-size: 1.35em;
+  margin: 22px 0 6px;
+}
+
+/* ---------- publications ---------- */
+.pub-year {
+  margin: 26px 0 10px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #e4e4e4;
+  font-size: 12px;
+  font-weight: bold;
+  letter-spacing: 0.1em;
+  color: #999;
+}
+
+.pub {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+  padding: 14px 0;
+}
+
+.pub + .pub {
+  border-top: 1px solid #ececec;
+}
+
+.pub-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 110px;
+  background: #ffffff;
+  border: 1px solid #e6e6e6;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+/* Fixed box + contain means no layout shift and no distorted teasers,
+   without needing the intrinsic size of every image. */
+.pub-thumb img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.pub-title {
+  margin: 0 0 3px;
+  font-size: 15px;
+  font-weight: bold;
+  line-height: 1.4;
+  color: #222;
+}
+
+.pub-authors {
+  margin: 0 0 2px;
+  color: #444;
+}
+
+.pub-venue {
+  margin: 0 0 8px;
+  color: #555;
+}
+
+.pub-links .btn {
+  margin: 0 3px 3px 0;
+}
+
+/* ---------- reviewing ---------- */
+.reviewing {
+  columns: 2;
+  column-gap: 34px;
+  padding-left: 18px;
+  margin: 10px 0 0;
+}
+
+.reviewing li {
+  break-inside: avoid;
+  margin-bottom: 5px;
+}
+
+/* ---------- footer ---------- */
+.footer {
+  text-align: center;
+  padding: 14px 10px;
+  margin-top: 44px;
+  background-color: #ddd;
+  font-size: 14px;
+}
+
+/* ---------- phones ---------- */
+@media (max-width: 700px) {
+  .header { padding-top: 20px; }
+  .header h1 { font-size: 1.9em; }
+
+  /* 3 + 3 reads better than the 4 + 2 that flex-wrap produces here. */
+  .navigation {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px 0;
+  }
+
+  .navigation div { width: auto; }
+
+  .profile-pic {
+    float: none;
+    display: block;
+    margin: 0 auto 16px;
+  }
+
+  .pub {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .pub-thumb { height: 150px; }
+
+  .reviewing { columns: 1; }
+}
 </style>
+</head>
 
-
-<BODY MARGINWIDTH=10 MARGINHEIGHT=20>
+<body>
 <div class="container">
-        <div class="header">
-            <h1>Srikanth Malla</h1>
-        </div>
-        <div class="navigation">
-	<div>
-		<a href="files/SrikanthMalla_Resume.pdf" target="_blank"><img  src="files/resume_icon.png"  height=40 title="Resume"></a>
-		<p>Resume</p>
-	</div>
-	<div >
-		<a href="projects.html" target="_blank"><img  src="files/projects_icon.png"  height=40 title="Projects"></a>
-		<p>Projects</p>
-	</div>
-	<div >
-		<a href="https://scholar.google.com/citations?user=TjIKwLcAAAAJ&hl=en"><img  src="files/google_scholar_logo.png"  height=40 title="Google Scholar"></a>
-		<p>Scholar</p>
-	</div>
-	<div>
-		<a href="https://www.linkedin.com/in/srikanthmalla/" target="_blank"><img  src="files/linkedin.png"  height=40 title="Linkedin"></a>
-		<p>Linkedin</p>
-	</div>
-	<div >
-		<a href="https://github.com/srikanthmalla/" target="_blank"><img  src="files/github.png"  height=40 title="Github"></a>
-		<p>Github</p>
-	</div>
-	<div >
-		<a href="learning.html" target="_blank"><img  src="files/learning.png"  height=40 title="Learning"></a>
-		<p>Learning</p>
-	</div>
-	</div>
-<br>
-<table border="0" cellpadding="0" cellspacing=â€œ10" width="100%">
 
-<p style = "text-align: left" >
-<img src="files/profile_pic.jpg" class="profile-pic" width=170px border=0 align="right" hspace="5" vspace="5"></a>
-<b>I am Srikanth Malla, currently leading initiatives as a Staff AI ML Engineer at Samsung Semiconductor US</b>. My journey in tech began with roles at Honda Research Institute (HRI), USA, and Kinetic Automation, where I focused on research and development in Computer Vision and Machine Learning. My passion lies in the realm of intelligent robotics; I am driven by the vision of creating robots that coexist and assist humans, enhancing our everyday life. My academic foundation includes a Master's in Robotics Engineering from Worcester Polytechnic Institute (WPI), obtained in September 2018. Beyond my professional endeavors, I delve into projects that range from self-driving car technologies to deep learning applications, constantly seeking innovative ways to apply my skills in AI and machine learning to solve real-world problems.
-<br>
-</p>
-</td>
-</table>
-<table style="width:100%" >
-<tr>
-	<th>
-	<p>
-		<strong>Contact: srikanth.m@samsung.com</strong>
-	</p>
+  <header class="header">
+    <h1>Srikanth Malla</h1>
+    <p class="tagline">Staff AI/ML Engineer, Samsung Semiconductor US</p>
+  </header>
 
-	</th>
-	<th>
-</table>
-<hr class="solid">
- <h3>Publications</h3>
-<table cellspacing="15">
+  <nav class="navigation">
+    <div>
+      <a href="files/SrikanthMalla_Resume.pdf" target="_blank" rel="noopener" title="Resume"><img src="files/resume_icon.png" alt="Resume"></a>
+      <p>Resume</p>
+    </div>
+    <div>
+      <a href="projects.html" title="Projects"><img src="files/projects_icon.png" alt="Projects"></a>
+      <p>Projects</p>
+    </div>
+    <div>
+      <a href="https://scholar.google.com/citations?user=TjIKwLcAAAAJ&amp;hl=en" target="_blank" rel="noopener" title="Google Scholar"><img src="files/google_scholar_logo.png" alt="Google Scholar"></a>
+      <p>Scholar</p>
+    </div>
+    <div>
+      <a href="https://www.linkedin.com/in/srikanthmalla/" target="_blank" rel="noopener" title="LinkedIn"><img src="files/linkedin.png" alt="LinkedIn"></a>
+      <p>Linkedin</p>
+    </div>
+    <div>
+      <a href="https://github.com/srikanthmalla/" target="_blank" rel="noopener" title="GitHub"><img src="files/github.png" alt="GitHub"></a>
+      <p>Github</p>
+    </div>
+    <div>
+      <a href="learning.html" title="Blog"><img src="files/learning.png" alt="Blog"></a>
+      <p>Blog</p>
+    </div>
+  </nav>
 
-<!-- CAMILA -->
-<tr>
-  <td width="35%">
-  <img  src="files/camila.png"  height=100>
-  </td>
+  <section class="intro">
+    <img src="files/profile_pic.jpg" class="profile-pic" alt="Srikanth Malla">
+    <p>
+      <b>I am Srikanth Malla, currently leading initiatives as a Staff AI ML Engineer at Samsung Semiconductor US</b>.
+      My journey in tech began with roles at Honda Research Institute (HRI), USA, and Kinetic Automation, where I
+      focused on research and development in Computer Vision and Machine Learning. My passion lies in the realm of
+      intelligent robotics; I am driven by the vision of creating robots that coexist and assist humans, enhancing
+      our everyday life. My academic foundation includes a Master's in Robotics Engineering from Worcester
+      Polytechnic Institute (WPI), obtained in September 2018. Beyond my professional endeavors, I delve into
+      projects that range from self-driving car technologies to deep learning applications, constantly seeking
+      innovative ways to apply my skills in AI and machine learning to solve real-world problems.
+    </p>
+    <p class="contact"><strong>Contact: srikanth.m@samsung.com</strong></p>
+  </section>
 
+  <hr class="solid">
 
-<td>
-    <b>CAMILA: Context-Aware Masking for Image Editing with Language Alignment</b>
-    <br>
-    Hyunseung Kim, Chiho Choi, <u>Srikanth Malla</u>, Sai Prahladh Padmanabhan, Saurabh Bagchi, Joon Hee Choi
-    <br><em>Neurips 2025</em><br>
-    <a class="btn btn-success btn-xs" href="https://arxiv.org/pdf/2509.19731" role="button" style="opacity:0.8;">Paper</a>
-    <a class="btn btn-warning btn-xs" href="https://arxiv.org/abs/2509.19731" role="button" style="opacity:0.8;">Abstract</a>
-    <a class="btn btn-danger btn-xs" href="files/kim2025camila.txt" role="button" style="opacity:0.7;">Bibtex</a>
-  </td>
+  <h3>Publications</h3>
 
-<!-- BITWEAVER -->
-<tr>
-  <td width="35%">
-  <img  src="files/bitweaver.png"  height=100>
-  </td>
+  <h4 class="pub-year">2025</h4>
 
+  <article class="pub">
+    <div class="pub-thumb"><img src="files/camila.png" alt="CAMILA teaser" loading="lazy"></div>
+    <div class="pub-body">
+      <p class="pub-title">CAMILA: Context-Aware Masking for Image Editing with Language Alignment</p>
+      <p class="pub-authors">Hyunseung Kim, Chiho Choi, <u>Srikanth Malla</u>, Sai Prahladh Padmanabhan, Saurabh Bagchi, Joon Hee Choi</p>
+      <p class="pub-venue"><em>Neurips 2025</em></p>
+      <p class="pub-links">
+        <a class="btn btn-success btn-xs" href="https://arxiv.org/pdf/2509.19731" target="_blank" rel="noopener" style="opacity:0.8;">Paper</a>
+        <a class="btn btn-warning btn-xs" href="https://arxiv.org/abs/2509.19731" target="_blank" rel="noopener" style="opacity:0.8;">Abstract</a>
+        <a class="btn btn-danger btn-xs" href="files/kim2025camila.txt" style="opacity:0.7;">Bibtex</a>
+      </p>
+    </div>
+  </article>
 
-<td>
-    <b>BitWeaver: Read-Time Truncation in Memory</b>
-    <br>
-    Garrett Gagnon, <u>Srikanth Malla</u>, Yangwook Kang, Liu Liu
-    <br><em>ICS 2025</em><br>
-    <a class="btn btn-success btn-xs" href="https://hpcrl.github.io/ICS2025-webpage/program/Proceedings_ICS25/ics25-39.pdf" role="button" style="opacity:0.8;">Paper</a>
-    <a class="btn btn-warning btn-xs" href="https://hpcrl.github.io/ICS2025-webpage/program/Proceedings_ICS25/ics25-39.pdf" role="button" style="opacity:0.8;">Abstract</a>
-    <a class="btn btn-danger btn-xs" href="files/gagnon2025bitweaver.txt" role="button" style="opacity:0.7;">Bibtex</a>
-  </td>
-<!-- COPAL -->
-<tr>
-  <td width="35%">
-  <img  src="files/copal.png"  height=100>
-  </td>
+  <article class="pub">
+    <div class="pub-thumb"><img src="files/bitweaver.png" alt="BitWeaver teaser" loading="lazy"></div>
+    <div class="pub-body">
+      <p class="pub-title">BitWeaver: Read-Time Truncation in Memory</p>
+      <p class="pub-authors">Garrett Gagnon, <u>Srikanth Malla</u>, Yangwook Kang, Liu Liu</p>
+      <p class="pub-venue"><em>ICS 2025</em></p>
+      <p class="pub-links">
+        <a class="btn btn-success btn-xs" href="https://hpcrl.github.io/ICS2025-webpage/program/Proceedings_ICS25/ics25-39.pdf" target="_blank" rel="noopener" style="opacity:0.8;">Paper</a>
+        <a class="btn btn-warning btn-xs" href="https://hpcrl.github.io/ICS2025-webpage/program/Proceedings_ICS25/ics25-39.pdf" target="_blank" rel="noopener" style="opacity:0.8;">Abstract</a>
+        <a class="btn btn-danger btn-xs" href="files/gagnon2025bitweaver.txt" style="opacity:0.7;">Bibtex</a>
+      </p>
+    </div>
+  </article>
 
+  <h4 class="pub-year">2024</h4>
 
-<td>
-    <b>COPAL: Continual Pruning in Large Language Generative Models</b>
-    <br>
-    <u>Srikanth Malla</u>, Joon Hee Choi, Chiho Choi
-    <br><em>ICML 2024</em><br>
-    <a class="btn btn-success btn-xs" href="https://arxiv.org/abs/2405.02347.pdf" role="button" style="opacity:0.8;">Paper</a>
-    <a class="btn btn-warning btn-xs" href="https://arxiv.org/abs/2405.02347" role="button" style="opacity:0.8;">Abstract</a>
-    <a class="btn btn-danger btn-xs" href="files/malla2024copal.txt" role="button" style="opacity:0.7;">Bibtex</a>
-    <a class="btn btn-info btn-xs" href="https://www.youtube.com/watch?v=O4FDpW_KZcs" role="button" style="opacity:0.7;">Video</a>
-  </td>
+  <article class="pub">
+    <div class="pub-thumb"><img src="files/copal.png" alt="COPAL teaser" loading="lazy"></div>
+    <div class="pub-body">
+      <p class="pub-title">COPAL: Continual Pruning in Large Language Generative Models</p>
+      <p class="pub-authors"><u>Srikanth Malla</u>, Joon Hee Choi, Chiho Choi</p>
+      <p class="pub-venue"><em>ICML 2024</em></p>
+      <p class="pub-links">
+        <a class="btn btn-success btn-xs" href="https://arxiv.org/abs/2405.02347.pdf" target="_blank" rel="noopener" style="opacity:0.8;">Paper</a>
+        <a class="btn btn-warning btn-xs" href="https://arxiv.org/abs/2405.02347" target="_blank" rel="noopener" style="opacity:0.8;">Abstract</a>
+        <a class="btn btn-danger btn-xs" href="files/malla2024copal.txt" style="opacity:0.7;">Bibtex</a>
+        <a class="btn btn-info btn-xs" href="https://www.youtube.com/watch?v=O4FDpW_KZcs" target="_blank" rel="noopener" style="opacity:0.7;">Video</a>
+      </p>
+    </div>
+  </article>
 
-<!-- DRAMA -->
-<tr>
-  <td width="35%">
-  <img  src="files/drama.png"  height=100>
-  </td>
+  <h4 class="pub-year">2023</h4>
 
+  <article class="pub">
+    <div class="pub-thumb"><img src="files/drama.png" alt="DRAMA teaser" loading="lazy"></div>
+    <div class="pub-body">
+      <p class="pub-title">DRAMA: Joint Risk Localization and Captioning in Driving</p>
+      <p class="pub-authors"><u>Srikanth Malla</u>, Chiho Choi, Isht Dwivedi, Joon Hee Choi, Jiachen Li</p>
+      <p class="pub-venue"><em>WACV 2023</em></p>
+      <p class="pub-links">
+        <a class="btn btn-success btn-xs" href="https://arxiv.org/abs/2209.10767.pdf" target="_blank" rel="noopener" style="opacity:0.8;">Paper</a>
+        <a class="btn btn-warning btn-xs" href="https://arxiv.org/abs/2209.10767" target="_blank" rel="noopener" style="opacity:0.8;">Abstract</a>
+        <a class="btn btn-danger btn-xs" href="files/malla2023drama.txt" style="opacity:0.7;">Bibtex</a>
+        <a class="btn btn-info btn-xs" href="https://usa.honda-ri.com/drama" target="_blank" rel="noopener" style="opacity:0.8;">Dataset</a>
+      </p>
+    </div>
+  </article>
 
-<td>
-    <b>DRAMA: Joint Risk Localization and Captioning in Driving</b>
-    <br>
-    <u>Srikanth Malla</u>, Chiho Choi, Isht Dwivedi, Joon Hee Choi, Jiachen Li
-    <br><em>WACV 2023</em><br>
-    <a class="btn btn-success btn-xs" href="https://arxiv.org/abs/2209.10767.pdf" role="button" style="opacity:0.8;">Paper</a>
-    <a class="btn btn-warning btn-xs" href="https://arxiv.org/abs/2209.10767" role="button" style="opacity:0.8;">Abstract</a>
-    <a class="btn btn-danger btn-xs" href="files/malla2023drama.txt" role="button" style="opacity:0.7;">Bibtex</a>
-    <a class="btn btn-info btn-xs" href="https://usa.honda-ri.com/drama" role="button" style="opacity:0.8;">Dataset</a>
+  <h4 class="pub-year">2022</h4>
 
-  </td>
+  <article class="pub">
+    <div class="pub-thumb"><img src="files/nemo.png" alt="NEMO teaser" loading="lazy"></div>
+    <div class="pub-body">
+      <p class="pub-title">NEMO: Future Object Localization Using Noisy Ego Priors</p>
+      <p class="pub-authors"><u>Srikanth Malla</u>, Isht Dwivedi, Behzad Dariush, Chiho Choi</p>
+      <p class="pub-venue"><em>ITSC 2022</em></p>
+      <p class="pub-links">
+        <a class="btn btn-success btn-xs" href="https://arxiv.org/pdf/1909.08150.pdf" target="_blank" rel="noopener" style="opacity:0.8;">Paper</a>
+        <a class="btn btn-warning btn-xs" href="https://arxiv.org/abs/1909.08150" target="_blank" rel="noopener" style="opacity:0.8;">Abstract</a>
+        <a class="btn btn-danger btn-xs" href="files/malla2019nemo.txt" style="opacity:0.7;">Bibtex</a>
+        <!-- <a class="btn btn-info btn-xs" href="https://usa.honda-ri.com/hevi" style="opacity:0.8;">Dataset</a> -->
+      </p>
+    </div>
+  </article>
 
-<!-- NEMO -->
-<tr>
-  <td width="35%">
-  <img  src="files/nemo.png"  height=100>
-  </td>
+  <h4 class="pub-year">2021</h4>
 
-  <td>
-    <b>NEMO: Future Object Localization Using Noisy Ego Priors</b>
-    <br>
-    <u>Srikanth Malla</u>, Isht Dwivedi, Behzad Dariush, Chiho Choi
-     <br>
-    <em>ITSC 2022</em><br>
-    <a class="btn btn-success btn-xs" href="https://arxiv.org/pdf/1909.08150.pdf" role="button" style="opacity:0.8;">Paper</a>
-    <a class="btn btn-warning btn-xs" href="https://arxiv.org/abs/1909.08150" role="button" style="opacity:0.8;">Abstract</a>
-    <a class="btn btn-danger btn-xs" href="files/malla2019nemo.txt" role="button" style="opacity:0.7;">Bibtex</a>
-    <!-- <a class="btn btn-info btn-xs" href="https://usa.honda-ri.com/hevi" role="button" style="opacity:0.8;">Dataset</a> -->
-    <!-- <a href="https://arxiv.org/abs/1909.08150" target="_blank"> Paper</a> | <a href="https://usa.honda-ri.com/hevi" target="_blank"> Dataset</a> -->
-  </td>
+  <article class="pub">
+    <div class="pub-thumb"><img src="files/bev_bmvc.png" alt="Bird's eye view segmentation teaser" loading="lazy"></div>
+    <div class="pub-body">
+      <p class="pub-title">Bird's Eye View Segmentation Using Lifted2D Semantic Features</p>
+      <p class="pub-authors">Isht Dwivedi, <u>Srikanth Malla</u>, Yi-Ting Chen, Behzad Dariush</p>
+      <p class="pub-venue"><em>BMVC 2021</em></p>
+      <p class="pub-links">
+        <a class="btn btn-success btn-xs" href="https://www.bmvc2021-virtualconference.com/assets/papers/0772.pdf" target="_blank" rel="noopener" style="opacity:0.8;">Paper</a>
+        <a class="btn btn-danger btn-xs" href="files/dwivedi2021bird.txt" style="opacity:0.7;">Bibtex</a>
+        <a class="btn btn-info btn-xs" href="https://www.youtube.com/watch?v=RvSagekDX3k" target="_blank" rel="noopener" style="opacity:0.7;">Video</a>
+      </p>
+    </div>
+  </article>
 
-<!-- BEV -->
-<tr>
-	<td width="35%">
-	<img  src="files/bev_bmvc.png"  height=100>
-	</td>
+  <article class="pub">
+    <div class="pub-thumb"><img src="files/loki.PNG" alt="LOKI teaser" loading="lazy"></div>
+    <div class="pub-body">
+      <p class="pub-title">LOKI: Long Term and Key Intentions for Trajectory Prediction</p>
+      <p class="pub-authors">Harshayu Girase*, Haiming Gang*, <u>Srikanth Malla</u>, Jiachen Li, Akira Kanehara, Karttikeya Mangalam, Chiho Choi</p>
+      <p class="pub-venue"><em>ICCV 2021</em></p>
+      <p class="pub-links">
+        <a class="btn btn-success btn-xs" href="https://arxiv.org/pdf/2108.08236.pdf" target="_blank" rel="noopener" style="opacity:0.8;">Paper</a>
+        <a class="btn btn-warning btn-xs" href="https://arxiv.org/abs/2108.08236" target="_blank" rel="noopener" style="opacity:0.8;">Abstract</a>
+        <a class="btn btn-danger btn-xs" href="files/girase2021loki.txt" style="opacity:0.7;">Bibtex</a>
+        <a class="btn btn-info btn-xs" href="https://www.youtube.com/watch?v=v_PV6ouTy8w" target="_blank" rel="noopener" style="opacity:0.7;">Video</a>
+      </p>
+    </div>
+  </article>
 
-	<td>
-		<b>Bird's Eye View Segmentation Using Lifted2D Semantic Features</b>
-		<br>
-		Isht Dwivedi, <u>Srikanth Malla</u>, Yi-Ting Chen, Behzad Dariush
-		 <br>
-		<em>BMVC 2021 </em> <br>
-		<a class="btn btn-success btn-xs" href="https://www.bmvc2021-virtualconference.com/assets/papers/0772.pdf" role="button" style="opacity:0.8;">Paper</a>
-		<a class="btn btn-warning btn-xs" href="" role="button" style="opacity:0.8;">Abstract</a>
-		<a class="btn btn-danger btn-xs" href="files/dwivedi2021bird.txt" role="button" style="opacity:0.7;">Bibtex</a>
-		<a class="btn btn-info btn-xs" href="https://www.youtube.com/watch?v=RvSagekDX3k" role="button" style="opacity:0.7;">Video</a>
-	</td>
-<!-- LOKI -->
-<tr>
-	<td width="35%">
-	<img  src="files/loki.PNG"  height=100>
-	</td>
+  <article class="pub">
+    <div class="pub-thumb"><img src="files/rain.PNG" alt="RAIN teaser" loading="lazy"></div>
+    <div class="pub-body">
+      <p class="pub-title">RAIN: Reinforced Hybrid Attention Inference Network for Motion Forecasting</p>
+      <p class="pub-authors">Jiachen Li, Fan Yang, Hengbo Ma, <u>Srikanth Malla</u>, Masayoshi Tomizuka, Chiho Choi</p>
+      <p class="pub-venue"><em>ICCV 2021</em></p>
+      <p class="pub-links">
+        <a class="btn btn-success btn-xs" href="https://arxiv.org/pdf/2108.01316.pdf" target="_blank" rel="noopener" style="opacity:0.8;">Paper</a>
+        <a class="btn btn-warning btn-xs" href="https://arxiv.org/abs/2108.01316" target="_blank" rel="noopener" style="opacity:0.8;">Abstract</a>
+        <a class="btn btn-danger btn-xs" href="files/li2021rain.txt" style="opacity:0.7;">Bibtex</a>
+        <a class="btn btn-info btn-xs" href="https://www.youtube.com/watch?v=rglvaaQXZq8" target="_blank" rel="noopener" style="opacity:0.7;">Video</a>
+      </p>
+    </div>
+  </article>
 
-	<td>
-		<b>LOKI: Long Term and Key Intentions for Trajectory Prediction</b>
-		<br>
-		Harshayu Girase*, Haiming Gang*, <u>Srikanth Malla</u>, Jiachen Li, Akira Kanehara, Karttikeya Mangalam, Chiho Choi
-		 <br>
-		<em>ICCV 2021</em> <br>
-		<a class="btn btn-success btn-xs" href="https://arxiv.org/pdf/2108.08236.pdf" role="button" style="opacity:0.8;">Paper</a>
-		<a class="btn btn-warning btn-xs" href="https://arxiv.org/abs/2108.08236" role="button" style="opacity:0.8;">Abstract</a>
-		<a class="btn btn-danger btn-xs" href="files/girase2021loki.txt" role="button" style="opacity:0.7;">Bibtex</a>
-		<a class="btn btn-info btn-xs" href="https://www.youtube.com/watch?v=v_PV6ouTy8w" role="button" style="opacity:0.7;">Video</a>
-		<!-- <a href="https://arxiv.org/pdf/2108.08236.pdf" target="_blank"> Paper</a> -->
-	</td>
+  <article class="pub">
+    <div class="pub-thumb"><img src="files/s_stage.png" alt="Social-STAGE teaser" loading="lazy"></div>
+    <div class="pub-body">
+      <p class="pub-title">Social-STAGE: Spatio-Temporal Multi-Modal Future Trajectory Forecast</p>
+      <p class="pub-authors"><u>Srikanth Malla</u>, Chiho Choi, Behzad Dariush</p>
+      <p class="pub-venue"><em>ICRA 2021</em></p>
+      <p class="pub-links">
+        <a class="btn btn-success btn-xs" href="https://arxiv.org/pdf/2011.04853.pdf" target="_blank" rel="noopener" style="opacity:0.8;">Paper</a>
+        <a class="btn btn-warning btn-xs" href="https://arxiv.org/abs/2011.04853" target="_blank" rel="noopener" style="opacity:0.8;">Abstract</a>
+        <a class="btn btn-danger btn-xs" href="files/malla2021social.txt" style="opacity:0.7;">Bibtex</a>
+        <a class="btn btn-info btn-xs" href="https://docs.google.com/presentation/d/1Tei6sz1_uu2yMVP135NjDPcf262rF1Pz09ux_3YTpCg/edit?usp=sharing" target="_blank" rel="noopener" style="opacity:0.7;">Slides</a>
+      </p>
+    </div>
+  </article>
 
-<!-- RAIN -->
-<tr>
-	<td width="35%">
-	<img  src="files/rain.PNG"  height=100>
-	</td>
+  <article class="pub">
+    <div class="pub-thumb"><img src="files/shared_cross_modal.png" alt="Shared cross-modal trajectory prediction teaser" loading="lazy"></div>
+    <div class="pub-body">
+      <p class="pub-title">Shared Cross-Modal Trajectory Prediction for Autonomous Driving</p>
+      <p class="pub-authors">Chiho Choi, Joon Hee Choi, Jiachen Li, <u>Srikanth Malla</u></p>
+      <p class="pub-venue"><em>CVPR 2021</em> <b>[Oral]</b></p>
+      <p class="pub-links">
+        <a class="btn btn-success btn-xs" href="https://arxiv.org/pdf/2011.08436.pdf" target="_blank" rel="noopener" style="opacity:0.8;">Paper</a>
+        <a class="btn btn-warning btn-xs" href="https://arxiv.org/abs/2011.08436" target="_blank" rel="noopener" style="opacity:0.8;">Abstract</a>
+        <a class="btn btn-danger btn-xs" href="files/choi2021shared.txt" style="opacity:0.7;">Bibtex</a>
+        <a class="btn btn-info btn-xs" href="https://www.youtube.com/watch?v=MTY_1aqFeCs" target="_blank" rel="noopener" style="opacity:0.7;">Video</a>
+      </p>
+    </div>
+  </article>
 
-	<td>
-		<b>RAIN: Reinforced Hybrid Attention Inference Network for Motion Forecasting</b>
-		<br>
-		Jiachen Li, Fan Yang, Hengbo Ma, <u>Srikanth Malla</u>, Masayoshi Tomizuka, Chiho Choi
-		 <br>
-		<em>ICCV 2021</em> <br>
-		<a class="btn btn-success btn-xs" href="https://arxiv.org/pdf/2108.01316.pdf" role="button" style="opacity:0.8;">Paper</a>
-		<a class="btn btn-warning btn-xs" href="https://arxiv.org/abs/2108.01316" role="button" style="opacity:0.8;">Abstract</a>
-		<a class="btn btn-danger btn-xs" href="files/li2021rain.txt" role="button" style="opacity:0.7;">Bibtex</a>
-		<a class="btn btn-info btn-xs" href="https://www.youtube.com/watch?v=rglvaaQXZq8" role="button" style="opacity:0.7;">Video</a>
-		<!-- <a href="https://arxiv.org/pdf/2108.01316.pdf" target="_blank"> Paper</a> -->
-	</td>
+  <h4 class="pub-year">2020</h4>
 
-<!-- Social-STAGE -->
-<tr>
-	<td width="35%">
-	<img  src="files/s_stage.png"  height=100>
-	</td>
+  <article class="pub">
+    <div class="pub-thumb"><img src="files/titan.png" alt="TITAN teaser" loading="lazy"></div>
+    <div class="pub-body">
+      <p class="pub-title">TITAN: Future Forecast using Action Priors</p>
+      <p class="pub-authors"><u>Srikanth Malla</u>, Behzad Dariush, Chiho Choi</p>
+      <p class="pub-venue"><em>CVPR 2020</em> <b>[Oral]</b></p>
+      <p class="pub-links">
+        <a class="btn btn-success btn-xs" href="https://arxiv.org/pdf/2003.13886.pdf" target="_blank" rel="noopener" style="opacity:0.8;">Paper</a>
+        <a class="btn btn-warning btn-xs" href="https://arxiv.org/abs/2003.13886" target="_blank" rel="noopener" style="opacity:0.8;">Abstract</a>
+        <a class="btn btn-danger btn-xs" href="files/malla2020titan.txt" style="opacity:0.7;">Bibtex</a>
+        <a class="btn btn-info btn-xs" href="https://www.youtube.com/watch?v=2snNt3eCWo4" target="_blank" rel="noopener" style="opacity:0.7;">Video</a>
+        <!-- <a class="btn btn-info btn-xs" href="https://usa.honda-ri.com/titan" style="opacity:0.8;">Dataset</a> -->
+      </p>
+    </div>
+  </article>
 
-	<td>
-		<b>Social-STAGE: Spatio-Temporal Multi-Modal Future Trajectory Forecast</b>
-		<br>
-		<u>Srikanth Malla</u>, Chiho Choi, Behzad Dariush
-		 <br>
-		<em>ICRA 2021</em> <br>
-		<a class="btn btn-success btn-xs" href="https://arxiv.org/pdf/2011.04853.pdf" role="button" style="opacity:0.8;">Paper</a>
-		<a class="btn btn-warning btn-xs" href="https://arxiv.org/abs/2011.04853" role="button" style="opacity:0.8;">Abstract</a>
-		<a class="btn btn-danger btn-xs" href="files/malla2021social.txt" role="button" style="opacity:0.7;">Bibtex</a>
-		<a class="btn btn-info btn-xs" href="https://docs.google.com/presentation/d/1Tei6sz1_uu2yMVP135NjDPcf262rF1Pz09ux_3YTpCg/edit?usp=sharing" role="button" style="opacity:0.7;">Slides</a>
+  <article class="pub">
+    <div class="pub-thumb"><img src="files/drogon.png" alt="DROGON teaser" loading="lazy"></div>
+    <div class="pub-body">
+      <p class="pub-title">DROGON: A Trajectory Prediction Model based on Intention-Conditioned Behavior Reasoning</p>
+      <p class="pub-authors">Chiho Choi, <u>Srikanth Malla</u>, Abhishek Patil, Joon Hee Choi</p>
+      <p class="pub-venue"><em>CORL 2020</em></p>
+      <p class="pub-links">
+        <a class="btn btn-success btn-xs" href="https://arxiv.org/pdf/1908.00024.pdf" target="_blank" rel="noopener" style="opacity:0.8;">Paper</a>
+        <a class="btn btn-warning btn-xs" href="https://arxiv.org/abs/1908.00024" target="_blank" rel="noopener" style="opacity:0.8;">Abstract</a>
+        <a class="btn btn-danger btn-xs" href="files/choi2019drogon.txt" style="opacity:0.7;">Bibtex</a>
+        <a class="btn btn-info btn-xs" href="https://www.youtube.com/watch?v=PQlWx8AmoAs" target="_blank" rel="noopener" style="opacity:0.7;">Video</a>
+      </p>
+    </div>
+  </article>
 
-		<!-- <a href="https://arxiv.org/abs/2011.04853" target="_blank"> Paper</a> -->
-	</td>
+  <article class="pub">
+    <div class="pub-thumb"><img src="files/ssp.png" alt="SSP teaser" loading="lazy"></div>
+    <div class="pub-body">
+      <p class="pub-title">SSP: Single Shot Future Trajectory Prediction</p>
+      <p class="pub-authors">Isht Dwivedi, <u>Srikanth Malla</u>, Behzad Dariush, Chiho Choi</p>
+      <p class="pub-venue"><em>IROS 2020</em></p>
+      <p class="pub-links">
+        <a class="btn btn-success btn-xs" href="https://arxiv.org/pdf/2004.05846.pdf" target="_blank" rel="noopener" style="opacity:0.8;">Paper</a>
+        <a class="btn btn-warning btn-xs" href="https://arxiv.org/abs/2004.05846" target="_blank" rel="noopener" style="opacity:0.8;">Abstract</a>
+        <a class="btn btn-danger btn-xs" href="files/dwivedi2020ssp.txt" style="opacity:0.7;">Bibtex</a>
+      </p>
+    </div>
+  </article>
 
-<!-- Shared Cross Modal -->
-<tr>
-	<td width="35%">
-	<img  src="files/shared_cross_modal.png"  height=100>
-	</td>
+  <h4 class="pub-year">2019</h4>
 
-	<td>
-		<b>Shared Cross-Modal Trajectory Prediction for Autonomous Driving</b>
-		<br>
-		Chiho Choi, Joon Hee Choi, Jiachen Li, <u>Srikanth Malla</u>
-		 <br>
-		<em>CVPR 2021</em> <b>[Oral]</b> <br>
-		<a class="btn btn-success btn-xs" href="https://arxiv.org/pdf/2011.08436.pdf" role="button" style="opacity:0.8;">Paper</a>
-		<a class="btn btn-warning btn-xs" href="https://arxiv.org/abs/2011.08436" role="button" style="opacity:0.8;">Abstract</a>
-		<a class="btn btn-danger btn-xs" href="files/choi2021shared.txt" role="button" style="opacity:0.7;">Bibtex</a>
-		<a class="btn btn-info btn-xs" href="https://www.youtube.com/watch?v=MTY_1aqFeCs" role="button" style="opacity:0.7;">Video</a>
-<!-- https://youtu.be/MTY_1aqFeCs -->
-		<!-- <a href="https://arxiv.org/abs/2011.08436" target="_blank"> Paper</a> -->
-	</td>
+  <article class="pub">
+    <div class="pub-thumb"><img src="files/h3d.png" alt="H3D dataset teaser" loading="lazy"></div>
+    <div class="pub-body">
+      <p class="pub-title">The H3D Dataset for Full-Surround 3D Multi-Object Detection and Tracking in Crowded Urban Scenes</p>
+      <p class="pub-authors">Abhishek Patil, <u>Srikanth Malla</u>, Haiming Gang, Yi-Ting Chen</p>
+      <p class="pub-venue"><em>ICRA 2019</em></p>
+      <p class="pub-links">
+        <a class="btn btn-success btn-xs" href="https://arxiv.org/pdf/1903.01568.pdf" target="_blank" rel="noopener" style="opacity:0.8;">Paper</a>
+        <a class="btn btn-warning btn-xs" href="https://arxiv.org/abs/1903.01568" target="_blank" rel="noopener" style="opacity:0.8;">Abstract</a>
+        <a class="btn btn-danger btn-xs" href="files/patil2019h3d.txt" style="opacity:0.7;">Bibtex</a>
+        <a class="btn btn-info btn-xs" href="https://usa.honda-ri.com/H3D" target="_blank" rel="noopener" style="opacity:0.8;">Dataset</a>
+      </p>
+    </div>
+  </article>
 
-<!-- TITAN -->
-<tr>
-	<td width="35%">
-	<img  src="files/titan.png"  height=100>
-	</td>
+  <h4 class="pub-year">2018</h4>
 
-	<td>
-		<b>TITAN: Future Forecast using Action Priors</b>
-		<br>
-		<u>Srikanth Malla</u>, Behzad Dariush, Chiho Choi
-		 <br>
-		<em>CVPR 2020</em> <b>[Oral]</b><br>
-		<a class="btn btn-success btn-xs" href="https://arxiv.org/pdf/2003.13886.pdf" role="button" style="opacity:0.8;">Paper</a>
-		<!-- <a class="btn btn-info btn-xs" href="https://usa.honda-ri.com/titan" role="button" style="opacity:0.8;">Dataset</a> -->
-		<a class="btn btn-warning btn-xs" href="https://arxiv.org/abs/2003.13886" role="button" style="opacity:0.8;">Abstract</a>
-		<a class="btn btn-danger btn-xs" href="files/malla2020titan.txt" role="button" style="opacity:0.7;">Bibtex</a>
-		<a class="btn btn-info btn-xs" href="https://www.youtube.com/watch?v=2snNt3eCWo4" role="button" style="opacity:0.7;">Video</a>
-		<!-- <a href="https://arxiv.org/abs/2003.13886" target="_blank"> Paper</a> | <a href="https://usa.honda-ri.com/titan" target="_blank"> Dataset</a> -->
-	</td>
-<!-- DROGON -->
-<tr>
-	<td width="35%">
-	<img  src="files/drogon.png"  height=100>
-	</td>
+  <article class="pub">
+    <div class="pub-thumb"><img src="files/semi_supervised.png" alt="Semi-supervised driver behavior detection teaser" loading="lazy"></div>
+    <div class="pub-body">
+      <p class="pub-title">Semi-supervised Learning: Fusion of Self-supervised, Supervised Learning, and Multimodal Cues for Tactical Driver Behavior Detection</p>
+      <p class="pub-authors">Athma Narayanan, Yi-Ting Chen, <u>Srikanth Malla</u></p>
+      <p class="pub-venue"><em>CVPR 2018, Deep Vision Workshop</em></p>
+      <p class="pub-links">
+        <a class="btn btn-success btn-xs" href="https://arxiv.org/pdf/1807.00864.pdf" target="_blank" rel="noopener" style="opacity:0.8;">Paper</a>
+        <a class="btn btn-warning btn-xs" href="https://arxiv.org/abs/1807.00864" target="_blank" rel="noopener" style="opacity:0.8;">Abstract</a>
+        <a class="btn btn-danger btn-xs" href="files/narayanan2018semi.txt" style="opacity:0.7;">Bibtex</a>
+      </p>
+    </div>
+  </article>
 
-	<td>
-		<b>DROGON: A Trajectory Prediction Model based on Intention-Conditioned Behavior Reasoning</b>
-		<br>
-		Chiho Choi, <u>Srikanth Malla</u>, Abhishek Patil, Joon Hee Choi
-		 <br>
-		<em>CORL 2020</em><br>
-		<a class="btn btn-success btn-xs" href="https://arxiv.org/pdf/1908.00024.pdf" role="button" style="opacity:0.8;">Paper</a>
-		<a class="btn btn-warning btn-xs" href="https://arxiv.org/abs/1908.00024" role="button" style="opacity:0.8;">Abstract</a>
-		<a class="btn btn-danger btn-xs" href="files/choi2019drogon.txt" role="button" style="opacity:0.7;">Bibtex</a>
-		<a class="btn btn-info btn-xs" href="https://www.youtube.com/watch?v=PQlWx8AmoAs" role="button" style="opacity:0.7;">Video</a>
+  <h4 class="pub-year">2016</h4>
 
-		<!-- <a href="https://arxiv.org/abs/1908.00024" target="_blank"> Paper</a> -->
-	</td>
-<!-- SSP -->
-<tr>
-	<td width="35%">
-	<img  src="files/ssp.png"  height=100>
-	</td>
+  <article class="pub">
+    <div class="pub-thumb"><img src="files/bellow_pressure.gif" alt="Bellow pressure measurement figure" loading="lazy"></div>
+    <div class="pub-body">
+      <p class="pub-title">Development of an Intelligent Pressure Measuring Technique using Radial Basis Neural Network</p>
+      <p class="pub-authors">Naveen Kumar Vaegae, Venkata Lakshmi Narayana, <u>Srikanth Malla</u></p>
+      <p class="pub-venue"><em>Elsevier Sensors and Transducers Physical A Journal 2016</em></p>
+      <p class="pub-links">
+        <a class="btn btn-success btn-xs" href="http://www.sciencedirect.com/science/article/pii/S0924424715302697" target="_blank" rel="noopener" style="opacity:0.8;">Paper</a>
+        <a class="btn btn-warning btn-xs" href="http://www.sciencedirect.com/science/article/pii/S0924424715302697" target="_blank" rel="noopener" style="opacity:0.8;">Abstract</a>
+        <a class="btn btn-danger btn-xs" href="files/vaegae2016development.txt" style="opacity:0.7;">Bibtex</a>
+      </p>
+    </div>
+  </article>
 
-	<td>
-		<b>SSP: Single Shot Future Trajectory Prediction</b>
-		<br>
-		Isht Dwivedi, <u>Srikanth Malla</u>, Behzad Dariush, Chiho Choi
-		 <br>
-		<em>IROS 2020</em><br>
-		<a class="btn btn-success btn-xs" href="https://arxiv.org/pdf/2004.05846.pdf" role="button" style="opacity:0.8;">Paper</a>
-		<a class="btn btn-warning btn-xs" href="https://arxiv.org/abs/2004.05846" role="button" style="opacity:0.8;">Abstract</a>
-		<a class="btn btn-danger btn-xs" href="files/dwivedi2020ssp.txt" role="button" style="opacity:0.7;">Bibtex</a>
+  <!-- Gesture Control Interface Using Machine Learning Algorithms
+       Harjatin Singh Baweja, Tanvir Parhar, Srikanth Malla — IJARCSSE 2015
+       http://www.ijarcsse.com/docs/papers/Volume_5/9_September2015/V5I7-0531.pdf -->
 
-		<!-- <a href="https://arxiv.org/abs/2004.05846" target="_blank"> Paper</a> -->
-	</td>
+  <hr class="solid">
 
-	<!-- H3D -->
-<tr>
-	<td width="35%">
-	<img  src="files/h3d.png"  height=100>
-	</td>
-
-	<td>
-		<b>The H3D Dataset for Full-Surround 3D Multi-Object Detection and Tracking in Crowded Urban Scenes</b>
-		<br>
-		Abhishek Patil, <u>Srikanth Malla</u>, Haiming Gang, Yi-Ting Chen
-		 <br>
-		<em>ICRA 2019</em><br>
-		<a class="btn btn-success btn-xs" href="https://arxiv.org/pdf/1903.01568.pdf" role="button" style="opacity:0.8;">Paper</a>
-		<a class="btn btn-warning btn-xs" href="https://arxiv.org/abs/1903.01568" role="button" style="opacity:0.8;">Abstract</a>
-		<a class="btn btn-danger btn-xs" href="files/patil2019h3d.txt" role="button" style="opacity:0.7;">Bibtex</a>
-		<a class="btn btn-info btn-xs" href="https://usa.honda-ri.com/H3D" role="button" style="opacity:0.8;">Dataset</a>
-		<!-- <a href="https://arxiv.org/abs/1903.01568" target="_blank"> Paper</a> | <a href="https://usa.honda-ri.com/H3D" target="_blank"> Dataset</a> -->
-	</td>
-
-
- <!-- Self Supervised -->
-	<tr>
-			<td width="35%">
-			<img  src="files/semi_supervised.png"  height=150>
-			</td>
-
- <td>
-<b>  Semi-supervised Learning: Fusion of Self-supervised, Supervised Learning, and Multimodal Cues for Tactical Driver Behavior Detection </b>
-<br>
-Athma Narayanan, Yi-Ting Chen, <u>Srikanth Malla</u>
- <br>
-<em>CVPR 2018, Deep Vision Workshop</em><br>
-	<a class="btn btn-success btn-xs" href="https://arxiv.org/pdf/1807.00864.pdf" role="button" style="opacity:0.8;">Paper</a>
-	<a class="btn btn-warning btn-xs" href="https://arxiv.org/abs/1807.00864" role="button" style="opacity:0.8;">Abstract</a>
-	<a class="btn btn-danger btn-xs" href="files/narayanan2018semi.txt" role="button" style="opacity:0.7;">Bibtex</a>
- <!-- <A HREF="https://arxiv.org/pdf/1807.00864.pdf">paper</A> -->
- </td>
-
-
-<!-- RBF -->
-	<tr>
-			<td width="35%">
-			<img src="files/bellow_pressure.gif" height="100">
-			</td>
-
- <td>
-
-<b>Development of an Intelligent Pressure Measuring Technique using Radial Basis Neural Network</b>
-<br>
-Naveen Kumar Vaegae, Venkata Lakshmi Narayana, <u>Srikanth Malla</u>
- <br>
-<em>Elsevier Sensors and Transducers Physical A Journal 2016</em><br>
-<a class="btn btn-success btn-xs" href="http://www.sciencedirect.com/science/article/pii/S0924424715302697" role="button" style="opacity:0.8;">Paper</a>
-<a class="btn btn-warning btn-xs" href="http://www.sciencedirect.com/science/article/pii/S0924424715302697" role="button" style="opacity:0.8;">Abstract</a>
-<a class="btn btn-danger btn-xs" href="files/vaegae2016development.txt" role="button" style="opacity:0.7;">Bibtex</a>
-
-<!-- <a href="http://www.sciencedirect.com/science/article/pii/S0924424715302697" target="_blank"> Paper</a> -->
- </td>
- <!-- Paper 4 -->
-<!-- <tr>
-	<td width="35%">
-		<img  src="images/RL.png"  height=100>
-		</td>
-	<td>
-
-<b>  Gesture Control Interface Using Machine Learning Algorithms</b></a>
-<br>
- Harjatin Singh Baweja, Tanvir Parhar, Srikanth Malla
- <br>
-<em>IJARCSSE 2015</em><br>
- <a href="http://www.ijarcsse.com/docs/papers/Volume_5/9_September2015/V5I7-0531.pdf" id="markdown-toc-contents" target="_blank"> Paper</a>
-</td> -->
-</table>
-<hr class="solid">
- <h3>Professional Activities (Reviewer)</h3>
-	<ul>
-	<li>Neural Information Processing Systems (Neurips) 2026</li>
-	
-	<li>International Conference on Machine Learning (ICML) 2026</li>
-	
-	<li>Association for the Advancement of Artificial Intelligence (AAAI) 2026, 2025 </li>
-		
+  <h3>Professional Activities (Reviewer)</h3>
+  <ul class="reviewing">
+    <li>Neural Information Processing Systems (Neurips) 2026</li>
+    <li>International Conference on Machine Learning (ICML) 2026</li>
+    <li>Association for the Advancement of Artificial Intelligence (AAAI) 2026, 2025</li>
     <li>Winter Conference on Applications of Computer Vision (WACV) 2026, 2023</li>
-	
-	<li>Transactions on Pattern Analysis and Machine Intelligence (TPAMI) 2024 </li>
-		
-	<li>European Conference on Computer Vision (ECCV) 2024, 2022</li>
-		
-	<li>Computer Vision and Pattern Recognition (CVPR) 2024, 2023, 2022</li>
+    <li>Transactions on Pattern Analysis and Machine Intelligence (TPAMI) 2024</li>
+    <li>European Conference on Computer Vision (ECCV) 2024, 2022</li>
+    <li>Computer Vision and Pattern Recognition (CVPR) 2024, 2023, 2022</li>
+    <li>International Conference on Robotics and Automation (ICRA) 2024, 2022, 2021</li>
+    <li>International Conference on Computer Vision (ICCV) 2023, 2021</li>
+    <li>Swiss National Science Foundation (SNSF), Grant Review 2022</li>
+    <li>Robotics and Automation Letters (RAL) 2022</li>
+    <li>International Conference on Intelligent Robots and Systems (IROS) 2020</li>
+    <li>International Journal of Robotics Research (IJRR) 2020</li>
+    <li>Transactions on Intelligent Vehicles (T IV) 2020</li>
+  </ul>
 
-	<li>International Conference on Robotics and Automation (ICRA) 2024, 2022, 2021</li>
-
-	 <li>International Conference on Computer Vision (ICCV) 2023, 2021</li>
-
-	<li>Swiss National Science Foundation (SNSF), Grant Review 2022</li>
-
-	 <li>Robotics and Automation Letters (RAL) 2022</li>
-
-	 <li>International Conference on Intelligent Robots and Systems (IROS) 2020</li>
-
-	 <li>International Journal of Robotics ResearchReviewer (IJRR) 2020</li>
-
-	 <li>Transactions on Intelligent Vehicles (T IV) 2020</li>
-	</ul>
-	</p>
-
-<!-- <hr class="solid"> -->
-<div class="footer">
-    © 2024 Srikanth Malla. All rights reserved. <a href="https://www.srikanthmalla.com/workout.html" title="Workout App">🏋️‍♂️ Workout</a> <a href="https://www.srikanthmalla.com/kanji.html" title="漢字">🖋️ 漢字</a>
+  <div class="footer">
+    &copy; 2026 Srikanth Malla. All rights reserved.
+    <a href="workout.html" title="Workout App">🏋️‍♂️ Workout</a>
+    <a href="kanji.html" title="漢字">🖋️ 漢字</a>
+  </div>
 
 </div>
-</div>
-</BODY>
-</HTML>
+</body>
+</html>
