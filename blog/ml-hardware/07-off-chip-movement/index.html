@@ -1,0 +1,623 @@
+<!DOCTYPE html><html lang="en" data-astro-cid-z4jru4n3><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>7. Off-chip data movement — ML Hardware &amp; Low-Latency Systems</title><meta name="description" content="Posted versus non-posted, why the round trip and not the bandwidth is what kills you, and the rigorous answer to “why not just use a GPU?”"><link rel="icon" href="data:,"><script>
+      (() => {
+        try {
+          const t = localStorage.getItem('refresher:theme');
+          if (t === 'light') document.documentElement.classList.add('light');
+        } catch (e) {}
+      })();
+    </script><link rel="stylesheet" href="/blog/_astro/BaseLayout.BZ_NeV9N.css"><style>.wrap[data-astro-cid-5x65ok44]{max-width:68ch;margin-inline:auto;padding:3rem 1.25rem 6rem}@media (width>=1024px){.wrap[data-astro-cid-5x65ok44]{max-width:calc(68ch + 6rem);padding-inline:3rem}}.mhead[data-astro-cid-5x65ok44]{border-block-end:1px solid var(--rule);margin-block-end:.5rem;padding-block-end:1.75rem}.mhead-kicker[data-astro-cid-5x65ok44]{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint);margin:0 0 .85rem;font-size:.6875rem;font-weight:500}.mhead-n[data-astro-cid-5x65ok44]{color:var(--accent);font-weight:640}.mhead-dot[data-astro-cid-5x65ok44]{opacity:.5;padding-inline:.35rem}.mhead-title[data-astro-cid-5x65ok44]{font-family:var(--font-sans);letter-spacing:-.027em;color:var(--ink-strong);text-wrap:balance;margin:0;font-size:clamp(1.75rem,1.3rem + 1.9vw,2.375rem);font-weight:660;line-height:1.12}.mhead-blurb[data-astro-cid-5x65ok44]{color:var(--ink-muted);max-width:58ch;margin:.85rem 0 0;font-size:1.0625rem;line-height:1.6}.mfoot[data-astro-cid-5x65ok44]{border-block-start:1px solid var(--rule);margin-block-start:4rem;padding-block-start:1.75rem}.mark[data-astro-cid-5x65ok44]{font-family:var(--font-sans);border:1px solid var(--rule);background:var(--bg-raised);color:var(--ink-muted);cursor:pointer;border-radius:5px;padding:.4rem .85rem;font-size:.75rem;font-weight:550}.mark[data-astro-cid-5x65ok44]:hover{color:var(--ink-strong);border-color:var(--ink-faint)}.mark[data-astro-cid-5x65ok44][aria-pressed=true]{color:var(--bridge);border-color:color-mix(in oklab, var(--bridge) 45%, var(--rule))}.pager[data-astro-cid-5x65ok44]{grid-template-columns:1fr 1fr;gap:1rem;margin-block-start:2rem;display:grid}.pager-link[data-astro-cid-5x65ok44]{border:1px solid var(--rule);font-family:var(--font-sans);border-radius:6px;flex-direction:column;gap:.25rem;padding:.75rem .9rem;text-decoration:none;display:flex}.pager-link[data-astro-cid-5x65ok44]:hover{border-color:var(--ink-faint);background:var(--bg-raised)}.pager-link[data-astro-cid-5x65ok44].is-next{text-align:end}.pager-dir[data-astro-cid-5x65ok44]{text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);font-size:.6875rem}.pager-title[data-astro-cid-5x65ok44]{color:var(--ink-strong);font-size:.8125rem;font-weight:550;line-height:1.35}
+</style><style>.callout{border:1px solid var(--rule);border-inline-start-width:2px;border-radius:5px;margin-block:1.75rem;padding:.9rem 1.1rem 1rem;font-size:.9375rem;line-height:1.65}.callout-probe{border-inline-start-color:var(--probe);background:var(--probe-bg)}.callout-trap{border-inline-start-color:var(--trap);background:var(--trap-bg)}.callout-bridge{border-inline-start-color:var(--bridge);background:var(--bridge-bg)}.callout-label{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;align-items:center;gap:.45rem;margin:0 0 .5rem;font-size:.6875rem;font-weight:620;display:flex}.callout-probe .callout-label{color:var(--probe)}.callout-trap .callout-label{color:var(--trap)}.callout-bridge .callout-label{color:var(--bridge)}.callout-mark{background:currentColor;border-radius:50%;flex:none;width:5px;height:5px}.callout-title{text-transform:none;letter-spacing:0;color:var(--ink-muted);font-weight:500}.callout-body>:first-child{margin-block-start:0}.callout-body>:last-child{margin-block-end:0}.callout-body>*+*{margin-block-start:.75em}.probe{margin-block:1.75rem}.prose .probe-q{font-family:var(--font-sans);letter-spacing:-.01em;color:var(--ink-strong);margin:0 0 .6rem;padding-inline-start:1.15rem;font-size:1rem;font-weight:600;line-height:1.45;position:relative}.prose .probe-q:before{content:"›";color:var(--accent);font-weight:700;position:absolute;inset-inline-start:0}.probe-a{border-inline-start:1px solid var(--rule);margin-inline-start:.1rem;padding-inline-start:1.15rem}.probe-a>*+*{margin-block-start:1.15em}.probe-a>:first-child{margin-block-start:0}.probe-a>:last-child{margin-block-end:0}.selfcheck{border-block-start:1px solid var(--rule-soft)}.selfcheck:last-of-type{border-block-end:1px solid var(--rule-soft)}.prose>.selfcheck+.selfcheck{margin-block-start:0}.selfcheck>summary{cursor:pointer;color:var(--ink);align-items:baseline;gap:1rem;padding:.7rem .2rem;list-style:none;display:flex}.selfcheck>summary::-webkit-details-marker{display:none}.selfcheck>summary:hover{color:var(--ink-strong)}.selfcheck-q{flex:1}.selfcheck-q code{white-space:nowrap}.selfcheck-cue{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);flex:none;padding-block-start:.15rem;font-size:.6875rem;font-weight:600}.selfcheck>summary:hover .selfcheck-cue{color:var(--accent)}.selfcheck-cue-hide,.selfcheck[open] .selfcheck-cue-show{display:none}.selfcheck[open] .selfcheck-cue-hide{display:inline}.selfcheck-a{color:var(--ink-muted);border-inline-start:2px solid var(--rule);margin-block-end:.9rem;margin-inline-start:.2rem;padding:.15rem .2rem 1.05rem;padding-inline-start:1rem;font-size:.9375rem}.selfcheck-a>:first-child{margin-block-start:0}.selfcheck-a>:last-child{margin-block-end:0}.selfcheck-a>*+*{margin-block-start:.7em}.selfcheck-a strong{color:var(--ink)}
+</style></head><body data-astro-cid-z4jru4n3><a href="#content" class="skip" data-astro-cid-z4jru4n3>Skip to content</a><div class="shell" data-astro-cid-z4jru4n3><aside class="rail" data-rail data-astro-cid-z4jru4n3><nav class="rail-nav" aria-label="ML Hardware &amp; Low-Latency Systems contents" data-astro-cid-wv7whodv><div class="rail-head" data-astro-cid-wv7whodv><a href="/blog/" class="rail-up" data-astro-cid-wv7whodv>All series</a><a href="/blog/ml-hardware/" class="rail-home" data-astro-cid-wv7whodv><span class="rail-home-title" data-astro-cid-wv7whodv>ML Hardware &amp; Low-Latency Systems</span><span class="rail-home-sub" data-astro-cid-wv7whodv>From roofline to nanosecond inference</span></a><p class="rail-progress" data-astro-cid-wv7whodv><span class="rail-progress-bar" data-astro-cid-wv7whodv><span data-progress-fill data-astro-cid-wv7whodv></span></span><span class="rail-progress-text" data-astro-cid-wv7whodv><span data-progress-count data-astro-cid-wv7whodv>0</span>/12 reviewed</span></p></div><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part A</span>Foundations</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/01-roofline/" class="rail-link" title="What the roofline actually bounds, why the ridge point keeps running away from us, and the exact point at which the model stops being useful." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>1</span><span class="rail-title" data-astro-cid-wv7whodv>Memory hierarchy, roofline, arithmetic intensity</span><span class="rail-tick" data-tick="ml-hardware/01-roofline" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/02-layout-coalescing/" class="rail-link" title="Coalescing is a transaction count, not a thread count. Bank conflicts, padding versus swizzling, and the three-way tension inside every tile size." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>2</span><span class="rail-title" data-astro-cid-wv7whodv>Layout, coalescing, bank conflicts, tiling</span><span class="rail-tick" data-tick="ml-hardware/02-layout-coalescing" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/03-pipelining/" class="rail-link" title="Initiation interval versus depth, prefetch distance as a ratio, and the moment every one of these tools stops working." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>3</span><span class="rail-title" data-astro-cid-wv7whodv>Pipelining, multi-buffering, latency hiding</span><span class="rail-tick" data-tick="ml-hardware/03-pipelining" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part B</span>The pivot</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/04-latency-vs-throughput/" class="rail-link" title="Where batching, occupancy and amortization stop being virtues. Why high utilization is a defect, and why a barrier samples the tail." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>4</span><span class="rail-title" data-astro-cid-wv7whodv>Latency versus throughput as a design axis</span><span class="rail-tick" data-tick="ml-hardware/04-latency-vs-throughput" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/05-tail-latency/" class="rail-link" title="Why the mean describes no request that ever happened, where jitter actually comes from, and the measurement error that makes your p99 a fiction." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>5</span><span class="rail-title" data-astro-cid-wv7whodv>Tail latency and determinism</span><span class="rail-tick" data-tick="ml-hardware/05-tail-latency" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part C</span>Substrate</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/06-cpu-microarchitecture/" class="rail-link" title="False sharing, dependent chains, store buffers and memory ordering, the AVX-512 downclock, and the cache-line layout that makes an SPSC ring fast." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>6</span><span class="rail-title" data-astro-cid-wv7whodv>CPU microarchitecture</span><span class="rail-tick" data-tick="ml-hardware/06-cpu-microarchitecture" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/07-off-chip-movement/" class="rail-link is-active" aria-current="page" title="Posted versus non-posted, why the round trip and not the bandwidth is what kills you, and the rigorous answer to “why not just use a GPU?”" data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>7</span><span class="rail-title" data-astro-cid-wv7whodv>Off-chip data movement</span><span class="rail-tick" data-tick="ml-hardware/07-off-chip-movement" aria-hidden="true" data-astro-cid-wv7whodv></span></a><ul class="rail-sub" data-rail-sub data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="#the-core-mental-model" class="rail-sub-link" data-toc="the-core-mental-model" data-astro-cid-wv7whodv>The core mental model</a></li><li data-astro-cid-wv7whodv><a href="#numbers-worth-memorizing" class="rail-sub-link" data-toc="numbers-worth-memorizing" data-astro-cid-wv7whodv>Numbers worth memorizing</a></li><li data-astro-cid-wv7whodv><a href="#critical-thinking" class="rail-sub-link" data-toc="critical-thinking" data-astro-cid-wv7whodv>Critical thinking</a></li><li data-astro-cid-wv7whodv><a href="#self-check" class="rail-sub-link" data-toc="self-check" data-astro-cid-wv7whodv>Self-check</a></li></ul></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part D</span>Numerics</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/08-fixed-point/" class="rail-link" title="Q-format as a contract, why truncation bias grows linearly while random error grows as a square root, and how fixed point buys reproducibility for free." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>8</span><span class="rail-title" data-astro-cid-wv7whodv>Fixed-point and rounding</span><span class="rail-tick" data-tick="ml-hardware/08-fixed-point" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/09-nonlinearities/" class="rail-link" title="LUT, piecewise-linear, minimax polynomial and CORDIC — and why range reduction is the step that makes any of them work." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>9</span><span class="rail-title" data-astro-cid-wv7whodv>Nonlinearities without dividers</span><span class="rail-tick" data-tick="ml-hardware/09-nonlinearities" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part E</span>Workloads</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/10-small-mlps/" class="rail-link" title="When you stop executing the network and start being it. Constant-weight multipliers, adder-tree depth, and the resource budget that co-designs the model." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>10</span><span class="rail-title" data-astro-cid-wv7whodv>Small MLPs at nanosecond scale</span><span class="rail-tick" data-tick="ml-hardware/10-small-mlps" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/11-gbdt-inference/" class="rail-link" title="Routing, not arithmetic. Why a depth-6 tree costs three levels rather than six, why feature fetch is the real bottleneck, and why trees beat DNNs at this scale." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>11</span><span class="rail-title" data-astro-cid-wv7whodv>GBDT inference in hardware</span><span class="rail-tick" data-tick="ml-hardware/11-gbdt-inference" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/12-partitioning/" class="rail-link" title="Order books, the tick-to-trade budget allocated stage by stage, the fast-path/slow-path contract, and risk checks that must not trust the strategy." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>12</span><span class="rail-title" data-astro-cid-wv7whodv>Hardware/software partitioning and market microstructure</span><span class="rail-tick" data-tick="ml-hardware/12-partitioning" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-other" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv>Other series</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/diffusion/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>Diffusion</span></a></li></ul></section><div class="rail-foot" data-astro-cid-wv7whodv><p data-astro-cid-wv7whodv><kbd data-astro-cid-wv7whodv>j</kbd> <kbd data-astro-cid-wv7whodv>k</kbd> section · <kbd data-astro-cid-wv7whodv>/</kbd> search · <kbd data-astro-cid-wv7whodv>[</kbd><kbd data-astro-cid-wv7whodv>]</kbd> module</p></div></nav></aside><div class="col" data-astro-cid-z4jru4n3><header class="topbar" data-astro-cid-z4jru4n3><button class="icon-btn only-narrow" data-rail-toggle aria-label="Toggle contents" data-astro-cid-z4jru4n3><svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M1.5 3.5h12M1.5 7.5h12M1.5 11.5h12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg></button><p class="crumb" data-astro-cid-z4jru4n3>Part C · Substrate › Off-chip data movement</p><div class="topbar-actions" data-astro-cid-z4jru4n3><button class="search-btn" data-search-open aria-label="Search" data-astro-cid-z4jru4n3><span aria-hidden="true" data-astro-cid-z4jru4n3>⌕</span><span class="search-btn-label" data-astro-cid-z4jru4n3>Search</span><kbd data-astro-cid-z4jru4n3>/</kbd></button><button class="icon-btn" data-theme-toggle aria-label="Toggle theme" data-astro-cid-z4jru4n3><svg class="i-sun" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><circle cx="7.5" cy="7.5" r="3" stroke="currentColor" stroke-width="1.2" data-astro-cid-z4jru4n3></circle><path d="M7.5 .8v1.7M7.5 12.5v1.7M14.2 7.5h-1.7M2.5 7.5H.8M12.24 2.76l-1.2 1.2M3.96 11.04l-1.2 1.2M12.24 12.24l-1.2-1.2M3.96 3.96l-1.2-1.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg><svg class="i-moon" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M13 9.3A5.8 5.8 0 0 1 5.7 2 5.9 5.9 0 1 0 13 9.3Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" data-astro-cid-z4jru4n3></path></svg></button><a class="site-link" href="/" data-astro-cid-z4jru4n3>srikanthmalla.com</a></div></header><main id="content" data-astro-cid-z4jru4n3><article class="wrap" data-article data-astro-cid-5x65ok44><header class="mhead" data-astro-cid-5x65ok44><p class="mhead-kicker" data-astro-cid-5x65ok44><span class="mhead-n" data-astro-cid-5x65ok44>Module 7</span><span class="mhead-dot" data-astro-cid-5x65ok44>·</span>Part C — Substrate<span class="mhead-dot" data-astro-cid-5x65ok44>·</span>17 min</p><h1 class="mhead-title" data-astro-cid-5x65ok44>Off-chip data movement</h1><p class="mhead-blurb" data-astro-cid-5x65ok44>Posted versus non-posted, why the round trip and not the bandwidth is what kills you, and the rigorous answer to “why not just use a GPU?”</p></header><div class="prose" data-astro-cid-5x65ok44><h2 id="the-core-mental-model">The core mental model<a class="anchor" href="#the-core-mental-model" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>Off-chip is where latency budgets die, and the reason is that bandwidth is abundant while round
+trips are not. A PCIe Gen5 x16 link moves 64 GB/s, so a kilobyte crosses it in about 16
+nanoseconds of wire time — and a single small read of a device register costs <strong>one to two
+microseconds</strong>, a hundred times more. The number that matters is never the width of the pipe. It is
+how many times a dependency has to cross it.</p>
+<p>The exploitable asymmetry is <strong>posted versus non-posted</strong>. A write is posted: fire and forget,
+visible in a couple of hundred nanoseconds, and the core does not wait. A read is non-posted: it
+requires a completion to come back, and the core <em>stalls</em> on it, because an uncached load has no
+out-of-order cover. So every well-built device interface is arranged so the critical path contains
+only writes. You place descriptors in host memory, ring a doorbell with a posted write, and let the
+device DMA on its own schedule; you never make the host read a device register to find out what
+happened, you make the device write status into host memory and read <em>that</em>. The same rule inverts
+for the device: it should not have to read host memory synchronously either.</p>
+<p>Then there is the software stack, which for a normal socket costs 5–15 µs of syscall, copy,
+interrupt, softirq and wakeup. Kernel bypass maps the NIC’s descriptor rings into user space, so a
+poll loop reads packets directly: 1–2 µs wire to application. You give up the kernel’s TCP stack
+(you link your own), its firewall, <code>tcpdump</code>, and easy sharing of the NIC. And because software
+timestamps now measure everything you were trying to eliminate, real measurement moves to the NIC:
+hardware timestamping at the MAC, disciplined by PTP, comparing RX and TX stamps to get a true
+wire-to-wire number. Anything measured in software is measuring your own instrumentation.</p>
+<aside class="callout callout-bridge"><p class="callout-label"><span class="callout-mark" aria-hidden="true"></span>Bridge to what you know<span class="callout-title"> · this is Module 1&#39;s ladder, at the far end</span></p><div class="callout-body"><p>Register, shared memory, L2, HBM, PCIe, wire — one continuum. What changes past the chip boundary
+is that the <em>round trip</em>, not the bandwidth, becomes the binding term, and that latency stops
+being hideable because there is no scheduler with other work to run.</p></div></aside>
+<aside class="callout callout-trap"><p class="callout-label"><span class="callout-mark" aria-hidden="true"></span>Common trap<span class="callout-title"> · PCIe is 64 GB/s so moving a kilobyte is free</span></p><div class="callout-body"><p>Bandwidth and latency are different resources. That kilobyte occupies 16 ns of wire and 1–2 µs of
+round trip. Batching helps the first and does nothing for the second, which is why “just DMA more
+per transfer” fixes throughput problems and never fixes latency ones.</p></div></aside>
+<h2 id="numbers-worth-memorizing">Numbers worth memorizing<a class="anchor" href="#numbers-worth-memorizing" aria-hidden="true" tabindex="-1">#</a></h2>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Path</th><th>Latency</th><th>Bandwidth</th></tr></thead><tbody><tr><td>PCIe Gen5 x16, posted write</td><td>150–300 ns</td><td>64 GB/s per dir</td></tr><tr><td><strong>PCIe Gen5 x16, round trip</strong></td><td><strong>1–2 µs</strong></td><td>—</td></tr><tr><td>PCIe Gen4 x16</td><td>similar latency</td><td>32 GB/s per dir</td></tr><tr><td>DMA descriptor + doorbell → first byte</td><td>~1 µs</td><td>—</td></tr><tr><td>DRAM, local socket</td><td>~80 ns</td><td>200–400 GB/s</td></tr><tr><td>DRAM, one NUMA hop</td><td>130–160 ns</td><td>lower, contended</td></tr><tr><td>Kernel socket receive path</td><td>5–15 µs</td><td>—</td></tr><tr><td>Kernel bypass (ef_vi, DPDK)</td><td>1–2 µs</td><td>—</td></tr><tr><td>FPGA on-path (no bus crossing)</td><td>50–200 ns</td><td>—</td></tr></tbody></table></div>
+<p>Wire and switch, which people consistently under-weight:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Quantity</th><th>Value</th><th>Note</th></tr></thead><tbody><tr><td>Light in fibre</td><td>~5 ns per metre</td><td>1 km ≈ 5 µs each way</td></tr><tr><td>Microwave through air</td><td>~3.3 ns per metre</td><td>~1.5× faster than glass — the reason microwave links exist</td></tr><tr><td>Cut-through switch hop</td><td>50–100 ns</td><td>forwards on header</td></tr><tr><td>Store-and-forward switch hop</td><td>1–10 µs</td><td>waits for the whole frame</td></tr><tr><td>64 B frame serialisation, 10 GbE</td><td>51 ns</td><td>at 25 GbE, 20 ns</td></tr><tr><td>PTP sync accuracy</td><td>100 ns – 1 µs</td><td>bounds what you can measure</td></tr></tbody></table></div>
+<p>Tick-to-trade, end to end:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Implementation</th><th>Budget</th></tr></thead><tbody><tr><td>FPGA, on-path, full parse-to-send</td><td>350–900 ns</td></tr><tr><td>FPGA trigger path only</td><td>20–100 ns</td></tr><tr><td>CPU + kernel bypass</td><td>1–5 µs</td></tr><tr><td>CPU + kernel network stack</td><td>15–50 µs</td></tr><tr><td>GPU</td><td>not viable — see below</td></tr></tbody></table></div>
+<h2 id="critical-thinking">Critical thinking<a class="anchor" href="#critical-thinking" aria-hidden="true" tabindex="-1">#</a></h2>
+<section class="probe"><h3 class="probe-q">Why is reading a device register so much worse than writing one?</h3><div class="probe-a"><p>Two independent reasons that compound.</p><p><strong>Protocol.</strong> A write is a posted transaction: the CPU hands it to the root complex and retires it.
+A read is non-posted — it generates a request, the device must respond with a completion, and that
+is a full traversal of the fabric in both directions, 1–2 µs on PCIe Gen5.</p><p><strong>Microarchitecture.</strong> Device memory is mapped uncacheable, so the load cannot be speculated,
+cannot be reordered around, and cannot be covered by the out-of-order window. The core genuinely
+stalls for the whole round trip, retiring nothing. A 2 µs MMIO read on a 3 GHz core throws away
+about 6000 cycles of issue capacity.</p><p>The design consequences are concrete: never poll a device register in a loop; have the device DMA a
+status word into host memory and poll <em>that</em> (a cached read of ~1 ns when hot). Batch state into
+one DMA rather than several reads. And where you must write, write — doorbells, not handshakes.
+This is why descriptor rings look the way they do across every high-performance device: they are
+structured so that the fast path contains only posted writes and cacheable host-memory reads.</p></div></section>
+<section class="probe"><h3 class="probe-q">You moved to kernel bypass. p50 improved 10× and p99 barely moved.</h3><div class="probe-a"><p>You removed a <em>mean</em> cost and the tail was never in the stack. The stack contributed a fairly
+consistent 5–15 µs, so removing it shifts the whole distribution left without narrowing it. What
+remains is Module 5’s territory, and the candidates are ranked by how often they turn out to be the
+answer:</p><ol>
+<li><strong>C-states.</strong> If your poll loop ever yields, sleeps, or hits a <code>pause</code> path that lets the core
+drop into C6, you pay 50–100 µs to come back. Pin the frequency, disable deep C-states, and
+verify with residency counters rather than configuration files.</li>
+<li><strong>Interrupts still arriving.</strong> Bypass does not automatically stop the NIC from raising
+interrupts on that core, and <code>/proc/interrupts</code> will tell you in seconds. Move IRQ affinity off
+the polling core entirely.</li>
+<li><strong>NUMA misplacement.</strong> Buffer, thread and device on different nodes. Each is independently
+wrong-able, so check all three.</li>
+<li><strong>The other side.</strong> Exchange microbursts queue in the switch, and no amount of host tuning
+addresses that. NIC hardware timestamps versus your application timestamps will separate “the
+packet arrived late” from “we handled it late” — and that distinction is the single most useful
+measurement in this whole area.</li>
+<li><strong>Your own cache misses.</strong> The poll loop is now the entire program; if its working set does not
+stay resident, you have simply moved where the misses happen.</li>
+</ol></div></section>
+<section class="probe"><h3 class="probe-q">Account for a tick-to-trade budget, stage by stage, and say where the two orders of magnitude between CPU and FPGA come from.</h3><div class="probe-a"><p>CPU with kernel bypass, roughly:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Stage</th><th>Cost</th></tr></thead><tbody><tr><td>Wire → NIC PHY/MAC</td><td>50–100 ns</td></tr><tr><td><strong>NIC → host over PCIe (DMA)</strong></td><td><strong>~1 µs</strong></td></tr><tr><td>Poll loop notices</td><td>0–500 ns</td></tr><tr><td>Parse market data</td><td>100–500 ns</td></tr><tr><td>Book update</td><td>100 ns – 1 µs</td></tr><tr><td>Feature computation</td><td>100–400 ns</td></tr><tr><td>Model evaluation</td><td>20–100 ns</td></tr><tr><td>Order encode + risk</td><td>50–150 ns</td></tr><tr><td><strong>Host → NIC over PCIe</strong></td><td><strong>~300 ns – 1 µs</strong></td></tr><tr><td>NIC → wire</td><td>50–100 ns</td></tr><tr><td><strong>Total</strong></td><td><strong>~2–5 µs</strong></td></tr></tbody></table></div><p>An FPGA sitting in the datapath does parse, book, features, model, risk and encode <em>as the bits
+stream through</em>, and never crosses PCIe at all. Total 350–900 ns.</p><p>So the two orders of magnitude decompose into three things, and none of them is arithmetic: the
+<strong>two PCIe crossings</strong> (~1.3–2 µs), the <strong>software stack and poll latency</strong>, and the fact that the
+FPGA overlaps parsing with reception instead of waiting for a complete packet before starting.</p><p>One honesty note that separates people who have built these from people who have read about them:
+quoted “sub-100 ns tick-to-trade” figures are almost always a <strong>trigger path</strong> — a precomputed
+order released by a single comparator, with book and feature work done in parallel or in advance.
+That is a real and legitimate technique, but it is not the same measurement as the full path, and
+conflating them makes budgets impossible to reason about.</p></div></section>
+<section class="probe"><h3 class="probe-q">Give the rigorous answer to “why not just use a GPU?” — and steelman it first.</h3><div class="probe-a"><p>The steelman deserves stating, because the lazy dismissal is wrong in an instructive way.</p><p><em>The strong version of the GPU case:</em> kernel launch overhead can be eliminated with a <strong>persistent
+kernel</strong> — a block that never exits, spinning on a flag in mapped memory. GPUDirect RDMA lets the
+NIC DMA straight into GPU memory, removing the host hop. So you can get to: packet lands in GPU
+memory (~1 µs over PCIe), a spinning SM notices, does the math in nanoseconds, writes a response.
+No launch, no host. This is a real technique used in HPC, and anyone who says “kernel launch is
+3–5 µs, therefore no” has not engaged with it.</p><p><em>Why it still loses,</em> in the order that actually decides it:</p><ol>
+<li><strong>The bus is still there.</strong> GPUDirect removes the host bounce, not the PCIe crossing. You pay
+~1 µs in and ~1 µs out, which already exceeds a full FPGA path that never crosses a bus.</li>
+<li><strong>Determinism.</strong> This is the decisive one. The GPU’s clocks vary with temperature and power; the
+memory system is shared with whatever else is resident; there is no priority mechanism that
+guarantees your spinning block runs unmolested; the driver may intervene. You cannot state a
+worst case, and Module 5’s whole argument is that a system without a stated worst case has no
+deadline.</li>
+<li><strong>You are using one SM of 132.</strong> At batch 1 there is nothing to parallelise. Every architectural
+feature you are paying for — the warp scheduler, the huge register file, the memory hierarchy
+built for thousands of concurrent threads — is dead weight. A GPU is a machine for hiding
+latency with parallelism, and you have no parallelism.</li>
+<li><strong>Power and cost</strong> for a job a small FPGA does in a fraction of the envelope.</li>
+</ol><p>The clean statement: <strong>a GPU is a throughput engine, and this is a latency problem at batch 1.</strong>
+The architecture is not slow, it is aimed at a different quantity. The right answer is compute
+placed <em>in the datapath</em> — the packet is parsed and the decision made as bits arrive, and the bus
+crossing never appears in the equation at all.</p></div></section>
+<section class="probe"><h3 class="probe-q">Why does NUMA misplacement hurt more than the +50 ns figure implies?</h3><div class="probe-a"><p>Because +50 ns is the <em>idle</em> number, and three things degrade it under load.</p><p><strong>Bandwidth.</strong> The inter-socket link is narrower than local memory, so under pressure you queue on
+it — Module 4’s <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>1</mn><mi mathvariant="normal">/</mi><mo stretchy="false">(</mo><mn>1</mn><mo>−</mo><mi>ρ</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">1/(1-\rho)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord">1/</span><span class="mopen">(</span><span class="mord">1</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal">ρ</span><span class="mclose">)</span></span></span></span> applied to a link you did not know you were saturating.</p><p><strong>Outstanding-request credits.</strong> Remote transactions consume limited buffering in the interconnect,
+so effective memory-level parallelism to a remote node is lower than to local memory. You lose
+concurrency as well as latency, which Module 1 says is the more expensive loss.</p><p><strong>Multiplicity.</strong> Thread placement, memory placement and interrupt affinity are three independent
+decisions, and each can be wrong on its own. A buffer allocated by a thread that later migrates,
+an IRQ steered by <code>irqbalance</code>, and a NIC attached to the other socket’s root complex compose into
+something much worse than any single +50 ns.</p><p>And it is silent. Nothing fails; the number is just worse than it should be, forever, and it does
+not show up as an obvious counter. The remedies are all “decide once, explicitly”: <code>numactl</code> for
+memory and thread, IRQ affinity pinned by hand, and buffers allocated on the node attached to the
+device that will DMA into them.</p></div></section>
+<h2 id="self-check">Self-check<a class="anchor" href="#self-check" aria-hidden="true" tabindex="-1">#</a></h2>
+<details class="selfcheck"><summary><span class="selfcheck-q">Explain posted versus non-posted and give the design rule that follows.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>A write is posted — handed off and retired, visible in 150–300 ns. A read is non-posted: it needs a
+completion, costing a 1–2 µs round trip, and because device memory is uncacheable the core stalls
+for all of it with no out-of-order cover. The rule: put only writes on the critical path. Have the
+device DMA status into host memory and poll that cached location; ring doorbells rather than
+exchanging handshakes.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Where do the two orders of magnitude between a CPU and an FPGA tick-to-trade path come from?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Two PCIe crossings at roughly 1 µs each, the software stack and poll latency, and the FPGA’s
+ability to parse while receiving instead of waiting for a complete packet. Not arithmetic — the
+model evaluation is 20–100 ns in both cases. Also worth flagging: quoted sub-100 ns figures are
+usually a trigger path releasing a precomputed order, not the full parse-to-send path.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Kernel bypass improved p50 tenfold and left p99 unchanged. What is the explanation and what do you check first?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>The stack was a roughly constant 5–15 µs, so removing it shifted the distribution without narrowing
+it; the tail was always elsewhere. Check C-state residency first, since a poll loop that ever
+sleeps pays 50–100 µs to wake. Then IRQ affinity, NUMA placement of thread, memory and device, and
+finally compare NIC hardware timestamps with application timestamps to separate “arrived late” from
+“handled late”.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Steelman the GPU for a 1 µs deadline, then give the decisive objection.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>The steelman: a persistent kernel spinning on mapped memory removes launch overhead entirely, and
+GPUDirect RDMA lets the NIC DMA straight into GPU memory, removing the host hop. That is a real
+technique, not a strawman.</p><p>The decisive objection is <strong>determinism</strong>, not speed. Clocks vary with power and temperature, the
+memory system is shared, nothing guarantees your block runs unmolested, and the driver can
+intervene — so no worst case can be stated. Add that you still pay ~1 µs each way across PCIe and
+are using one SM of 132 because batch 1 offers nothing to parallelise. A GPU is a throughput engine
+aimed at a different quantity.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Why is fibre distance a real design variable inside a single datacenter?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Light in fibre travels about 5 ns per metre, so 10 m of extra cross-connect is 50 ns each way and
+100 ns round trip — comparable to an entire FPGA trigger path. Microwave through air at ~3.3 ns per
+metre is roughly 1.5× faster, which is why long-haul microwave links exist despite far lower
+bandwidth: on these routes the only quantity being bought is propagation delay.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Name three ways NUMA misplacement degrades worse than its idle latency number.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>The inter-socket link is narrower and queues under load, so you meet <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>1</mn><mi mathvariant="normal">/</mi><mo stretchy="false">(</mo><mn>1</mn><mo>−</mo><mi>ρ</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">1/(1-\rho)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord">1/</span><span class="mopen">(</span><span class="mord">1</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal">ρ</span><span class="mclose">)</span></span></span></span> on a link you did
+not know you were using; remote transactions consume limited interconnect credits, lowering
+achievable memory-level parallelism as well as latency; and thread, memory and IRQ placement are
+three independent decisions that compose multiplicatively when more than one is wrong. It also
+fails silently — nothing breaks, the number is just permanently worse.</p></div></details></div><footer class="mfoot" data-astro-cid-5x65ok44><button class="mark" data-mark="ml-hardware/07-off-chip-movement" aria-pressed="false" data-astro-cid-5x65ok44>Mark as reviewed</button><nav class="pager" data-astro-cid-5x65ok44><a class="pager-link" href="/blog/ml-hardware/06-cpu-microarchitecture/" data-prev data-astro-cid-5x65ok44><span class="pager-dir" data-astro-cid-5x65ok44>← Previous</span><span class="pager-title" data-astro-cid-5x65ok44>6. CPU microarchitecture</span></a><a class="pager-link is-next" href="/blog/ml-hardware/08-fixed-point/" data-next data-astro-cid-5x65ok44><span class="pager-dir" data-astro-cid-5x65ok44>Next →</span><span class="pager-title" data-astro-cid-5x65ok44>8. Fixed-point and rounding</span></a></nav></footer></article></main></div></div><div class="search-overlay" data-search hidden data-astro-cid-ac66eqjo><div class="search-backdrop" data-search-close data-astro-cid-ac66eqjo></div><div class="search-panel" role="dialog" aria-modal="true" aria-label="Search modules" data-astro-cid-ac66eqjo><div class="search-input-row" data-astro-cid-ac66eqjo><span class="search-icon" aria-hidden="true" data-astro-cid-ac66eqjo>⌕</span><input type="text" class="search-input" placeholder="Search all modules…" autocomplete="off" spellcheck="false" data-search-input data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>esc</kbd></div><ul class="search-results" data-search-results data-astro-cid-ac66eqjo></ul><p class="search-empty" data-search-empty hidden data-astro-cid-ac66eqjo>No matches.</p><p class="search-hint" data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>↑</kbd><kbd data-astro-cid-ac66eqjo>↓</kbd> move · <kbd data-astro-cid-ac66eqjo>↵</kbd> open</p></div></div><script>(function(){const indexUrl = "/blog/search.json";
+
+  (() => {
+    const overlay = document.querySelector('[data-search]');
+    if (!overlay) return;
+    const input = overlay.querySelector('[data-search-input]');
+    const list = overlay.querySelector('[data-search-results]');
+    const empty = overlay.querySelector('[data-search-empty]');
+
+    let index = null;
+    let loading = null;
+    let active = 0;
+
+    const load = () => {
+      if (index) return Promise.resolve(index);
+      if (!loading) {
+        loading = fetch(indexUrl)
+          .then((r) => r.json())
+          .then((d) => (index = d))
+          .catch(() => (index = []));
+      }
+      return loading;
+    };
+
+    function open() {
+      overlay.hidden = false;
+      document.documentElement.style.overflow = 'hidden';
+      load().then(() => input.focus());
+      input.focus();
+      input.select();
+    }
+
+    function close() {
+      overlay.hidden = true;
+      document.documentElement.style.overflow = '';
+    }
+
+    function escapeHtml(s) {
+      return s.replace(
+        /[&<>"]/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]
+      );
+    }
+
+    // Excerpt around the first matched term, with the term marked.
+    function excerpt(text, terms) {
+      const lower = text.toLowerCase();
+      let at = -1;
+      for (const t of terms) {
+        const i = lower.indexOf(t);
+        if (i !== -1 && (at === -1 || i < at)) at = i;
+      }
+      if (at === -1) at = 0;
+      const start = Math.max(0, at - 60);
+      let slice = text.slice(start, start + 190);
+      if (start > 0) slice = '…' + slice;
+      if (start + 190 < text.length) slice += '…';
+      let html = escapeHtml(slice);
+      for (const t of terms) {
+        html = html.replace(
+          new RegExp(`(${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'),
+          '<mark>$1</mark>'
+        );
+      }
+      return html;
+    }
+
+    function score(rec, terms) {
+      let s = 0;
+      const hay = (rec.m + ' ' + rec.h + ' ' + (rec.s || '') + ' ' + (rec.k || '')).toLowerCase();
+      const body = rec.t.toLowerCase();
+      for (const t of terms) {
+        if (hay.includes(t)) s += 12;
+        const i = body.indexOf(t);
+        if (i !== -1) s += 4 + Math.max(0, 3 - Math.floor(i / 400));
+        else if (!hay.includes(t)) return 0; // every term must appear
+      }
+      return s;
+    }
+
+    function render(results, terms) {
+      active = 0;
+      list.innerHTML = results
+        .map(
+          (r, i) => `
+          <li>
+            <a href="${r.u}" class="search-hit${i === 0 ? ' is-active' : ''}" data-hit>
+              <span class="search-hit-crumb"><span class="search-hit-series">${escapeHtml(r.s||"")}</span><span class="search-hit-n">${r.n}</span>${escapeHtml(r.m)} <span class="search-hit-sep">›</span> ${escapeHtml(r.h)}</span>
+              <span class="search-hit-text">${excerpt(r.t, terms)}</span>
+            </a>
+          </li>`
+        )
+        .join('');
+      empty.hidden = results.length > 0;
+    }
+
+    function run() {
+      const q = input.value.trim().toLowerCase();
+      if (!q || !index) {
+        list.innerHTML = '';
+        empty.hidden = true;
+        return;
+      }
+      const terms = q.split(/\s+/).filter(Boolean);
+      const results = index
+        .map((r) => ({ r, s: score(r, terms) }))
+        .filter((x) => x.s > 0)
+        .sort((a, b) => b.s - a.s || a.r.n - b.r.n)
+        .slice(0, 12)
+        .map((x) => x.r);
+      render(results, terms);
+    }
+
+    function move(delta) {
+      const hits = list.querySelectorAll('[data-hit]');
+      if (!hits.length) return;
+      hits[active]?.classList.remove('is-active');
+      active = (active + delta + hits.length) % hits.length;
+      hits[active].classList.add('is-active');
+      hits[active].scrollIntoView({ block: 'nearest' });
+    }
+
+    input.addEventListener('input', () => {
+      load().then(run);
+      run();
+    });
+
+    overlay.querySelector('[data-search-close]').addEventListener('click', close);
+
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        move(1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        move(-1);
+      } else if (e.key === 'Enter') {
+        const hit = list.querySelectorAll('[data-hit]')[active];
+        if (hit) {
+          e.preventDefault();
+          window.location.href = hit.getAttribute('href');
+        }
+      }
+    });
+
+    document.querySelectorAll('[data-search-open]').forEach((b) =>
+      b.addEventListener('click', open)
+    );
+
+    window.__openSearch = open;
+  })();
+})();</script><script>(function(){const base = "/blog";
+
+      (() => {
+        const root = document.documentElement;
+
+        /* ---- theme ---------------------------------------------------- */
+        document.querySelector('[data-theme-toggle]')?.addEventListener('click', () => {
+          const light = root.classList.toggle('light');
+          try {
+            localStorage.setItem('refresher:theme', light ? 'light' : 'dark');
+          } catch (e) {}
+        });
+
+        /* ---- progress (localStorage) ---------------------------------- */
+        const KEY = 'refresher:progress';
+        const readSet = () => {
+          try {
+            return new Set(JSON.parse(localStorage.getItem(KEY) || '[]'));
+          } catch (e) {
+            return new Set();
+          }
+        };
+        const writeSet = (s) => {
+          try {
+            localStorage.setItem(KEY, JSON.stringify([...s]));
+          } catch (e) {}
+        };
+
+        function paintProgress() {
+          const done = readSet();
+          const ticks = document.querySelectorAll('[data-tick]');
+          // A module can own more than one tick (rail + contents card), so
+          // count distinct module ids rather than elements.
+          const ids = new Set();
+          ticks.forEach((t) => {
+            const id = t.getAttribute('data-tick');
+            ids.add(id);
+            if (done.has(id)) t.setAttribute('data-read', '');
+            else t.removeAttribute('data-read');
+          });
+          const n = [...ids].filter((id) => done.has(id)).length;
+          const total = ids.size || 1;
+          const fill = document.querySelector('[data-progress-fill]');
+          if (fill) fill.style.width = `${(n / total) * 100}%`;
+          const count = document.querySelector('[data-progress-count]');
+          if (count) count.textContent = String(n);
+          document.querySelectorAll('[data-mark]').forEach((btn) => {
+            const id = btn.getAttribute('data-mark');
+            const on = done.has(id);
+            btn.setAttribute('aria-pressed', String(on));
+            btn.textContent = on ? '✓ Reviewed' : 'Mark as reviewed';
+          });
+        }
+
+        document.querySelectorAll('[data-mark]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-mark');
+            const s = readSet();
+            s.has(id) ? s.delete(id) : s.add(id);
+            writeSet(s);
+            paintProgress();
+          });
+        });
+
+        paintProgress();
+
+        /* ---- scrollspy over h2s, mirrored into the rail --------------- */
+        const article = document.querySelector('[data-article]');
+        const heads = article ? [...article.querySelectorAll('h2[id]')] : [];
+        const subLinks = new Map(
+          [...document.querySelectorAll('[data-toc]')].map((a) => [
+            a.getAttribute('data-toc'),
+            a,
+          ])
+        );
+
+        if (heads.length && subLinks.size) {
+          let currentId = null;
+          const spy = () => {
+            let found = heads[0].id;
+            for (const h of heads) {
+              if (h.getBoundingClientRect().top <= 96) found = h.id;
+              else break;
+            }
+            if (found === currentId) return;
+            subLinks.get(currentId)?.classList.remove('is-current');
+            currentId = found;
+            const el = subLinks.get(currentId);
+            if (el) {
+              el.classList.add('is-current');
+              el.scrollIntoView({ block: 'nearest' });
+            }
+          };
+          spy();
+          addEventListener('scroll', spy, { passive: true });
+        }
+
+        /* ---- keyboard ------------------------------------------------- */
+        const stops = article
+          ? [...article.querySelectorAll('h2[id], h3[id]')]
+          : [];
+
+        function jump(delta) {
+          if (!stops.length) return;
+          // The heading we are "in": the last one scrolled past the threshold.
+          let cur = -1;
+          for (let i = 0; i < stops.length; i++) {
+            if (stops[i].getBoundingClientRect().top <= 100) cur = i;
+            else break;
+          }
+          const target = cur + delta;
+          if (target < 0) return scrollTo({ top: 0, behavior: 'smooth' });
+          if (target >= stops.length) return;
+          stops[target].scrollIntoView({ block: 'start' });
+        }
+
+        addEventListener('keydown', (e) => {
+          const tag = (e.target.tagName || '').toLowerCase();
+          if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+          if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+          if (e.key === '/') {
+            e.preventDefault();
+            window.__openSearch?.();
+          } else if (e.key === 'j') {
+            e.preventDefault();
+            jump(1);
+          } else if (e.key === 'k') {
+            e.preventDefault();
+            jump(-1);
+          } else if (e.key === '[' || e.key === ']') {
+            const sel = e.key === '[' ? '[data-prev]' : '[data-next]';
+            const a = document.querySelector(sel);
+            if (a) {
+              e.preventDefault();
+              window.location.href = a.getAttribute('href');
+            }
+          }
+        });
+
+        /* ---- narrow-screen rail --------------------------------------- */
+        const rail = document.querySelector('[data-rail]');
+        document.querySelector('[data-rail-toggle]')?.addEventListener('click', () => {
+          rail.classList.toggle('is-open');
+        });
+        rail?.addEventListener('click', (e) => {
+          if (e.target.closest('a')) rail.classList.remove('is-open');
+        });
+      })();
+    })();</script></body></html>

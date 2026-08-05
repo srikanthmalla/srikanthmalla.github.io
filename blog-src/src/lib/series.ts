@@ -23,14 +23,14 @@ export interface Series {
 
 export const SERIES: Series[] = [
   {
-    id: 'refresher',
-    title: 'Refresher',
-    subtitle: 'ML hardware & low-latency systems',
+    id: 'ml-hardware',
+    title: 'ML Hardware & Low-Latency Systems',
+    subtitle: 'From roofline to nanosecond inference',
     description:
       'Twelve modules, written for someone who already knows the basics. Starts from roofline and GPU throughput instincts, then inverts them for the batch-of-one regime: tail latency, CPU microarchitecture, PCIe and the wire, fixed-point numerics, and the workloads that answer in nanoseconds.',
     unit: 'Module',
     parts: [
-      { id: 'A', title: 'Foundations', note: 'Refresher — territory you already own.' },
+      { id: 'A', title: 'Foundations', note: 'Territory you already own.' },
       { id: 'B', title: 'The pivot', note: 'Throughput instincts, inverted.' },
       { id: 'C', title: 'Substrate', note: 'The CPU and the wire.' },
       { id: 'D', title: 'Numerics', note: 'Below the framework quantizer.' },

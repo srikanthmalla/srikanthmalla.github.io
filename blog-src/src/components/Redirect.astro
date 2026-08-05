@@ -1,0 +1,33 @@
+---
+/**
+ * A standalone meta-refresh page. Used to keep the /blog/refresher/* URLs
+ * working after the series was renamed to ml-hardware.
+ *
+ * Astro's built-in `redirects` config cannot express this: the destination
+ * lives under a dynamic [series] route, so "/ml-hardware/[slug]" is not a
+ * literal route it can validate against.
+ */
+interface Props {
+  to: string;
+}
+const { to } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Moved</title>
+    <link rel="canonical" href={to} />
+    <meta http-equiv="refresh" content={`0; url=${to}`} />
+    <meta name="robots" content="noindex" />
+    <script is:inline define:vars={{ to }}>
+      location.replace(to);
+    </script>
+  </head>
+  <body
+    style="font-family: ui-sans-serif, system-ui, sans-serif; background:#14161b; color:#c9cedb; padding:60px 20px; text-align:center;"
+  >
+    <p>This page moved to <a href={to} style="color:#e0a437;">{to}</a>.</p>
+  </body>
+</html>

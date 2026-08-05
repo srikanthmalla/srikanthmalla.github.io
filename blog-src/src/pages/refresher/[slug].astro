@@ -1,0 +1,15 @@
+---
+import Redirect from '../../components/Redirect.astro';
+import { seriesEntries, slugOf } from '../../lib/series';
+
+// The series was published at /blog/refresher/ before being renamed.
+export async function getStaticPaths() {
+  const entries = await seriesEntries('ml-hardware');
+  return entries.map((e) => ({ params: { slug: slugOf(e) } }));
+}
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const { slug } = Astro.params;
+---
+
+<Redirect to={`${base}/ml-hardware/${slug}/`} />

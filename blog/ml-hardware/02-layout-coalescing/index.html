@@ -1,0 +1,552 @@
+<!DOCTYPE html><html lang="en" data-astro-cid-z4jru4n3><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>2. Layout, coalescing, bank conflicts, tiling — ML Hardware &amp; Low-Latency Systems</title><meta name="description" content="Coalescing is a transaction count, not a thread count. Bank conflicts, padding versus swizzling, and the three-way tension inside every tile size."><link rel="icon" href="data:,"><script>
+      (() => {
+        try {
+          const t = localStorage.getItem('refresher:theme');
+          if (t === 'light') document.documentElement.classList.add('light');
+        } catch (e) {}
+      })();
+    </script><link rel="stylesheet" href="/blog/_astro/BaseLayout.BZ_NeV9N.css"><style>.wrap[data-astro-cid-5x65ok44]{max-width:68ch;margin-inline:auto;padding:3rem 1.25rem 6rem}@media (width>=1024px){.wrap[data-astro-cid-5x65ok44]{max-width:calc(68ch + 6rem);padding-inline:3rem}}.mhead[data-astro-cid-5x65ok44]{border-block-end:1px solid var(--rule);margin-block-end:.5rem;padding-block-end:1.75rem}.mhead-kicker[data-astro-cid-5x65ok44]{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint);margin:0 0 .85rem;font-size:.6875rem;font-weight:500}.mhead-n[data-astro-cid-5x65ok44]{color:var(--accent);font-weight:640}.mhead-dot[data-astro-cid-5x65ok44]{opacity:.5;padding-inline:.35rem}.mhead-title[data-astro-cid-5x65ok44]{font-family:var(--font-sans);letter-spacing:-.027em;color:var(--ink-strong);text-wrap:balance;margin:0;font-size:clamp(1.75rem,1.3rem + 1.9vw,2.375rem);font-weight:660;line-height:1.12}.mhead-blurb[data-astro-cid-5x65ok44]{color:var(--ink-muted);max-width:58ch;margin:.85rem 0 0;font-size:1.0625rem;line-height:1.6}.mfoot[data-astro-cid-5x65ok44]{border-block-start:1px solid var(--rule);margin-block-start:4rem;padding-block-start:1.75rem}.mark[data-astro-cid-5x65ok44]{font-family:var(--font-sans);border:1px solid var(--rule);background:var(--bg-raised);color:var(--ink-muted);cursor:pointer;border-radius:5px;padding:.4rem .85rem;font-size:.75rem;font-weight:550}.mark[data-astro-cid-5x65ok44]:hover{color:var(--ink-strong);border-color:var(--ink-faint)}.mark[data-astro-cid-5x65ok44][aria-pressed=true]{color:var(--bridge);border-color:color-mix(in oklab, var(--bridge) 45%, var(--rule))}.pager[data-astro-cid-5x65ok44]{grid-template-columns:1fr 1fr;gap:1rem;margin-block-start:2rem;display:grid}.pager-link[data-astro-cid-5x65ok44]{border:1px solid var(--rule);font-family:var(--font-sans);border-radius:6px;flex-direction:column;gap:.25rem;padding:.75rem .9rem;text-decoration:none;display:flex}.pager-link[data-astro-cid-5x65ok44]:hover{border-color:var(--ink-faint);background:var(--bg-raised)}.pager-link[data-astro-cid-5x65ok44].is-next{text-align:end}.pager-dir[data-astro-cid-5x65ok44]{text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);font-size:.6875rem}.pager-title[data-astro-cid-5x65ok44]{color:var(--ink-strong);font-size:.8125rem;font-weight:550;line-height:1.35}
+</style><style>.callout{border:1px solid var(--rule);border-inline-start-width:2px;border-radius:5px;margin-block:1.75rem;padding:.9rem 1.1rem 1rem;font-size:.9375rem;line-height:1.65}.callout-probe{border-inline-start-color:var(--probe);background:var(--probe-bg)}.callout-trap{border-inline-start-color:var(--trap);background:var(--trap-bg)}.callout-bridge{border-inline-start-color:var(--bridge);background:var(--bridge-bg)}.callout-label{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;align-items:center;gap:.45rem;margin:0 0 .5rem;font-size:.6875rem;font-weight:620;display:flex}.callout-probe .callout-label{color:var(--probe)}.callout-trap .callout-label{color:var(--trap)}.callout-bridge .callout-label{color:var(--bridge)}.callout-mark{background:currentColor;border-radius:50%;flex:none;width:5px;height:5px}.callout-title{text-transform:none;letter-spacing:0;color:var(--ink-muted);font-weight:500}.callout-body>:first-child{margin-block-start:0}.callout-body>:last-child{margin-block-end:0}.callout-body>*+*{margin-block-start:.75em}.probe{margin-block:1.75rem}.prose .probe-q{font-family:var(--font-sans);letter-spacing:-.01em;color:var(--ink-strong);margin:0 0 .6rem;padding-inline-start:1.15rem;font-size:1rem;font-weight:600;line-height:1.45;position:relative}.prose .probe-q:before{content:"›";color:var(--accent);font-weight:700;position:absolute;inset-inline-start:0}.probe-a{border-inline-start:1px solid var(--rule);margin-inline-start:.1rem;padding-inline-start:1.15rem}.probe-a>*+*{margin-block-start:1.15em}.probe-a>:first-child{margin-block-start:0}.probe-a>:last-child{margin-block-end:0}.selfcheck{border-block-start:1px solid var(--rule-soft)}.selfcheck:last-of-type{border-block-end:1px solid var(--rule-soft)}.prose>.selfcheck+.selfcheck{margin-block-start:0}.selfcheck>summary{cursor:pointer;color:var(--ink);align-items:baseline;gap:1rem;padding:.7rem .2rem;list-style:none;display:flex}.selfcheck>summary::-webkit-details-marker{display:none}.selfcheck>summary:hover{color:var(--ink-strong)}.selfcheck-q{flex:1}.selfcheck-q code{white-space:nowrap}.selfcheck-cue{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);flex:none;padding-block-start:.15rem;font-size:.6875rem;font-weight:600}.selfcheck>summary:hover .selfcheck-cue{color:var(--accent)}.selfcheck-cue-hide,.selfcheck[open] .selfcheck-cue-show{display:none}.selfcheck[open] .selfcheck-cue-hide{display:inline}.selfcheck-a{color:var(--ink-muted);border-inline-start:2px solid var(--rule);margin-block-end:.9rem;margin-inline-start:.2rem;padding:.15rem .2rem 1.05rem;padding-inline-start:1rem;font-size:.9375rem}.selfcheck-a>:first-child{margin-block-start:0}.selfcheck-a>:last-child{margin-block-end:0}.selfcheck-a>*+*{margin-block-start:.7em}.selfcheck-a strong{color:var(--ink)}
+</style></head><body data-astro-cid-z4jru4n3><a href="#content" class="skip" data-astro-cid-z4jru4n3>Skip to content</a><div class="shell" data-astro-cid-z4jru4n3><aside class="rail" data-rail data-astro-cid-z4jru4n3><nav class="rail-nav" aria-label="ML Hardware &amp; Low-Latency Systems contents" data-astro-cid-wv7whodv><div class="rail-head" data-astro-cid-wv7whodv><a href="/blog/" class="rail-up" data-astro-cid-wv7whodv>All series</a><a href="/blog/ml-hardware/" class="rail-home" data-astro-cid-wv7whodv><span class="rail-home-title" data-astro-cid-wv7whodv>ML Hardware &amp; Low-Latency Systems</span><span class="rail-home-sub" data-astro-cid-wv7whodv>From roofline to nanosecond inference</span></a><p class="rail-progress" data-astro-cid-wv7whodv><span class="rail-progress-bar" data-astro-cid-wv7whodv><span data-progress-fill data-astro-cid-wv7whodv></span></span><span class="rail-progress-text" data-astro-cid-wv7whodv><span data-progress-count data-astro-cid-wv7whodv>0</span>/12 reviewed</span></p></div><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part A</span>Foundations</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/01-roofline/" class="rail-link" title="What the roofline actually bounds, why the ridge point keeps running away from us, and the exact point at which the model stops being useful." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>1</span><span class="rail-title" data-astro-cid-wv7whodv>Memory hierarchy, roofline, arithmetic intensity</span><span class="rail-tick" data-tick="ml-hardware/01-roofline" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/02-layout-coalescing/" class="rail-link is-active" aria-current="page" title="Coalescing is a transaction count, not a thread count. Bank conflicts, padding versus swizzling, and the three-way tension inside every tile size." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>2</span><span class="rail-title" data-astro-cid-wv7whodv>Layout, coalescing, bank conflicts, tiling</span><span class="rail-tick" data-tick="ml-hardware/02-layout-coalescing" aria-hidden="true" data-astro-cid-wv7whodv></span></a><ul class="rail-sub" data-rail-sub data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="#the-core-mental-model" class="rail-sub-link" data-toc="the-core-mental-model" data-astro-cid-wv7whodv>The core mental model</a></li><li data-astro-cid-wv7whodv><a href="#numbers-worth-memorizing" class="rail-sub-link" data-toc="numbers-worth-memorizing" data-astro-cid-wv7whodv>Numbers worth memorizing</a></li><li data-astro-cid-wv7whodv><a href="#critical-thinking" class="rail-sub-link" data-toc="critical-thinking" data-astro-cid-wv7whodv>Critical thinking</a></li><li data-astro-cid-wv7whodv><a href="#self-check" class="rail-sub-link" data-toc="self-check" data-astro-cid-wv7whodv>Self-check</a></li></ul></li><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/03-pipelining/" class="rail-link" title="Initiation interval versus depth, prefetch distance as a ratio, and the moment every one of these tools stops working." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>3</span><span class="rail-title" data-astro-cid-wv7whodv>Pipelining, multi-buffering, latency hiding</span><span class="rail-tick" data-tick="ml-hardware/03-pipelining" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part B</span>The pivot</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/04-latency-vs-throughput/" class="rail-link" title="Where batching, occupancy and amortization stop being virtues. Why high utilization is a defect, and why a barrier samples the tail." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>4</span><span class="rail-title" data-astro-cid-wv7whodv>Latency versus throughput as a design axis</span><span class="rail-tick" data-tick="ml-hardware/04-latency-vs-throughput" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/05-tail-latency/" class="rail-link" title="Why the mean describes no request that ever happened, where jitter actually comes from, and the measurement error that makes your p99 a fiction." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>5</span><span class="rail-title" data-astro-cid-wv7whodv>Tail latency and determinism</span><span class="rail-tick" data-tick="ml-hardware/05-tail-latency" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part C</span>Substrate</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/06-cpu-microarchitecture/" class="rail-link" title="False sharing, dependent chains, store buffers and memory ordering, the AVX-512 downclock, and the cache-line layout that makes an SPSC ring fast." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>6</span><span class="rail-title" data-astro-cid-wv7whodv>CPU microarchitecture</span><span class="rail-tick" data-tick="ml-hardware/06-cpu-microarchitecture" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/07-off-chip-movement/" class="rail-link" title="Posted versus non-posted, why the round trip and not the bandwidth is what kills you, and the rigorous answer to “why not just use a GPU?”" data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>7</span><span class="rail-title" data-astro-cid-wv7whodv>Off-chip data movement</span><span class="rail-tick" data-tick="ml-hardware/07-off-chip-movement" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part D</span>Numerics</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/08-fixed-point/" class="rail-link" title="Q-format as a contract, why truncation bias grows linearly while random error grows as a square root, and how fixed point buys reproducibility for free." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>8</span><span class="rail-title" data-astro-cid-wv7whodv>Fixed-point and rounding</span><span class="rail-tick" data-tick="ml-hardware/08-fixed-point" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/09-nonlinearities/" class="rail-link" title="LUT, piecewise-linear, minimax polynomial and CORDIC — and why range reduction is the step that makes any of them work." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>9</span><span class="rail-title" data-astro-cid-wv7whodv>Nonlinearities without dividers</span><span class="rail-tick" data-tick="ml-hardware/09-nonlinearities" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part E</span>Workloads</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/10-small-mlps/" class="rail-link" title="When you stop executing the network and start being it. Constant-weight multipliers, adder-tree depth, and the resource budget that co-designs the model." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>10</span><span class="rail-title" data-astro-cid-wv7whodv>Small MLPs at nanosecond scale</span><span class="rail-tick" data-tick="ml-hardware/10-small-mlps" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/11-gbdt-inference/" class="rail-link" title="Routing, not arithmetic. Why a depth-6 tree costs three levels rather than six, why feature fetch is the real bottleneck, and why trees beat DNNs at this scale." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>11</span><span class="rail-title" data-astro-cid-wv7whodv>GBDT inference in hardware</span><span class="rail-tick" data-tick="ml-hardware/11-gbdt-inference" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/12-partitioning/" class="rail-link" title="Order books, the tick-to-trade budget allocated stage by stage, the fast-path/slow-path contract, and risk checks that must not trust the strategy." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>12</span><span class="rail-title" data-astro-cid-wv7whodv>Hardware/software partitioning and market microstructure</span><span class="rail-tick" data-tick="ml-hardware/12-partitioning" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-other" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv>Other series</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/diffusion/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>Diffusion</span></a></li></ul></section><div class="rail-foot" data-astro-cid-wv7whodv><p data-astro-cid-wv7whodv><kbd data-astro-cid-wv7whodv>j</kbd> <kbd data-astro-cid-wv7whodv>k</kbd> section · <kbd data-astro-cid-wv7whodv>/</kbd> search · <kbd data-astro-cid-wv7whodv>[</kbd><kbd data-astro-cid-wv7whodv>]</kbd> module</p></div></nav></aside><div class="col" data-astro-cid-z4jru4n3><header class="topbar" data-astro-cid-z4jru4n3><button class="icon-btn only-narrow" data-rail-toggle aria-label="Toggle contents" data-astro-cid-z4jru4n3><svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M1.5 3.5h12M1.5 7.5h12M1.5 11.5h12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg></button><p class="crumb" data-astro-cid-z4jru4n3>Part A · Foundations › Layout, coalescing, bank conflicts, tiling</p><div class="topbar-actions" data-astro-cid-z4jru4n3><button class="search-btn" data-search-open aria-label="Search" data-astro-cid-z4jru4n3><span aria-hidden="true" data-astro-cid-z4jru4n3>⌕</span><span class="search-btn-label" data-astro-cid-z4jru4n3>Search</span><kbd data-astro-cid-z4jru4n3>/</kbd></button><button class="icon-btn" data-theme-toggle aria-label="Toggle theme" data-astro-cid-z4jru4n3><svg class="i-sun" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><circle cx="7.5" cy="7.5" r="3" stroke="currentColor" stroke-width="1.2" data-astro-cid-z4jru4n3></circle><path d="M7.5 .8v1.7M7.5 12.5v1.7M14.2 7.5h-1.7M2.5 7.5H.8M12.24 2.76l-1.2 1.2M3.96 11.04l-1.2 1.2M12.24 12.24l-1.2-1.2M3.96 3.96l-1.2-1.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg><svg class="i-moon" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M13 9.3A5.8 5.8 0 0 1 5.7 2 5.9 5.9 0 1 0 13 9.3Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" data-astro-cid-z4jru4n3></path></svg></button><a class="site-link" href="/" data-astro-cid-z4jru4n3>srikanthmalla.com</a></div></header><main id="content" data-astro-cid-z4jru4n3><article class="wrap" data-article data-astro-cid-5x65ok44><header class="mhead" data-astro-cid-5x65ok44><p class="mhead-kicker" data-astro-cid-5x65ok44><span class="mhead-n" data-astro-cid-5x65ok44>Module 2</span><span class="mhead-dot" data-astro-cid-5x65ok44>·</span>Part A — Foundations<span class="mhead-dot" data-astro-cid-5x65ok44>·</span>15 min</p><h1 class="mhead-title" data-astro-cid-5x65ok44>Layout, coalescing, bank conflicts, tiling</h1><p class="mhead-blurb" data-astro-cid-5x65ok44>Coalescing is a transaction count, not a thread count. Bank conflicts, padding versus swizzling, and the three-way tension inside every tile size.</p></header><div class="prose" data-astro-cid-5x65ok44><h2 id="the-core-mental-model">The core mental model<a class="anchor" href="#the-core-mental-model" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>Memory is not delivered in bytes, it is delivered in <strong>transactions</strong>. The coalescer takes the 32
+addresses a warp generates and works out the minimum set of 32 B sectors that covers them. That
+count is what costs time. Efficiency is bytes-you-asked-for over bytes-actually-moved, and it is
+the only definition that predicts anything: a warp doing 32 contiguous 4-byte loads touches 128 B,
+which is four sectors, and that is perfect. A warp doing 32 loads scattered across 32 different
+lines touches 32 sectors to deliver 128 useful bytes, which is 12.5% efficiency and eight times
+the traffic. Nothing here depends on the <em>order</em> of the lanes. A perfectly shuffled permutation
+inside one 128 B window is perfectly coalesced. The set of sectors is what matters, never the
+mapping from lane to address.</p>
+<p>Layout, then, is one question asked repeatedly: <strong>which index is contiguous?</strong> In C, <code>A[i][j]</code>
+puts <code>j</code> adjacent, so a warp that varies <code>j</code> is coalesced and a warp that varies <code>i</code> strides by
+the row length. Every layout decision reduces to arranging for the fastest-varying thread index to
+sit on the fastest-varying memory index. Shared memory has its own version: 32 banks, each 4 B
+wide, with bank = (address / 4) mod 32. Two lanes hitting different rows of the same bank
+serialise; two lanes hitting the <em>same</em> address broadcast for free. A <code>float tile[32][32]</code>
+accessed column-wise puts all 32 lanes in one bank, a 32-way conflict, which is a 32× slowdown on
+that access.</p>
+<p>Tiling is how you buy arithmetic intensity, and the exchange rate is exact. For an
+<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>M</mi><mo lspace="0em" rspace="0em">×</mo><mi>N</mi><mo lspace="0em" rspace="0em">×</mo><mi>K</mi></mrow><annotation encoding="application/x-tex">M{\times}N{\times}K</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.7667em;vertical-align:-0.0833em"></span><span class="mord mathnormal" style="margin-right:0.109em">M</span><span class="mord"><span class="mord">×</span></span><span class="mord mathnormal" style="margin-right:0.109em">N</span><span class="mord"><span class="mord">×</span></span><span class="mord mathnormal" style="margin-right:0.0715em">K</span></span></span></span> GEMM blocked into <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>T</mi><mo lspace="0em" rspace="0em">×</mo><mi>T</mi></mrow><annotation encoding="application/x-tex">T{\times}T</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.7667em;vertical-align:-0.0833em"></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span><span class="mord"><span class="mord">×</span></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span></span></span></span> output tiles, traffic to the level below is
+about <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>2</mn><mi>M</mi><mi>N</mi><mi>K</mi><mi mathvariant="normal">/</mi><mi>T</mi></mrow><annotation encoding="application/x-tex">2MNK/T</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord">2</span><span class="mord mathnormal" style="margin-right:0.109em">M</span><span class="mord mathnormal" style="margin-right:0.109em">N</span><span class="mord mathnormal" style="margin-right:0.0715em">K</span><span class="mord">/</span><span class="mord mathnormal" style="margin-right:0.1389em">T</span></span></span></span> elements instead of <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>2</mn><mi>M</mi><mi>N</mi><mi>K</mi></mrow><annotation encoding="application/x-tex">2MNK</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord">2</span><span class="mord mathnormal" style="margin-right:0.109em">M</span><span class="mord mathnormal" style="margin-right:0.109em">N</span><span class="mord mathnormal" style="margin-right:0.0715em">K</span></span></span></span>, so <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>I</mi><mo>≈</mo><mi>T</mi><mi mathvariant="normal">/</mi><mtext>sizeof(elem)</mtext></mrow><annotation encoding="application/x-tex">I \approx T/\text{sizeof(elem)}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0785em">I</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span><span class="mord">/</span><span class="mord text"><span class="mord">sizeof(elem)</span></span></span></span></span> — in fp16,
+<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>I</mi><mo>≈</mo><mi>T</mi><mi mathvariant="normal">/</mi><mn>2</mn></mrow><annotation encoding="application/x-tex">I \approx T/2</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0785em">I</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span><span class="mord">/2</span></span></span></span> at that boundary. Module 1’s ridge of ~295 therefore wants <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>T</mi><mo>≈</mo><mn>590</mn></mrow><annotation encoding="application/x-tex">T \approx 590</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">590</span></span></span></span>, and a
+590×590 fp16 tile pair is roughly 700 KB against 228 KB of shared memory per SM. That gap is why
+real GEMMs block at <em>three</em> levels: an 8×8 tile in registers, a 128×128 tile in shared memory, and
+an implicit L2 tile created by the order in which blocks are scheduled. The hierarchical roofline
+is not a diagram, it is a construction plan.</p>
+<aside class="callout callout-bridge"><p class="callout-label"><span class="callout-mark" aria-hidden="true"></span>Bridge to what you know<span class="callout-title"> · you already know the CPU version</span></p><div class="callout-body"><p>This is cache lines with different constants. 64 B instead of 128 B, one lane instead of 32, and
+a hardware prefetcher instead of a coalescer. “Stride-1 access is fast” and “coalesced access is
+fast” are the same sentence about the same hardware behaviour.</p></div></aside>
+<aside class="callout callout-trap"><p class="callout-label"><span class="callout-mark" aria-hidden="true"></span>Common trap<span class="callout-title"> · coalescing means consecutive threads read consecutive addresses</span></p><div class="callout-body"><p>It means the warp’s accesses land in few sectors. Lane order is irrelevant, and consecutive
+addresses are sufficient but not necessary. The counter to look at is sectors per request, not
+any statement about thread indices.</p></div></aside>
+<h2 id="numbers-worth-memorizing">Numbers worth memorizing<a class="anchor" href="#numbers-worth-memorizing" aria-hidden="true" tabindex="-1">#</a></h2>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Quantity</th><th>Value</th><th>Why it matters</th></tr></thead><tbody><tr><td>Warp</td><td>32 lanes</td><td>the coalescing unit</td></tr><tr><td>Sector / cache line</td><td>32 B / 128 B</td><td>the transaction quantum</td></tr><tr><td>Perfect coalesced load</td><td>32 × 4 B = 128 B = 4 sectors</td><td>the baseline to compare against</td></tr><tr><td>Shared memory banks</td><td>32 banks × 4 B</td><td>conflict granularity</td></tr><tr><td>Bank index</td><td><code>(addr / 4) % 32</code></td><td>worth computing by hand</td></tr><tr><td>Shared memory / SM</td><td>228 KB (H100), 164 KB (A100)</td><td>the tile-size ceiling</td></tr><tr><td>Register file / SM</td><td>256 KB, max 255 reg/thread</td><td>the other tile-size ceiling</td></tr><tr><td>Max threads / SM</td><td>2048 (64 warps)</td><td>occupancy denominator</td></tr><tr><td>Widest load</td><td><code>LDG.128</code>, 16 B per lane</td><td>fewer instructions, more in flight</td></tr></tbody></table></div>
+<p>Efficiency by access pattern, 4-byte elements, one warp:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Pattern</th><th>Sectors touched</th><th>Efficiency</th></tr></thead><tbody><tr><td>Contiguous (stride 1)</td><td>4</td><td>100%</td></tr><tr><td>Stride 2</td><td>8</td><td>50%</td></tr><tr><td>Stride 4</td><td>16</td><td>25%</td></tr><tr><td>Stride ≥ 32, or random</td><td>32</td><td>12.5%</td></tr><tr><td>Broadcast (all same addr)</td><td>1</td><td>1 transaction, near-zero waste</td></tr></tbody></table></div>
+<p>Tiling arithmetic, worth being able to derive on the spot:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Quantity</th><th>Expression</th><th>fp16, <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>T</mi><mo>=</mo><mn>128</mn></mrow><annotation encoding="application/x-tex">T = 128</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">128</span></span></span></span></th></tr></thead><tbody><tr><td>Intensity at the tiled boundary</td><td><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>T</mi><mi mathvariant="normal">/</mi><mtext>sizeof(elem)</mtext></mrow><annotation encoding="application/x-tex">T / \text{sizeof(elem)}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span><span class="mord">/</span><span class="mord text"><span class="mord">sizeof(elem)</span></span></span></span></span></td><td>64 FLOP/byte</td></tr><tr><td>Shared memory for one tile pair</td><td><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>2</mn><mo>⋅</mo><mi>T</mi><mo>⋅</mo><msub><mi>B</mi><mi>K</mi></msub><mo>⋅</mo></mrow><annotation encoding="application/x-tex">2 \cdot T \cdot B_K \cdot</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">2</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">⋅</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">⋅</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.8333em;vertical-align:-0.15em"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.0502em">B</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3283em"><span style="top:-2.55em;margin-left:-0.0502em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathnormal mtight" style="margin-right:0.0715em">K</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em"><span></span></span></span></span></span></span><span class="mord">⋅</span></span></span></span> bytes</td><td>32 KB at <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>B</mi><mi>K</mi></msub><mo>=</mo><mn>64</mn></mrow><annotation encoding="application/x-tex">B_K = 64</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8333em;vertical-align:-0.15em"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.0502em">B</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3283em"><span style="top:-2.55em;margin-left:-0.0502em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathnormal mtight" style="margin-right:0.0715em">K</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">64</span></span></span></span></td></tr><tr><td>Double-buffered</td><td>×2</td><td>64 KB</td></tr><tr><td><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>T</mi></mrow><annotation encoding="application/x-tex">T</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span></span></span></span> needed to reach the H100 ridge</td><td><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>2</mn><mo>×</mo><mn>295</mn></mrow><annotation encoding="application/x-tex">2 \times 295</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.7278em;vertical-align:-0.0833em"></span><span class="mord">2</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">295</span></span></span></span></td><td>~590 (does not fit)</td></tr></tbody></table></div>
+<p>Typical CUTLASS-shaped blocking, as a sanity anchor: <strong>128×128 block tile, 64×64 warp tile, 8×8
+thread tile, <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>B</mi><mi>K</mi></msub></mrow><annotation encoding="application/x-tex">B_K</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8333em;vertical-align:-0.15em"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.0502em">B</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3283em"><span style="top:-2.55em;margin-left:-0.0502em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathnormal mtight" style="margin-right:0.0715em">K</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em"><span></span></span></span></span></span></span></span></span></span> of 32–64.</strong></p>
+<h2 id="critical-thinking">Critical thinking<a class="anchor" href="#critical-thinking" aria-hidden="true" tabindex="-1">#</a></h2>
+<section class="probe"><h3 class="probe-q">Your kernel reports 100% coalescing efficiency and reaches only 60% of peak bandwidth. What now?</h3><div class="probe-a"><p>Coalescing is necessary, not sufficient. It guarantees you are not <em>wasting</em> traffic; it says
+nothing about whether you are generating <em>enough</em> of it. That is Little’s Law again, and it is the
+first thing to check: at ~400 ns and 3.35 TB/s you need roughly 1.34 MB in flight, about 80 sectors
+per SM. Count how many independent loads your kernel actually has outstanding.</p><p>Then, in order:</p><ol>
+<li><strong>Not enough memory-level parallelism.</strong> Too few warps, or each warp issues one load and
+immediately consumes it. Unrolling to get several independent loads in flight per thread raises
+concurrency without changing the algorithm.</li>
+<li><strong>Scalar loads.</strong> Thirty-two <code>LDG.32</code> instructions move the same bytes as eight <code>LDG.128</code> but
+cost 4× the issue slots and hold fewer bytes in flight per instruction. Vectorising to <code>float4</code>
+is often the largest single win in an already-coalesced kernel.</li>
+<li><strong>Partition camping.</strong> If many blocks hit the same memory partition at once you serialise on a
+channel rather than on aggregate bandwidth. Swizzling the block index spreads them.</li>
+<li><strong>Tail and wave quantisation.</strong> 132 SMs and 140 blocks means a second wave at 6% utilisation
+dragging the whole-kernel average down.</li>
+</ol></div></section>
+<section class="probe"><h3 class="probe-q">A naive transpose runs ~10× slower than a copy. Explain it, fix it, then explain why the obvious fix is also slow.</h3><div class="probe-a"><p>Reading <code>in[i][j]</code> coalesced forces writing <code>out[j][i]</code> with a stride of the row length, so every
+lane writes into a different line: 32 sectors instead of 4. You cannot make both ends contiguous
+directly, because transpose is exactly the operation that swaps which index is contiguous.</p><p>Stage through shared memory: read a 32×32 tile coalesced, write it to shared memory,
+<code>__syncthreads()</code>, then read the tile <em>transposed</em> out of shared memory and write it coalesced.
+Global memory now sees contiguous access at both ends, and the awkward stride has moved into
+shared memory where strides are cheap.</p><p>Except it is not free there either. <code>__shared__ float tile[32][32]</code> read column-wise puts every
+lane in the same bank — a 32-way conflict. You have traded a global-memory problem for a
+shared-memory one. Two fixes:</p><ul>
+<li><strong>Padding</strong> to <code>tile[32][33]</code>. Each row starts one bank further along, so a column touches all
+32 banks. Costs 3% more shared memory and one character.</li>
+<li><strong>Swizzling</strong>: store element <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="false">(</mo><mi>r</mi><mo separator="true">,</mo><mi>c</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">(r, c)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mopen">(</span><span class="mord mathnormal" style="margin-right:0.0278em">r</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.1667em"></span><span class="mord mathnormal">c</span><span class="mclose">)</span></span></span></span> at column <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>c</mi><mo>⊕</mo><mi>r</mi></mrow><annotation encoding="application/x-tex">c \oplus r</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6667em;vertical-align:-0.0833em"></span><span class="mord mathnormal">c</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">⊕</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.4306em"></span><span class="mord mathnormal" style="margin-right:0.0278em">r</span></span></span></span>. No memory wasted, and it preserves
+16-byte alignment, which padding destroys — so swizzling is the only option when you need
+<code>LDS.128</code> or <code>ldmatrix</code>. That alignment constraint is why production kernels swizzle and
+tutorials pad.</li>
+</ul></div></section>
+<section class="probe"><h3 class="probe-q">You double the tile size to get more reuse and the kernel gets slower.</h3><div class="probe-a"><p>You bought intensity and paid in concurrency, and the payment was larger. Usually more than one
+mechanism at once:</p><ul>
+<li><strong>Occupancy collapse.</strong> Shared memory per block roughly quadruples with <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>T</mi></mrow><annotation encoding="application/x-tex">T</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span></span></span></span>. Cross the threshold
+where two blocks per SM becomes one and you halve the warps available to hide latency, failing
+Little’s Law. The kernel is now underfed despite needing less bandwidth.</li>
+<li><strong>Register spilling.</strong> Larger thread tiles need more accumulators; crossing 255 registers per
+thread spills to local memory, which is global memory wearing a different name.</li>
+<li><strong>Worse quantisation.</strong> Going from 528 blocks to 132 on 132 SMs turns a smooth load into an
+all-or-nothing one, and one slow block now sets the kernel’s duration.</li>
+<li><strong>You were already above the ridge.</strong> If <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>T</mi><mo>=</mo><mn>128</mn></mrow><annotation encoding="application/x-tex">T = 128</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">128</span></span></span></span> put you at <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>I</mi><mo>=</mo><mn>64</mn></mrow><annotation encoding="application/x-tex">I = 64</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0785em">I</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">64</span></span></span></span> and that boundary was
+already compute-bound, extra reuse buys nothing and the costs are pure loss.</li>
+</ul><p>Tile size trades reuse against concurrency and both appear in the performance model. Optimising
+one in isolation is how you get slower.</p></div></section>
+<section class="probe"><h3 class="probe-q">Array of structs or struct of arrays? Give a rule, not a preference.</h3><div class="probe-a"><p>The rule is about <strong>what fraction of each fetched line you consume</strong>.</p><p>Struct-of-arrays wins when you touch a <em>subset</em> of fields across <em>many</em> elements. A warp reading
+<code>pos_x[i]</code> for 32 consecutive <code>i</code> gets 128 B of pure payload. The same warp reading
+<code>particle[i].pos_x</code> out of a 48-byte struct strides by 48, touching 12–16 sectors to use 128 bytes
+— about 25% efficiency, having dragged velocity and mass through the cache to discard them.</p><p>Array-of-structs wins when you touch <em>all</em> fields of <em>few</em> elements. One particle’s 48 bytes is
+one sector in AoS and six separate streams in SoA: six sectors, six prefetch streams, six TLB
+entries.</p><p>So: subset of fields over many elements → SoA. All fields of few elements → AoS. Different kernels
+wanting different answers → AoSoA, blocked into groups of 32 so each group is contiguous per field
+and every warp still gets full lines.</p><p>The identical argument decides CPU layouts, with 64 B lines and one lane. This is one of the
+places where GPU and CPU intuition transfers with no adjustment at all.</p></div></section>
+<h2 id="self-check">Self-check<a class="anchor" href="#self-check" aria-hidden="true" tabindex="-1">#</a></h2>
+<details class="selfcheck"><summary><span class="selfcheck-q">Define coalescing so that it survives a follow-up about lane ordering.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>The warp generates 32 addresses; the coalescer computes the minimum set of 32 B sectors covering
+them; that count is the cost. Efficiency is requested bytes over transferred bytes. Lane order is
+irrelevant — an arbitrary permutation within one 128 B window is perfectly coalesced — because the
+hardware cares about the <em>set</em> of sectors touched, not the assignment of lanes to addresses.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Compute the bank index for a float at byte offset 4224, then say what happens when 32 lanes read a column of a 32×32 float tile.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Bank = (4224 / 4) mod 32 = 1056 mod 32 = <strong>0</strong>.</p><p>A column access has lane <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>r</mi></mrow><annotation encoding="application/x-tex">r</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.4306em"></span><span class="mord mathnormal" style="margin-right:0.0278em">r</span></span></span></span> reading element offset <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>32</mn><mi>r</mi><mo>+</mo><mi>c</mi></mrow><annotation encoding="application/x-tex">32r + c</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.7278em;vertical-align:-0.0833em"></span><span class="mord">32</span><span class="mord mathnormal" style="margin-right:0.0278em">r</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.4306em"></span><span class="mord mathnormal">c</span></span></span></span>, so its bank is
+<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="false">(</mo><mn>32</mn><mi>r</mi><mo>+</mo><mi>c</mi><mo stretchy="false">)</mo><mtext> </mtext><mo lspace="0.22em" rspace="0.22em"><mrow><mi mathvariant="normal">m</mi><mi mathvariant="normal">o</mi><mi mathvariant="normal">d</mi></mrow></mo><mtext> </mtext><mn>32</mn><mo>=</mo><mi>c</mi></mrow><annotation encoding="application/x-tex">(32r + c) \bmod 32 = c</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mopen">(</span><span class="mord">32</span><span class="mord mathnormal" style="margin-right:0.0278em">r</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal">c</span><span class="mclose">)</span><span class="mspace" style="margin-right:0.0556em"></span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin"><span class="mord"><span class="mord mathrm">mod</span></span></span><span class="mspace" style="margin-right:0.0556em"></span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">32</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.4306em"></span><span class="mord mathnormal">c</span></span></span></span> for every <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>r</mi></mrow><annotation encoding="application/x-tex">r</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.4306em"></span><span class="mord mathnormal" style="margin-right:0.0278em">r</span></span></span></span>. All 32 lanes hit bank <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>c</mi></mrow><annotation encoding="application/x-tex">c</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.4306em"></span><span class="mord mathnormal">c</span></span></span></span>: a <strong>32-way conflict</strong>,
+serialised into 32 accesses. Padding the row to 33 makes the offset <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>33</mn><mi>r</mi><mo>+</mo><mi>c</mi></mrow><annotation encoding="application/x-tex">33r + c</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.7278em;vertical-align:-0.0833em"></span><span class="mord">33</span><span class="mord mathnormal" style="margin-right:0.0278em">r</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.4306em"></span><span class="mord mathnormal">c</span></span></span></span>, whose bank
+<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="false">(</mo><mi>r</mi><mo>+</mo><mi>c</mi><mo stretchy="false">)</mo><mtext> </mtext><mo lspace="0.22em" rspace="0.22em"><mrow><mi mathvariant="normal">m</mi><mi mathvariant="normal">o</mi><mi mathvariant="normal">d</mi></mrow></mo><mtext> </mtext><mn>32</mn></mrow><annotation encoding="application/x-tex">(r + c) \bmod 32</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mopen">(</span><span class="mord mathnormal" style="margin-right:0.0278em">r</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal">c</span><span class="mclose">)</span><span class="mspace" style="margin-right:0.0556em"></span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin"><span class="mord"><span class="mord mathrm">mod</span></span></span><span class="mspace" style="margin-right:0.0556em"></span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">32</span></span></span></span> is distinct for every lane.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Derive the intensity a T×T tile buys, and the tile size needed to reach the H100 fp16 ridge.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Blocking an <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>M</mi><mo lspace="0em" rspace="0em">×</mo><mi>N</mi><mo lspace="0em" rspace="0em">×</mo><mi>K</mi></mrow><annotation encoding="application/x-tex">M{\times}N{\times}K</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.7667em;vertical-align:-0.0833em"></span><span class="mord mathnormal" style="margin-right:0.109em">M</span><span class="mord"><span class="mord">×</span></span><span class="mord mathnormal" style="margin-right:0.109em">N</span><span class="mord"><span class="mord">×</span></span><span class="mord mathnormal" style="margin-right:0.0715em">K</span></span></span></span> GEMM into <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>T</mi><mo lspace="0em" rspace="0em">×</mo><mi>T</mi></mrow><annotation encoding="application/x-tex">T{\times}T</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.7667em;vertical-align:-0.0833em"></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span><span class="mord"><span class="mord">×</span></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span></span></span></span> tiles cuts traffic from <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>2</mn><mi>M</mi><mi>N</mi><mi>K</mi></mrow><annotation encoding="application/x-tex">2MNK</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord">2</span><span class="mord mathnormal" style="margin-right:0.109em">M</span><span class="mord mathnormal" style="margin-right:0.109em">N</span><span class="mord mathnormal" style="margin-right:0.0715em">K</span></span></span></span> elements to
+about <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>2</mn><mi>M</mi><mi>N</mi><mi>K</mi><mi mathvariant="normal">/</mi><mi>T</mi></mrow><annotation encoding="application/x-tex">2MNK/T</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord">2</span><span class="mord mathnormal" style="margin-right:0.109em">M</span><span class="mord mathnormal" style="margin-right:0.109em">N</span><span class="mord mathnormal" style="margin-right:0.0715em">K</span><span class="mord">/</span><span class="mord mathnormal" style="margin-right:0.1389em">T</span></span></span></span>. FLOPs stay at <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>2</mn><mi>M</mi><mi>N</mi><mi>K</mi></mrow><annotation encoding="application/x-tex">2MNK</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord">2</span><span class="mord mathnormal" style="margin-right:0.109em">M</span><span class="mord mathnormal" style="margin-right:0.109em">N</span><span class="mord mathnormal" style="margin-right:0.0715em">K</span></span></span></span>, so
+<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>I</mi><mo>=</mo><mn>2</mn><mi>M</mi><mi>N</mi><mi>K</mi><mi mathvariant="normal">/</mi><mrow><mo fence="true">(</mo><mstyle scriptlevel="0" displaystyle="false"><mfrac><mrow><mn>2</mn><mi>M</mi><mi>N</mi><mi>K</mi></mrow><mi>T</mi></mfrac></mstyle><mo>⋅</mo><mtext>bytes</mtext><mo fence="true">)</mo></mrow><mo>=</mo><mi>T</mi><mi mathvariant="normal">/</mi><mtext>bytes</mtext></mrow><annotation encoding="application/x-tex">I = 2MNK / \left(\tfrac{2MNK}{T} \cdot \text{bytes}\right) = T/\text{bytes}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0785em">I</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:1.2223em;vertical-align:-0.35em"></span><span class="mord">2</span><span class="mord mathnormal" style="margin-right:0.109em">M</span><span class="mord mathnormal" style="margin-right:0.109em">N</span><span class="mord mathnormal" style="margin-right:0.0715em">K</span><span class="mord">/</span><span class="mspace" style="margin-right:0.1667em"></span><span class="minner"><span class="mopen delimcenter" style="top:0em"><span class="delimsizing size1">(</span></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.8723em"><span style="top:-2.655em"><span class="pstrut" style="height:3em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathnormal mtight" style="margin-right:0.1389em">T</span></span></span></span><span style="top:-3.23em"><span class="pstrut" style="height:3em"></span><span class="frac-line" style="border-bottom-width:0.04em"></span></span><span style="top:-3.394em"><span class="pstrut" style="height:3em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">2</span><span class="mord mathnormal mtight" style="margin-right:0.109em">M</span><span class="mord mathnormal mtight" style="margin-right:0.109em">N</span><span class="mord mathnormal mtight" style="margin-right:0.0715em">K</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.345em"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">⋅</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mord text"><span class="mord">bytes</span></span><span class="mclose delimcenter" style="top:0em"><span class="delimsizing size1">)</span></span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span><span class="mord">/</span><span class="mord text"><span class="mord">bytes</span></span></span></span></span>, which is <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>T</mi><mi mathvariant="normal">/</mi><mn>2</mn></mrow><annotation encoding="application/x-tex">T/2</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span><span class="mord">/2</span></span></span></span> in
+fp16.</p><p>Reaching <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>I</mi><mo lspace="0em" rspace="0em">∗</mo></msup><mo>≈</mo><mn>295</mn></mrow><annotation encoding="application/x-tex">I^{*} \approx 295</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6887em"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.0785em">I</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.6887em"><span style="top:-3.063em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">∗</span></span></span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">295</span></span></span></span> needs <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>T</mi><mo>≈</mo><mn>590</mn></mrow><annotation encoding="application/x-tex">T \approx 590</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">590</span></span></span></span>, a tile pair of roughly 700 KB against 228 KB of
+shared memory. It does not fit, which is exactly why real kernels block at register, shared-memory
+and L2 levels rather than at one.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Why do production GEMM kernels swizzle shared memory instead of padding it?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Padding shifts each row by one element, which fixes bank conflicts but breaks the 16-byte alignment
+that <code>LDS.128</code> and <code>ldmatrix</code> require. Swizzling — storing <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="false">(</mo><mi>r</mi><mo separator="true">,</mo><mi>c</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">(r,c)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mopen">(</span><span class="mord mathnormal" style="margin-right:0.0278em">r</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.1667em"></span><span class="mord mathnormal">c</span><span class="mclose">)</span></span></span></span> at column <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>c</mi><mo>⊕</mo><mi>r</mi></mrow><annotation encoding="application/x-tex">c \oplus r</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6667em;vertical-align:-0.0833em"></span><span class="mord mathnormal">c</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">⊕</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.4306em"></span><span class="mord mathnormal" style="margin-right:0.0278em">r</span></span></span></span> — spreads
+accesses across banks while keeping every 16-byte group aligned, and wastes no memory. Padding is
+the tutorial answer; swizzling is the one compatible with vector and tensor-core loads.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">A kernel is perfectly coalesced and still at 60% of peak bandwidth. Name three causes.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Insufficient memory-level parallelism, so too few independent loads are in flight to satisfy
+Little’s Law; scalar rather than vectorised loads, costing issue slots and holding fewer bytes in
+flight per instruction; and partition camping or wave quantisation, where you serialise on one
+channel or dilute the average with a mostly-empty final wave.</p><p>The unifying point: coalescing bounds <em>waste</em>, not <em>rate</em>.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">When is array-of-structs the right choice?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>When you consume all fields of a few elements, so a struct fits in one line and one fetch delivers
+everything needed. Struct-of-arrays wins the opposite case — a few fields across many elements —
+because each stream is then contiguous and every fetched byte is used. If different kernels want
+different answers, AoSoA blocked to the warp or line width satisfies both.</p></div></details></div><footer class="mfoot" data-astro-cid-5x65ok44><button class="mark" data-mark="ml-hardware/02-layout-coalescing" aria-pressed="false" data-astro-cid-5x65ok44>Mark as reviewed</button><nav class="pager" data-astro-cid-5x65ok44><a class="pager-link" href="/blog/ml-hardware/01-roofline/" data-prev data-astro-cid-5x65ok44><span class="pager-dir" data-astro-cid-5x65ok44>← Previous</span><span class="pager-title" data-astro-cid-5x65ok44>1. Memory hierarchy, roofline, arithmetic intensity</span></a><a class="pager-link is-next" href="/blog/ml-hardware/03-pipelining/" data-next data-astro-cid-5x65ok44><span class="pager-dir" data-astro-cid-5x65ok44>Next →</span><span class="pager-title" data-astro-cid-5x65ok44>3. Pipelining, multi-buffering, latency hiding</span></a></nav></footer></article></main></div></div><div class="search-overlay" data-search hidden data-astro-cid-ac66eqjo><div class="search-backdrop" data-search-close data-astro-cid-ac66eqjo></div><div class="search-panel" role="dialog" aria-modal="true" aria-label="Search modules" data-astro-cid-ac66eqjo><div class="search-input-row" data-astro-cid-ac66eqjo><span class="search-icon" aria-hidden="true" data-astro-cid-ac66eqjo>⌕</span><input type="text" class="search-input" placeholder="Search all modules…" autocomplete="off" spellcheck="false" data-search-input data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>esc</kbd></div><ul class="search-results" data-search-results data-astro-cid-ac66eqjo></ul><p class="search-empty" data-search-empty hidden data-astro-cid-ac66eqjo>No matches.</p><p class="search-hint" data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>↑</kbd><kbd data-astro-cid-ac66eqjo>↓</kbd> move · <kbd data-astro-cid-ac66eqjo>↵</kbd> open</p></div></div><script>(function(){const indexUrl = "/blog/search.json";
+
+  (() => {
+    const overlay = document.querySelector('[data-search]');
+    if (!overlay) return;
+    const input = overlay.querySelector('[data-search-input]');
+    const list = overlay.querySelector('[data-search-results]');
+    const empty = overlay.querySelector('[data-search-empty]');
+
+    let index = null;
+    let loading = null;
+    let active = 0;
+
+    const load = () => {
+      if (index) return Promise.resolve(index);
+      if (!loading) {
+        loading = fetch(indexUrl)
+          .then((r) => r.json())
+          .then((d) => (index = d))
+          .catch(() => (index = []));
+      }
+      return loading;
+    };
+
+    function open() {
+      overlay.hidden = false;
+      document.documentElement.style.overflow = 'hidden';
+      load().then(() => input.focus());
+      input.focus();
+      input.select();
+    }
+
+    function close() {
+      overlay.hidden = true;
+      document.documentElement.style.overflow = '';
+    }
+
+    function escapeHtml(s) {
+      return s.replace(
+        /[&<>"]/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]
+      );
+    }
+
+    // Excerpt around the first matched term, with the term marked.
+    function excerpt(text, terms) {
+      const lower = text.toLowerCase();
+      let at = -1;
+      for (const t of terms) {
+        const i = lower.indexOf(t);
+        if (i !== -1 && (at === -1 || i < at)) at = i;
+      }
+      if (at === -1) at = 0;
+      const start = Math.max(0, at - 60);
+      let slice = text.slice(start, start + 190);
+      if (start > 0) slice = '…' + slice;
+      if (start + 190 < text.length) slice += '…';
+      let html = escapeHtml(slice);
+      for (const t of terms) {
+        html = html.replace(
+          new RegExp(`(${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'),
+          '<mark>$1</mark>'
+        );
+      }
+      return html;
+    }
+
+    function score(rec, terms) {
+      let s = 0;
+      const hay = (rec.m + ' ' + rec.h + ' ' + (rec.s || '') + ' ' + (rec.k || '')).toLowerCase();
+      const body = rec.t.toLowerCase();
+      for (const t of terms) {
+        if (hay.includes(t)) s += 12;
+        const i = body.indexOf(t);
+        if (i !== -1) s += 4 + Math.max(0, 3 - Math.floor(i / 400));
+        else if (!hay.includes(t)) return 0; // every term must appear
+      }
+      return s;
+    }
+
+    function render(results, terms) {
+      active = 0;
+      list.innerHTML = results
+        .map(
+          (r, i) => `
+          <li>
+            <a href="${r.u}" class="search-hit${i === 0 ? ' is-active' : ''}" data-hit>
+              <span class="search-hit-crumb"><span class="search-hit-series">${escapeHtml(r.s||"")}</span><span class="search-hit-n">${r.n}</span>${escapeHtml(r.m)} <span class="search-hit-sep">›</span> ${escapeHtml(r.h)}</span>
+              <span class="search-hit-text">${excerpt(r.t, terms)}</span>
+            </a>
+          </li>`
+        )
+        .join('');
+      empty.hidden = results.length > 0;
+    }
+
+    function run() {
+      const q = input.value.trim().toLowerCase();
+      if (!q || !index) {
+        list.innerHTML = '';
+        empty.hidden = true;
+        return;
+      }
+      const terms = q.split(/\s+/).filter(Boolean);
+      const results = index
+        .map((r) => ({ r, s: score(r, terms) }))
+        .filter((x) => x.s > 0)
+        .sort((a, b) => b.s - a.s || a.r.n - b.r.n)
+        .slice(0, 12)
+        .map((x) => x.r);
+      render(results, terms);
+    }
+
+    function move(delta) {
+      const hits = list.querySelectorAll('[data-hit]');
+      if (!hits.length) return;
+      hits[active]?.classList.remove('is-active');
+      active = (active + delta + hits.length) % hits.length;
+      hits[active].classList.add('is-active');
+      hits[active].scrollIntoView({ block: 'nearest' });
+    }
+
+    input.addEventListener('input', () => {
+      load().then(run);
+      run();
+    });
+
+    overlay.querySelector('[data-search-close]').addEventListener('click', close);
+
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        move(1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        move(-1);
+      } else if (e.key === 'Enter') {
+        const hit = list.querySelectorAll('[data-hit]')[active];
+        if (hit) {
+          e.preventDefault();
+          window.location.href = hit.getAttribute('href');
+        }
+      }
+    });
+
+    document.querySelectorAll('[data-search-open]').forEach((b) =>
+      b.addEventListener('click', open)
+    );
+
+    window.__openSearch = open;
+  })();
+})();</script><script>(function(){const base = "/blog";
+
+      (() => {
+        const root = document.documentElement;
+
+        /* ---- theme ---------------------------------------------------- */
+        document.querySelector('[data-theme-toggle]')?.addEventListener('click', () => {
+          const light = root.classList.toggle('light');
+          try {
+            localStorage.setItem('refresher:theme', light ? 'light' : 'dark');
+          } catch (e) {}
+        });
+
+        /* ---- progress (localStorage) ---------------------------------- */
+        const KEY = 'refresher:progress';
+        const readSet = () => {
+          try {
+            return new Set(JSON.parse(localStorage.getItem(KEY) || '[]'));
+          } catch (e) {
+            return new Set();
+          }
+        };
+        const writeSet = (s) => {
+          try {
+            localStorage.setItem(KEY, JSON.stringify([...s]));
+          } catch (e) {}
+        };
+
+        function paintProgress() {
+          const done = readSet();
+          const ticks = document.querySelectorAll('[data-tick]');
+          // A module can own more than one tick (rail + contents card), so
+          // count distinct module ids rather than elements.
+          const ids = new Set();
+          ticks.forEach((t) => {
+            const id = t.getAttribute('data-tick');
+            ids.add(id);
+            if (done.has(id)) t.setAttribute('data-read', '');
+            else t.removeAttribute('data-read');
+          });
+          const n = [...ids].filter((id) => done.has(id)).length;
+          const total = ids.size || 1;
+          const fill = document.querySelector('[data-progress-fill]');
+          if (fill) fill.style.width = `${(n / total) * 100}%`;
+          const count = document.querySelector('[data-progress-count]');
+          if (count) count.textContent = String(n);
+          document.querySelectorAll('[data-mark]').forEach((btn) => {
+            const id = btn.getAttribute('data-mark');
+            const on = done.has(id);
+            btn.setAttribute('aria-pressed', String(on));
+            btn.textContent = on ? '✓ Reviewed' : 'Mark as reviewed';
+          });
+        }
+
+        document.querySelectorAll('[data-mark]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-mark');
+            const s = readSet();
+            s.has(id) ? s.delete(id) : s.add(id);
+            writeSet(s);
+            paintProgress();
+          });
+        });
+
+        paintProgress();
+
+        /* ---- scrollspy over h2s, mirrored into the rail --------------- */
+        const article = document.querySelector('[data-article]');
+        const heads = article ? [...article.querySelectorAll('h2[id]')] : [];
+        const subLinks = new Map(
+          [...document.querySelectorAll('[data-toc]')].map((a) => [
+            a.getAttribute('data-toc'),
+            a,
+          ])
+        );
+
+        if (heads.length && subLinks.size) {
+          let currentId = null;
+          const spy = () => {
+            let found = heads[0].id;
+            for (const h of heads) {
+              if (h.getBoundingClientRect().top <= 96) found = h.id;
+              else break;
+            }
+            if (found === currentId) return;
+            subLinks.get(currentId)?.classList.remove('is-current');
+            currentId = found;
+            const el = subLinks.get(currentId);
+            if (el) {
+              el.classList.add('is-current');
+              el.scrollIntoView({ block: 'nearest' });
+            }
+          };
+          spy();
+          addEventListener('scroll', spy, { passive: true });
+        }
+
+        /* ---- keyboard ------------------------------------------------- */
+        const stops = article
+          ? [...article.querySelectorAll('h2[id], h3[id]')]
+          : [];
+
+        function jump(delta) {
+          if (!stops.length) return;
+          // The heading we are "in": the last one scrolled past the threshold.
+          let cur = -1;
+          for (let i = 0; i < stops.length; i++) {
+            if (stops[i].getBoundingClientRect().top <= 100) cur = i;
+            else break;
+          }
+          const target = cur + delta;
+          if (target < 0) return scrollTo({ top: 0, behavior: 'smooth' });
+          if (target >= stops.length) return;
+          stops[target].scrollIntoView({ block: 'start' });
+        }
+
+        addEventListener('keydown', (e) => {
+          const tag = (e.target.tagName || '').toLowerCase();
+          if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+          if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+          if (e.key === '/') {
+            e.preventDefault();
+            window.__openSearch?.();
+          } else if (e.key === 'j') {
+            e.preventDefault();
+            jump(1);
+          } else if (e.key === 'k') {
+            e.preventDefault();
+            jump(-1);
+          } else if (e.key === '[' || e.key === ']') {
+            const sel = e.key === '[' ? '[data-prev]' : '[data-next]';
+            const a = document.querySelector(sel);
+            if (a) {
+              e.preventDefault();
+              window.location.href = a.getAttribute('href');
+            }
+          }
+        });
+
+        /* ---- narrow-screen rail --------------------------------------- */
+        const rail = document.querySelector('[data-rail]');
+        document.querySelector('[data-rail-toggle]')?.addEventListener('click', () => {
+          rail.classList.toggle('is-open');
+        });
+        rail?.addEventListener('click', (e) => {
+          if (e.target.closest('a')) rail.classList.remove('is-open');
+        });
+      })();
+    })();</script></body></html>

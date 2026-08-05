@@ -57,10 +57,10 @@ public/fonts/                     latin-subset variable woff2, self-hosted
 
 1. Create `src/content/series/<id>/` and drop `.mdx` files in it.
 2. Add an entry to `SERIES` in `src/lib/series.ts` with its `parts`.
-3. Add a card to `learning.html`.
+3. Add a card to the blog index if it needs promoting elsewhere.
 
 Part ids must be unique across the whole collection, since one collection backs
-every series — Refresher uses A–E, Diffusion uses F–I.
+every series — ML Hardware uses A-E, Diffusion uses F-I.
 
 ## Adding a module
 
@@ -92,4 +92,8 @@ search index key off:
   if `base` ever changes.
 - Math is KaTeX via `remark-math` + `rehype-katex`; code is Shiki with a
   light/dark theme pair swapped by the `.light` class, not a media query.
-- Reading progress and theme live in `localStorage` under `refresher:*`.
+- Reading progress and theme live in `localStorage` under `refresher:*` (the
+  key prefix predates the rename and is kept so existing progress survives).
+- Renaming a series changes its URLs. `src/pages/refresher/` holds meta-refresh
+  stubs pointing at `/blog/ml-hardware/`; Astro's `redirects` config cannot
+  express this, because the destination sits under a dynamic `[series]` route.

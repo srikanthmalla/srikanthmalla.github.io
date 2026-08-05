@@ -1,0 +1,7 @@
+---
+import Redirect from '../../components/Redirect.astro';
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+
+<Redirect to={`${base}/ml-hardware/`} />
