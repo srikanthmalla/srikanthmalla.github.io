@@ -1,28 +1,361 @@
 ---
 n: 11
-title: "GBDT inference in hardware"
-blurb: "Comparator trees, not GEMM. Latency set by depth, feature fetch as the real bottleneck, and why gradient-boosted trees beat DNNs at this scale."
-part: "E"
-draft: true
-minutes: 15
-tags: ["GBDT","XGBoost","decision tree","comparator","quantized thresholds","latency"]
+title: 'GBDT inference in hardware'
+blurb: 'Routing, not arithmetic. Why a depth-6 tree costs three levels rather than six, why feature fetch is the real bottleneck, and why trees beat DNNs at this scale.'
+part: 'E'
+minutes: 22
+draft: false
+tags:
+  ['GBDT', 'XGBoost', 'decision tree', 'comparator', 'quantized thresholds', 'latency', 'branchless', 'feature pipeline', 'boosting']
 ---
 
 import Callout from '../../components/Callout.astro';
+import Probe from '../../components/Probe.astro';
+import SelfCheck from '../../components/SelfCheck.astro';
 
-## Planned coverage
+## The core mental model
 
-Not written yet. This module will cover:
+A gradient-boosted tree ensemble is not arithmetic, it is **routing**. There are no multiplies
+anywhere in inference. Each internal node compares one feature against one constant; the comparison
+selects a child; after $d$ comparisons you arrive at a leaf and read a stored value; the ensemble
+output is the sum of $T$ leaf values. FLOP counting, the instrument that organises Modules 1 through
+3, returns approximately zero and tells you nothing whatsoever about the cost. This is the cleanest
+possible demonstration of Part B's thesis that work and latency are different quantities.
 
-- The shape change: comparator trees, not matrix multiplies
-- Latency set by tree depth, not FLOP count — and what that does to the roofline
-- Fully parallel tree evaluation across an ensemble
-- Memory-lookup-shaped compute, and feature fetch as the true bottleneck
-- Quantized thresholds and the exactness requirement
-- Why GBDTs dominate small-model trading inference over DNNs, argued properly
+The central insight — and it is the one that separates people who have built these from people who
+have only trained them — is that **tree depth is a control-flow artifact, not a data dependency**.
+On a CPU you traverse: compare, decide which node to visit, load that node, compare again. Each
+step depends on the previous one because you did not know which node you would need. But every
+node's threshold and feature index are compile-time constants. Nothing stops you evaluating *all*
+of them simultaneously. Compute every comparison in the tree in parallel (one level), form each
+leaf's condition as the AND of the comparisons along its path ($\lceil \log_2 d \rceil$ levels),
+and one-hot select the leaf value through a mux tree. A depth-6 tree costs roughly
+$1 + 3 + 6 = 10$ logic levels — and the "6" of its depth appears only as a 3-level AND reduction,
+never as six dependent steps. You spent 63 comparators to delete a dependency chain, which is
+Module 4's area-for-depth trade in its purest form and is precisely speculative execution.
 
-<Callout type="bridge" title="structure">
-  Every module follows the same four beats: the core mental model, the numbers worth
-  memorizing, a critical-thinking section that pushes on the model until it breaks, and
-  self-checks with the answers hidden. Module 1 is the reference for tone and density.
+Which means the model is nearly free, and **the real bottleneck is feature fetch**. A comparator is
+about 15× cheaper than a multiplier, so a 500-tree ensemble of depth 6 is roughly 31,500 narrow
+comparators — large but tractable — evaluating in around 20 logic levels including the ensemble
+adder tree. Twenty to thirty nanoseconds. Meanwhile the features it consumes — order-book
+imbalance, volume-weighted mid, trade counts over a window — must be computed from book state that
+is updating continuously, and that costs hundreds of nanoseconds. In a well-built system **feature
+computation is 70–90% of tick-to-decision latency and the model is 10–30%**. Optimising the model
+is almost always the wrong project.
+
+<Callout type="bridge" title="you already know boosting">
+  Nothing about the statistics changes. What changes is that inference is a comparator-and-mux
+  network whose latency is logarithmic in depth rather than linear, and that the thing you would
+  naturally optimise — the model — is the cheap part of the system.
 </Callout>
+
+<Callout type="trap" title="FLOPs tell you the cost">
+  A tree ensemble performs essentially zero floating-point operations and has a real, measurable
+  latency. Conversely a small MLP has thousands of FLOPs and may be *slower* in gates because it
+  needs multipliers and deeper adder trees. FLOPs measure arithmetic; deadlines are about
+  dependency depth.
+</Callout>
+
+## Numbers worth memorizing
+
+| Quantity                          | Expression / value                  | Example                    |
+| --------------------------------- | ----------------------------------- | -------------------------- |
+| Internal nodes / leaves, depth $d$ | $2^d - 1$ / $2^d$                  | $d=6$: 63 / 64             |
+| Typical trading ensemble          | 100–1000 trees, depth 4–8           | 500 × depth 6 is a good anchor |
+| Total comparators                 | $T(2^d - 1)$                        | 500 × 63 = **31,500**      |
+| Comparator vs multiplier area     | 16-bit compare ≈ 16 LUTs; 16×16 multiply ≈ 250 LUTs or 1 DSP | **~15× cheaper** |
+
+Latency of one tree, evaluated in parallel:
+
+| Stage                       | Depth                          | $d = 6$   |
+| --------------------------- | ------------------------------ | --------- |
+| All comparisons at once     | 1 level                        | 1         |
+| AND-reduce each leaf's path | $\lceil \log_2 d \rceil$       | 3         |
+| One-hot mux to leaf value   | $\lceil \log_2 2^d \rceil = d$ | 6         |
+| **Per tree**                |                                | **10**    |
+| Ensemble adder tree         | $\lceil \log_2 T \rceil$       | 9 for 500 |
+| **Total**                   |                                | **~19–20 levels ≈ 20–30 ns** |
+
+Where the time actually goes, end to end:
+
+| Stage                       | Cost           | Share    |
+| --------------------------- | -------------- | -------- |
+| Book update                 | 50–200 ns      |          |
+| **Feature computation**     | **100–500 ns** | **70–90%** |
+| Model evaluation            | 20–30 ns       | 10–30%   |
+
+Implementation comparison for the same 500 × depth-6 ensemble:
+
+| Implementation                        | Latency     | Limited by                        |
+| ------------------------------------- | ----------- | --------------------------------- |
+| FPGA, fully parallel                  | 20–30 ns    | mux and adder tree depth          |
+| CPU, branchless + SIMD across trees   | 100–500 ns  | dependent index arithmetic        |
+| CPU, naive recursive traversal        | 1–5 µs      | **branch misprediction + cache misses** |
+
+## Critical thinking
+
+<Probe q="Walk me through evaluating a depth-6 tree in about 10 logic levels. Where did the 6 go?">
+
+The six was never a data dependency. It was control flow, and control flow is what you delete.
+
+On a CPU the chain exists because you do not know *which* node to visit next until the current
+comparison resolves — so you compare, branch, load the next node, and repeat. Six dependent steps,
+each containing an unpredictable branch and a load.
+
+In hardware every node's feature index and threshold are constants fixed at compile time. So:
+
+1. **All comparisons in parallel — 1 level.** All 63 internal nodes compare their designated
+   feature against their constant simultaneously. They are mutually independent; nothing about node
+   40's comparison depends on node 3's outcome. You have now computed the result of every decision
+   in the tree, including the roughly 57 that will turn out to be irrelevant.
+2. **AND-reduce each leaf's path — $\lceil \log_2 6 \rceil = 3$ levels.** Leaf $\ell$ is reached iff
+   every comparison along its 6-node path went the required way, so its condition is a 6-input AND
+   (with some inputs inverted), which is a 3-level tree. All 64 leaves reduce in parallel.
+3. **One-hot select — 6 levels.** Exactly one leaf condition is true, so a mux tree over 64 leaf
+   values selects the output.
+
+Total 10. **The depth appears only inside a $\log_2$**, because the six sequential decisions became
+one parallel comparison plus a logarithmic reduction.
+
+The generalisation is the valuable part: you spent 63 comparators to remove a 6-deep dependency
+chain. That is speculative execution — compute every path, discard the ones not taken — which is
+Module 4's trade and Module 3's advice to "speculate: compute both sides and select late", applied
+to an entire tree at once. It is also why this structure is so well suited to hardware and so badly
+suited to a CPU: the technique requires thousands of comparators available simultaneously.
+
+</Probe>
+
+<Probe q="Why is GBDT inference slow on a CPU when it is so cheap in gates? Then fix it as far as a CPU can be fixed.">
+
+Because a CPU must serialise the thing hardware parallelises, and it does so through the two most
+expensive mechanisms it has.
+
+**Branch misprediction.** Each node is a data-dependent branch, and here is the part that makes it
+unfixable in principle: a decision tree's splits are unpredictable **by construction**. A split
+that the branch predictor could learn would be a split carrying no information — the training
+procedure would not have chosen it. So you eat 15–20 cycles at essentially every level. Depth 6
+across 500 trees is 3000 branches, most mispredicting.
+
+**Dependent cache misses.** Each level's node address depends on the previous comparison, so you
+have a pointer chase: six dependent loads, and once the ensemble exceeds L2 (500 × 63 nodes × ~16 B
+≈ 500 KB) most of them miss. Module 6's out-of-order window cannot help, because there is nothing
+independent to run.
+
+How far a CPU can be pushed, in order of payoff:
+
+1. **Branchless traversal.** Replace the branch with arithmetic:
+   `idx = 2*idx + 1 + (feature[f[idx]] > thr[idx])`. This converts control dependence into data
+   dependence — still serial, but no mispredicts. Typically 3–10×, and it is the same "branchless
+   for determinism" trade from Module 6.
+2. **SIMD across trees.** Trees are mutually independent, so evaluate 8–16 of them per vector lane.
+   This is the one genuine parallelism axis a CPU has here.
+3. **Breadth-first layout with narrow nodes.** Store nodes level-by-level and quantise thresholds to
+   int16 so more nodes fit per cache line, improving locality on the chase.
+4. **Compile small trees into lookup tables** (see below).
+
+Together these get you from microseconds to a few hundred nanoseconds. What you cannot recover is
+the parallel-comparison structure, because it needs 31,500 comparators and you have a few execution
+ports. The gap is architectural, not a matter of effort.
+
+</Probe>
+
+<Probe q="The model takes 20 ns and the feature pipeline takes 400 ns. What do you do?">
+
+Not touch the model. This is the situation, and the correct response is to redirect entirely.
+
+1. **Make features incremental.** This is the big one. A rolling sum updated per book event is
+   $O(1)$; recomputing it over a window is $O(n)$. Every feature should be maintained as state
+   updated by each event, not derived on demand. Order-book imbalance, moving averages, trade
+   counts and volume-weighted prices all admit incremental forms, and converting them is routinely
+   a 5–10× cut.
+2. **Compute only the features the ensemble uses.** Feature-importance pruning is normally an
+   accuracy or regularisation tool. Here it is a **latency** optimisation, and often the cheapest
+   one available: a feature used by three of five hundred trees may be costing 40 ns for almost no
+   contribution.
+3. **Keep all state on-chip.** Book and feature state in registers or block RAM, never crossing a
+   bus — Module 7's rule that round trips, not bandwidth, are what kill you.
+4. **Speculate on features.** Where a feature depends on which of a few book states materialises,
+   compute all of them in parallel and select. The same trade as the tree evaluation itself.
+5. **Overlap with parsing.** Start updating the book from the header fields while the rest of the
+   packet is still arriving.
+
+And notice the incentive this creates, which is the genuinely interesting consequence: **adding a
+feature that costs 50 ns must earn more than 50 ns of edge.** Feature selection stops being a pure
+model-quality question and becomes a latency-budget allocation problem, where the model's marginal
+accuracy per nanosecond is the objective. That framing is not one most ML practitioners arrive at
+on their own, and it is the thing this module is really about.
+
+</Probe>
+
+<Probe q="Quantize the thresholds. What does it buy, and what is different about quantization error for trees?">
+
+**What it buys.** Narrower comparators — a 16-bit compare is about half the area of a 32-bit one and
+a level shallower. More importantly it enables **binning**: if a feature appears in 200 nodes, you
+can quantise it once into a bin index (a small comparator tree or a lookup) and then every node's
+decision on that feature becomes a comparison of bin indices, or a direct table lookup. This is
+what "memory-lookup-shaped compute" means in practice, and at the limit a tree over $k$ features
+with $b$ bins each compiles into a table of $b^k$ entries — for $k=3$, $b=16$ that is 4096 entries,
+one block RAM, **zero logic**.
+
+**What is different about the error.** This is the part worth internalising, because the instinct
+carried over from neural networks is actively wrong.
+
+For an MLP, quantisation error is smooth: perturb a weight slightly and the output moves slightly.
+You can bound the L2 error and reason about it with the analysis in Module 8.
+
+For a tree, the output is a **step function of the threshold**. Nudging a threshold either changes
+nothing at all — the vast majority of the time — or flips a sample to a different leaf, changing
+the output by the full difference between two leaf values. There is no small perturbation regime.
+So the meaningful error metric is not "what is the L2 error of the quantised model" but **"how
+often does a decision flip, and what does it cost when it does"**, which is a question about the
+density of your data near each threshold rather than about numerical precision.
+
+Practical consequences: evaluate the quantised ensemble on held-out data and measure *decision
+agreement*, not output MSE. Watch for thresholds that collide after quantisation, since two
+distinct splits becoming one silently changes the tree's function. And where possible, quantise
+during training so the learner places thresholds on representable values in the first place —
+which costs nothing and removes the problem entirely.
+
+</Probe>
+
+<Probe q="Bound the worst-case output of the ensemble. Why does anyone care?">
+
+The bound is trivial to compute, which is exactly the point. The output is
+$\sum_{t=1}^{T} \text{leaf}_t(x)$, every leaf value is a known constant, and each tree contributes
+exactly one leaf. So
+
+$$
+\max_x f(x) \le \sum_{t=1}^{T} \max_{\ell \in t} v_\ell,
+\qquad
+\min_x f(x) \ge \sum_{t=1}^{T} \min_{\ell \in t} v_\ell
+$$
+
+computable at compile time in a single pass, and tight up to the question of whether some leaf
+combinations are jointly unreachable.
+
+Why it matters: it lets you **prove** the model can never request a position or price outside a
+range. Module 12's hardware risk checks can then be sized knowing the model's reachable set, and
+you can state — not hope — that a given limit will never be hit by correct operation, so any
+firing indicates a fault rather than an aggressive signal. In a regulated pre-trade path, being
+able to demonstrate a bound on what your model can emit is worth a great deal.
+
+Contrast a neural network. Bounding its output requires interval arithmetic or an LP relaxation
+propagated through every layer, and the bounds come out so loose as to be useless — because each
+layer's interval widens through the weights and the activations, compounding multiplicatively.
+Formal verification of neural network output ranges is an active research area; for a tree
+ensemble it is a `for` loop.
+
+This is a genuine and under-appreciated reason trees persist in fast, regulated paths, quite
+separate from latency or accuracy: **they are analysable**. You can enumerate what the model will
+do, and for anything with a risk function attached, that property competes directly with raw
+predictive performance.
+
+</Probe>
+
+<Probe q="Argue properly for GBDTs over DNNs at this scale — then say where the argument fails.">
+
+Four reasons, ordered by how much they actually decide it.
+
+1. **Latency structure.** No multipliers at all. A depth-6 tree is ~10 logic levels of comparators
+   and muxes, roughly 15× cheaper per operation than the multipliers an MLP needs, and shallower.
+   A comparably-capable MLP needs matrix multiplies with deeper adder trees and a DSP budget that
+   may exceed the device (Module 10). The ensemble fits where the network does not.
+2. **The data is tabular, low-SNR, and threshold-structured.** Microstructure features are
+   heterogeneous and the real relationships genuinely are thresholds — "if the spread exceeds two
+   ticks", "if imbalance is above 0.7". Trees represent axis-aligned thresholds natively; an MLP
+   must approximate each one with many units. On tabular data with limited signal, gradient-boosted
+   trees remain hard to beat, and that is a robust empirical result well outside finance.
+3. **Robustness to outliers, and no scaling needed.** A split is a rank operation, so an extreme
+   value does not distort it the way it distorts a linear layer or a normalisation statistic. In
+   markets the outliers are the informative events, and you need a model that does not have to be
+   defended from its own inputs.
+4. **Analysability.** The previous probe: bounded output, enumerable behaviour, auditable
+   decisions. Combined with Module 8's point that integer arithmetic is bit-exactly reproducible,
+   you get a fast path you can replay and defend.
+
+**Where the argument fails.** DNNs win when there is structure to exploit that trees cannot
+represent compactly — sequential dependence across time, cross-sectional relationships across many
+instruments, or anything requiring learned representations rather than thresholds on
+hand-engineered features. Trees also cannot extrapolate beyond the range of their training data at
+all, since every leaf is a constant, which matters in genuinely novel regimes.
+
+The mature answer is usually not a choice. A fast tree sits on the critical path, and a slower,
+larger model runs off it — setting parameters, selecting among tree ensembles, or adjusting risk
+appetite on a millisecond-to-second cadence. That is Module 12's fast-path/slow-path split, and it
+gets you the tree's latency with the network's capacity where the latency budget permits it.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="Why does a depth-6 tree cost about 3 levels of reduction rather than 6 dependent steps?">
+
+Because the depth is control flow, not a data dependency. Every node's feature index and threshold
+are compile-time constants, so all 63 comparisons are mutually independent and evaluate in one
+level. A leaf's condition is then the AND of the 6 comparisons on its path — a
+$\lceil \log_2 6 \rceil = 3$-level reduction — followed by a 6-level one-hot mux over 64 leaves.
+About 10 levels total. You spent 63 comparators to delete a 6-deep chain, which is speculative
+execution applied to a whole tree.
+
+</SelfCheck>
+
+<SelfCheck q="Why is GBDT inference slow on a CPU, and what is the one thing that cannot be fixed?">
+
+Data-dependent unpredictable branches (15–20 cycles each) plus dependent cache misses from pointer
+chasing, six deep per tree. Branchless index arithmetic removes the mispredicts, SIMD across trees
+exploits the one real parallelism axis, and breadth-first narrow-node layout improves locality —
+together worth 10–50×. What cannot be recovered is the parallel-comparison structure, which needs
+tens of thousands of comparators simultaneously. That gap is architectural.
+
+</SelfCheck>
+
+<SelfCheck q="Model is 20 ns, features are 400 ns. Give the three highest-value moves.">
+
+Make features incremental, updating state per book event ($O(1)$) instead of recomputing over a
+window ($O(n)$) — usually 5–10×. Prune features the ensemble barely uses, treating feature
+importance as a latency tool rather than an accuracy one. Keep all book and feature state on-chip
+so no bus is crossed. And accept the consequence: a feature costing 50 ns must earn more than 50 ns
+of edge, so feature selection becomes latency-budget allocation.
+
+</SelfCheck>
+
+<SelfCheck q="How is quantization error for a tree fundamentally different from an MLP?">
+
+An MLP's output moves smoothly with a perturbed weight, so L2 error bounds are meaningful. A tree's
+output is a step function of its thresholds: a small shift either changes nothing or flips a sample
+to a different leaf, moving the output by the full gap between two leaf values. There is no small
+perturbation regime, so the right metric is **decision-flip rate**, not output MSE — a question
+about data density near thresholds. Check for thresholds colliding after quantisation, and prefer
+quantising during training so splits land on representable values.
+
+</SelfCheck>
+
+<SelfCheck q="Bound an ensemble's output and explain why it matters.">
+
+$\sum_t \max_\ell v_\ell$ and $\sum_t \min_\ell v_\ell$ — each tree contributes exactly one leaf and
+all leaf values are constants, so it is a compile-time pass. It lets you prove the model can never
+emit a position outside a range, so hardware risk limits can be sized knowing the reachable set and
+a firing limit indicates a fault rather than an aggressive signal. Bounding a neural network's
+output requires interval propagation that compounds through layers into uselessly loose bounds.
+
+</SelfCheck>
+
+<SelfCheck q="Why do shallow trees suit both the statistics and the hardware?">
+
+Boosting wants weak learners: many shallow trees generalise better than few deep ones on low-SNR
+data, where deep trees overfit. In hardware, depth drives the mux tree ($d$ levels) and the leaf
+count ($2^d$), while tree *count* only adds a $\lceil \log_2 T \rceil$ adder tree and is otherwise
+fully parallel. So many-and-shallow is both the statistically correct and the hardware-cheap
+choice — an unusually clean alignment.
+
+</SelfCheck>
+
+<SelfCheck q="State the strongest case against GBDTs here.">
+
+They cannot compactly represent structure that is not thresholds on supplied features — sequential
+dependence, cross-sectional relationships across instruments, or learned representations — and they
+cannot extrapolate beyond their training range at all, since every leaf is a constant. Where those
+matter, the usual resolution is not a choice but a split: a tree on the critical path, and a larger
+model off it setting parameters on a millisecond-to-second cadence.
+
+</SelfCheck>

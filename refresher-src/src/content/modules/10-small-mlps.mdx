@@ -1,28 +1,264 @@
 ---
 n: 10
-title: "Small MLPs at nanosecond scale"
-blurb: "Fully unrolled dataflow, weight-stationary arrays, adder-tree depth, and resource budgeting. Where Modules 3, 4 and 8 converge."
-part: "E"
-draft: true
+title: 'Small MLPs at nanosecond scale'
+blurb: 'When you stop executing the network and start being it. Constant-weight multipliers, adder-tree depth, and the resource budget that co-designs the model.'
+part: 'E'
 minutes: 15
-tags: ["MLP","systolic","weight stationary","adder tree","DSP","unrolling"]
+draft: false
+tags:
+  ['MLP', 'systolic', 'weight stationary', 'adder tree', 'DSP', 'unrolling', 'carry save', 'FPGA', 'CSD']
 ---
 
 import Callout from '../../components/Callout.astro';
+import Probe from '../../components/Probe.astro';
+import SelfCheck from '../../components/SelfCheck.astro';
 
-## Planned coverage
+## The core mental model
 
-Not written yet. This module will cover:
+When the model is small, the weights are fixed, and the deadline is in nanoseconds, you stop
+*executing* the network and start *being* it. Every weight becomes a constant baked into the
+datapath. There is no weight fetch, no instruction fetch, no memory hierarchy, no scheduler — the
+entire model lives in wires and registers. This is the endpoint of two threads from earlier: Module
+1's observation that flattening the hierarchy removes "bytes over bandwidth" from the equation
+rather than shrinking it, and Module 4's willingness to spend area to reduce depth.
 
-- Fully unrolled dataflow: what "no loop" means for area and for timing closure
-- Weight-stationary as the only sane choice when weights are small and fixed
-- Systolic versus broadcast, and why broadcast wins at small scale
-- MAC array shapes and adder-tree depth as the latency you actually pay
-- DSP and resource budgeting against a real device
-- The synthesis: Modules 3, 4 and 8 in one datapath
+Constant weights are worth more than they first appear. A multiply by a runtime value needs a full
+multiplier; a multiply by a *constant* becomes a small shift-add network, because the constant's
+canonical signed-digit representation has on average about $W/3$ non-zero digits, so a 16-bit
+constant costs roughly five adders instead of a 16×16 multiplier. Weights that are zero vanish
+entirely — structured sparsity is not a compression trick here, it is the literal removal of
+hardware. Weights that are powers of two are free, a single shift. This is why
+quantisation-aware training that nudges weights toward shift-friendly values buys far more in
+hardware than the equivalent bit-width reduction buys in software.
 
-<Callout type="bridge" title="structure">
-  Every module follows the same four beats: the core mental model, the numbers worth
-  memorizing, a critical-thinking section that pushes on the model until it breaks, and
-  self-checks with the answers hidden. Module 1 is the reference for tone and density.
+Latency is then an accounting of logic levels. One layer costs a multiply level, an adder tree of
+depth $\lceil \log_2 N \rceil$, the requantisation from Module 8 (shift, round, saturate), and the
+activation from Module 9. For a 64-input layer that is roughly $1 + 6 + 2 + 1 = 10$ levels, and a
+three-layer network about 30. The design variable is how many logic levels fit inside a clock
+period, which returns Module 3's product: total time is $\text{depth} \times T_{\text{clk}}$, and
+you pipeline to exactly the depth timing closure demands and no further. Weight-stationary is the
+only sensible dataflow because the weights are wires and cannot move; broadcast beats systolic at
+this scale because systolic arrays exist to solve fanout and wire-length problems that a 64-wide
+layer does not have, and they pay pipeline latency to do it.
+
+<Callout type="bridge" title="this is the limit of tiling">
+  Module 2's tile size taken to its maximum: tile equals the entire layer, reuse factor is
+  unbounded, and traffic to any memory is zero. Arithmetic intensity is undefined because the
+  denominator is zero — which is the honest statement of why the roofline has nothing to say here.
 </Callout>
+
+<Callout type="trap" title="fully unrolled means one cycle">
+  Unrolled means no *reuse*. The design is still pipelined, and its depth is the total logic levels
+  divided by how many close timing per cycle. A fully unrolled three-layer MLP is perhaps 30 levels
+  and 8–12 cycles, not one.
+</Callout>
+
+## Numbers worth memorizing
+
+| Quantity                          | Expression / value              | Example                     |
+| --------------------------------- | ------------------------------- | --------------------------- |
+| Adder tree depth                  | $\lceil \log_2 N \rceil$        | 8→3, 64→6, 256→8, 1024→10   |
+| Fully unrolled $M \to N$ layer    | $MN$ multipliers, $N(M{-}1)$ adders | 64→64: 4096 mult, 4032 add |
+| Constant multiply via CSD         | ~$W/3$ adders                   | 16-bit constant ≈ 5 adders  |
+| Power-of-two weight               | 1 shift, 0 logic                | free                        |
+| Xilinx DSP48E2                    | 27×18 multiply + 48-bit accumulate | 2 int8 MACs per DSP with packing |
+| Mid-size FPGA DSPs                | 2000–4000                       | a 64→64 layer does not fit  |
+| Large FPGA (VU13P) DSPs           | ~12000                          | still short of 16384        |
+| FPGA fabric clock                 | 200–500 MHz                     | 2–5 ns per cycle            |
+| Logic levels per cycle            | ~4–8 LUT levels                 | the depth-to-cycles ratio   |
+
+Latency comparison for the same 32→64→64→8 int8 MLP:
+
+| Implementation                     | Latency        | Dominated by            |
+| ---------------------------------- | -------------- | ----------------------- |
+| FPGA, fully unrolled, 300 MHz      | **30–40 ns**   | adder-tree depth        |
+| CPU, AVX-512, warm, single core    | 1–3 µs         | function call, memory   |
+| GPU, single kernel launch          | 10 µs+         | launch overhead alone   |
+
+Carry-save, the standard depth trick:
+
+| Adder structure          | Depth for $N$ terms                       | Note                          |
+| ------------------------ | ----------------------------------------- | ----------------------------- |
+| Sequential accumulate    | $N$ full-adder delays × carry propagation | never do this                 |
+| Ripple-carry tree        | $\log_2 N$ levels, each $O(W)$ carry chain | the naive tree                |
+| **Carry-save tree**      | $\approx \log_{1.5} N$ 3:2 levels, **one** final carry-propagate | the standard answer |
+
+## Critical thinking
+
+<Probe q="You fully unroll a 128→128 layer. What breaks first, and in what order do you fix it?">
+
+DSPs break first, by a wide margin: $128 \times 128 = 16{,}384$ multipliers against 2000–4000 on a
+mid-size part. Then routing congestion, because 16,384 multipliers each need operands delivered.
+Then timing closure on the adder trees, where 128-input trees have significant fanout.
+
+Fix in this order, because the ordering reflects cost:
+
+1. **Quantise harder.** At int8 you get two MACs per DSP; at int4 the multipliers become small
+   enough to build in LUT fabric, which is far more plentiful than DSPs. Combined with constant
+   weights and CSD encoding, many multiplies disappear into a handful of adders.
+2. **Exploit weight structure.** Zero weights cost nothing at all. Structured pruning to, say, 50%
+   sparsity halves the array *literally*, not statistically. Powers of two are free.
+3. **Shrink the layer.** This is usually the highest-value move and the one engineers resist,
+   because it feels like the model is someone else's decision. It is not: **the model architecture
+   and the device are one design.** Going from 128 to 96 units removes 44% of the multipliers and
+   costs a small amount of accuracy that a slightly better feature set usually recovers.
+4. **Fold.** Reuse the array 2–4× and accept the latency multiple. This is the last resort, because
+   folding reintroduces sequencing, control, and intermediate storage — you have started rebuilding
+   a small accelerator with a memory hierarchy, at which point the whole premise deserves a second
+   look.
+
+</Probe>
+
+<Probe q="Why is adder-tree depth the number to watch rather than MAC count?">
+
+Because they measure different resources against different constraints. MAC count is **area**,
+which you can trade in several directions: fold, quantise, prune, narrow. Tree depth is **latency**,
+it is $\lceil \log_2 N \rceil$, and it is much harder to move.
+
+There are only two honest ways to reduce it:
+
+- **Fewer terms.** A narrower layer or genuine sparsity. Going from 256 to 64 inputs takes the tree
+  from 8 levels to 6 — note that this is a logarithmic return, so halving the layer buys exactly one
+  level. That is why depth reduction by shrinking is a game of diminishing returns and why people
+  overestimate what pruning does for latency.
+- **Faster levels.** Carry-save arithmetic is the standard technique and worth knowing by name: a
+  3:2 compressor tree takes three numbers to two without propagating carries, so intermediate
+  additions cost one full-adder delay regardless of width, and you pay a single carry-propagate
+  adder at the very end. This removes the $O(W)$ carry chain from every internal node of the tree,
+  which is typically a larger win than anything you can do to the tree's shape.
+
+The framing that generalises: in a latency design, area is a currency and depth is the price. You
+should be willing to spend a lot of the former to move the latter, and you should know exactly how
+many levels each spend actually buys.
+
+</Probe>
+
+<Probe q="Where does Module 8's fixed-point contract show up as physical hardware here?">
+
+As wire count, and as logic levels people forget to budget.
+
+**Accumulator width is literal.** int8 × int8 gives 16-bit products; a 128-term sum needs
+$16 + \lceil \log_2 128 \rceil = 23$ bits. Choosing 24-bit accumulators instead of 32-bit removes a
+third of the adder-tree area, and since adder area is linear in width (Module 8) that saving is
+directly proportional. Conversely, guessing 16 bits because "it's int8" overflows on essentially
+every input.
+
+**Requantisation is not free.** Between layers you shift, round to nearest even, and saturate. That
+is a shifter, a rounding increment with its own carry, and a pair of comparators with muxes —
+about 2–3 logic levels *per layer*. In a three-layer network that is 6–9 levels, comparable to a
+whole adder tree, and it routinely goes unaccounted for until timing fails.
+
+**Saturation must be real.** Module 8's argument that wraparound converts a small overflow into a
+sign flip is not theoretical here: with market data, the tail events that overflow are exactly the
+ones the model exists to react to. A wrapped accumulator does not degrade, it inverts.
+
+So the fixed-point design is not a numerical exercise performed before the hardware design. It *is*
+part of the hardware design, and the four numbers per layer — input format, weight format,
+accumulator width, output format — are structural parameters with area and depth consequences.
+
+</Probe>
+
+<Probe q="Batch 1 forever. Is there really nothing to pipeline here?">
+
+There is, and the distinction matters because the slogan from Part B overshoots if taken literally.
+
+You absolutely pipeline for **throughput across successive independent inputs**. Ticks keep
+arriving; $II = 1$ with depth 30 means you accept a new input every cycle and each answer emerges
+30 cycles later. Both properties hold simultaneously and neither costs the other.
+
+What is forbidden is **trading depth for $II$ or for clock frequency**, which is the trade that
+every throughput technique offers and that FPGA tooling actively encourages, because $F_{\max}$ is
+what appears on the timing report. Adding stages to raise the clock, batching inputs to amortise a
+setup, deepening to simplify a critical path — all normally free, all now charged directly against
+the deadline.
+
+So the discipline is: pipeline to exactly the depth that timing closure requires, and not one stage
+further. Then check the product $\text{depth} \times T_{\text{clk}}$ rather than either factor, and
+be willing to *remove* pipeline stages and accept a lower clock if the product improves. That is a
+genuinely unusual instinct, and it is the main thing that distinguishes latency-oriented FPGA work
+from ordinary FPGA work.
+
+</Probe>
+
+<Probe q="When does “put the whole model in gates” stop being right?">
+
+Three boundaries, and recognising them early saves a lot of wasted effort.
+
+**Size.** Once the model exceeds the fabric you must fold, and folding reintroduces control logic,
+sequencing and intermediate storage — you have built a small accelerator with a memory hierarchy,
+and you now inherit every problem Modules 1 through 3 describe. When that happens, the right
+question is usually whether the model needs to be that large for the *decision quality* you
+actually require, not how to fold it more cleverly.
+
+**Weight update frequency.** Constant weights are the source of most of the area savings, and they
+are compiled in. Changing them means a rebuild: full FPGA reconfiguration is 100 ms to seconds,
+partial reconfiguration 1–10 ms. If weights change daily that is fine; if they change intraday you
+must make them runtime-loadable registers, which restores full multipliers and forfeits the CSD,
+zero-weight and power-of-two savings entirely. That can be a 5–10× area difference, so it is a
+first-order architectural decision rather than a detail.
+
+**Precision.** If the task genuinely needs floating point, the area advantage largely evaporates.
+In practice this is rare for small models — Module 8's analysis usually shows int8 or int16 is
+sufficient — but it is worth checking rather than assuming.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="Give the resource and latency cost of a fully unrolled 64→64 layer.">
+
+$64 \times 64 = 4096$ multipliers and $64 \times 63 = 4032$ adders. Latency is about
+$1 + \lceil \log_2 64 \rceil + 2 + 1 = 10$ logic levels — multiply, adder tree, requantisation,
+activation. At 4–8 levels per cycle that is roughly 2–3 cycles, or 7–10 ns at 300 MHz. The
+multiplier count is what does not fit; the depth is what you were buying.
+
+</SelfCheck>
+
+<SelfCheck q="Why is a constant-weight multiplier so much cheaper, and what does that imply for training?">
+
+A constant's canonical signed-digit form has about $W/3$ non-zero digits, so multiplying by it costs
+roughly $W/3$ adders — about five for a 16-bit constant — instead of a full $W \times W$ multiplier
+whose area grows as $W^2$. Zero weights disappear entirely and powers of two are a single shift.
+The implication: quantisation-aware training that biases weights toward zero and toward powers of
+two pays far more in hardware than the equivalent bit-width reduction pays in software.
+
+</SelfCheck>
+
+<SelfCheck q="What is carry-save arithmetic and what does it buy in an adder tree?">
+
+A 3:2 compressor reduces three numbers to two without propagating carries, so each level costs one
+full-adder delay independent of word width, and a single carry-propagate adder resolves the result
+at the very end. In a tree it removes the $O(W)$ carry chain from every internal node, which is
+generally a larger latency win than any change to the tree's shape.
+
+</SelfCheck>
+
+<SelfCheck q="A 128→128 layer will not fit. List the fixes in order of preference.">
+
+Quantise harder — int4 or int8 moves multiplies from DSPs into LUT fabric and constant weights
+collapse them into a few adders. Exploit weight structure, since zeros are literally free and
+structured sparsity removes hardware rather than compressing it. Shrink the layer, remembering that
+the model and the device are one design. Fold only as a last resort, because folding reintroduces
+control, sequencing and storage — and rebuilds the memory hierarchy you were trying to escape.
+
+</SelfCheck>
+
+<SelfCheck q="What is legitimate to pipeline at batch 1, and what is forbidden?">
+
+Legitimate: pipelining for throughput across successive independent inputs, so $II = 1$ with depth
+30 accepts a tick every cycle while each answer takes 30. Forbidden: trading depth for $II$ or for
+clock frequency — adding stages to raise $F_{\max}$, batching to amortise setup, deepening to
+simplify a path. Pipeline to exactly the depth timing closure requires, then minimise
+$\text{depth} \times T_{\text{clk}}$, and be willing to remove stages and accept a slower clock.
+
+</SelfCheck>
+
+<SelfCheck q="Why does making weights runtime-loadable cost so much more than it appears to?">
+
+Because constant weights are the source of most of the savings. A loadable weight needs a real
+multiplier, so you lose canonical-signed-digit reduction (~$W/3$ adders becoming a $W \times W$
+multiplier), the free removal of zero weights, and free power-of-two weights. That can be a 5–10×
+area difference, making update frequency a first-order architectural decision: daily updates suit
+compiled constants and reconfiguration, intraday updates force the expensive design.
+
+</SelfCheck>

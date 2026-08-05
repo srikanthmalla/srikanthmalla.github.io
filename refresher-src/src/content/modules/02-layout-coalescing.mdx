@@ -1,27 +1,246 @@
 ---
 n: 2
-title: "Layout, coalescing, bank conflicts, tiling"
-blurb: "Coalescing is a transaction count, not a thread count. Bank conflicts, padding and swizzling, and the three-way tension in every tile size."
-part: "A"
-draft: true
+title: 'Layout, coalescing, bank conflicts, tiling'
+blurb: 'Coalescing is a transaction count, not a thread count. Bank conflicts, padding versus swizzling, and the three-way tension inside every tile size.'
+part: 'A'
 minutes: 15
-tags: ["coalescing","bank conflicts","tiling","row major","swizzle","occupancy"]
+draft: false
+tags:
+  ['coalescing', 'bank conflicts', 'tiling', 'row major', 'swizzle', 'occupancy', 'transpose', 'AoS SoA']
 ---
 
 import Callout from '../../components/Callout.astro';
+import Probe from '../../components/Probe.astro';
+import SelfCheck from '../../components/SelfCheck.astro';
 
-## Planned coverage
+## The core mental model
 
-Not written yet. This module will cover:
+Memory is not delivered in bytes, it is delivered in **transactions**. The coalescer takes the 32
+addresses a warp generates and works out the minimum set of 32 B sectors that covers them. That
+count is what costs time. Efficiency is bytes-you-asked-for over bytes-actually-moved, and it is
+the only definition that predicts anything: a warp doing 32 contiguous 4-byte loads touches 128 B,
+which is four sectors, and that is perfect. A warp doing 32 loads scattered across 32 different
+lines touches 32 sectors to deliver 128 useful bytes, which is 12.5% efficiency and eight times
+the traffic. Nothing here depends on the *order* of the lanes. A perfectly shuffled permutation
+inside one 128 B window is perfectly coalesced. The set of sectors is what matters, never the
+mapping from lane to address.
 
-- Coalescing as transactions per warp, not threads per request — the metric that actually predicts time
-- Row- versus column-major as one question: which index is contiguous
-- Shared-memory bank conflicts, XOR swizzling, and why padding costs you a different resource
-- Tiling raises intensity by the reuse factor ≈ T, tying this module back to Module 1
-- Tile-size tension: reuse versus occupancy versus register and shared-memory fit
+Layout, then, is one question asked repeatedly: **which index is contiguous?** In C, `A[i][j]`
+puts `j` adjacent, so a warp that varies `j` is coalesced and a warp that varies `i` strides by
+the row length. Every layout decision reduces to arranging for the fastest-varying thread index to
+sit on the fastest-varying memory index. Shared memory has its own version: 32 banks, each 4 B
+wide, with bank = (address / 4) mod 32. Two lanes hitting different rows of the same bank
+serialise; two lanes hitting the *same* address broadcast for free. A `float tile[32][32]`
+accessed column-wise puts all 32 lanes in one bank, a 32-way conflict, which is a 32× slowdown on
+that access.
 
-<Callout type="bridge" title="structure">
-  Every module follows the same four beats: the core mental model, the numbers worth
-  memorizing, a critical-thinking section that pushes on the model until it breaks, and
-  self-checks with the answers hidden. Module 1 is the reference for tone and density.
+Tiling is how you buy arithmetic intensity, and the exchange rate is exact. For an
+$M{\times}N{\times}K$ GEMM blocked into $T{\times}T$ output tiles, traffic to the level below is
+about $2MNK/T$ elements instead of $2MNK$, so $I \approx T/\text{sizeof(elem)}$ — in fp16,
+$I \approx T/2$ at that boundary. Module 1's ridge of ~295 therefore wants $T \approx 590$, and a
+590×590 fp16 tile pair is roughly 700 KB against 228 KB of shared memory per SM. That gap is why
+real GEMMs block at *three* levels: an 8×8 tile in registers, a 128×128 tile in shared memory, and
+an implicit L2 tile created by the order in which blocks are scheduled. The hierarchical roofline
+is not a diagram, it is a construction plan.
+
+<Callout type="bridge" title="you already know the CPU version">
+  This is cache lines with different constants. 64 B instead of 128 B, one lane instead of 32, and
+  a hardware prefetcher instead of a coalescer. "Stride-1 access is fast" and "coalesced access is
+  fast" are the same sentence about the same hardware behaviour.
 </Callout>
+
+<Callout type="trap" title="coalescing means consecutive threads read consecutive addresses">
+  It means the warp's accesses land in few sectors. Lane order is irrelevant, and consecutive
+  addresses are sufficient but not necessary. The counter to look at is sectors per request, not
+  any statement about thread indices.
+</Callout>
+
+## Numbers worth memorizing
+
+| Quantity                  | Value                        | Why it matters                      |
+| ------------------------- | ---------------------------- | ----------------------------------- |
+| Warp                      | 32 lanes                     | the coalescing unit                 |
+| Sector / cache line       | 32 B / 128 B                 | the transaction quantum             |
+| Perfect coalesced load    | 32 × 4 B = 128 B = 4 sectors | the baseline to compare against     |
+| Shared memory banks       | 32 banks × 4 B               | conflict granularity                |
+| Bank index                | `(addr / 4) % 32`            | worth computing by hand             |
+| Shared memory / SM        | 228 KB (H100), 164 KB (A100) | the tile-size ceiling               |
+| Register file / SM        | 256 KB, max 255 reg/thread   | the other tile-size ceiling         |
+| Max threads / SM          | 2048 (64 warps)              | occupancy denominator               |
+| Widest load               | `LDG.128`, 16 B per lane     | fewer instructions, more in flight  |
+
+Efficiency by access pattern, 4-byte elements, one warp:
+
+| Pattern                   | Sectors touched | Efficiency |
+| ------------------------- | --------------- | ---------- |
+| Contiguous (stride 1)     | 4               | 100%       |
+| Stride 2                  | 8               | 50%        |
+| Stride 4                  | 16              | 25%        |
+| Stride ≥ 32, or random    | 32              | 12.5%      |
+| Broadcast (all same addr) | 1               | 1 transaction, near-zero waste |
+
+Tiling arithmetic, worth being able to derive on the spot:
+
+| Quantity                            | Expression                        | fp16, $T = 128$     |
+| ----------------------------------- | --------------------------------- | ------------------- |
+| Intensity at the tiled boundary     | $T / \text{sizeof(elem)}$         | 64 FLOP/byte        |
+| Shared memory for one tile pair     | $2 \cdot T \cdot B_K \cdot$ bytes | 32 KB at $B_K = 64$ |
+| Double-buffered                     | ×2                                | 64 KB               |
+| $T$ needed to reach the H100 ridge  | $2 \times 295$                    | ~590 (does not fit) |
+
+Typical CUTLASS-shaped blocking, as a sanity anchor: **128×128 block tile, 64×64 warp tile, 8×8
+thread tile, $B_K$ of 32–64.**
+
+## Critical thinking
+
+<Probe q="Your kernel reports 100% coalescing efficiency and reaches only 60% of peak bandwidth. What now?">
+
+Coalescing is necessary, not sufficient. It guarantees you are not *wasting* traffic; it says
+nothing about whether you are generating *enough* of it. That is Little's Law again, and it is the
+first thing to check: at ~400 ns and 3.35 TB/s you need roughly 1.34 MB in flight, about 80 sectors
+per SM. Count how many independent loads your kernel actually has outstanding.
+
+Then, in order:
+
+1. **Not enough memory-level parallelism.** Too few warps, or each warp issues one load and
+   immediately consumes it. Unrolling to get several independent loads in flight per thread raises
+   concurrency without changing the algorithm.
+2. **Scalar loads.** Thirty-two `LDG.32` instructions move the same bytes as eight `LDG.128` but
+   cost 4× the issue slots and hold fewer bytes in flight per instruction. Vectorising to `float4`
+   is often the largest single win in an already-coalesced kernel.
+3. **Partition camping.** If many blocks hit the same memory partition at once you serialise on a
+   channel rather than on aggregate bandwidth. Swizzling the block index spreads them.
+4. **Tail and wave quantisation.** 132 SMs and 140 blocks means a second wave at 6% utilisation
+   dragging the whole-kernel average down.
+
+</Probe>
+
+<Probe q="A naive transpose runs ~10× slower than a copy. Explain it, fix it, then explain why the obvious fix is also slow.">
+
+Reading `in[i][j]` coalesced forces writing `out[j][i]` with a stride of the row length, so every
+lane writes into a different line: 32 sectors instead of 4. You cannot make both ends contiguous
+directly, because transpose is exactly the operation that swaps which index is contiguous.
+
+Stage through shared memory: read a 32×32 tile coalesced, write it to shared memory,
+`__syncthreads()`, then read the tile *transposed* out of shared memory and write it coalesced.
+Global memory now sees contiguous access at both ends, and the awkward stride has moved into
+shared memory where strides are cheap.
+
+Except it is not free there either. `__shared__ float tile[32][32]` read column-wise puts every
+lane in the same bank — a 32-way conflict. You have traded a global-memory problem for a
+shared-memory one. Two fixes:
+
+- **Padding** to `tile[32][33]`. Each row starts one bank further along, so a column touches all
+  32 banks. Costs 3% more shared memory and one character.
+- **Swizzling**: store element $(r, c)$ at column $c \oplus r$. No memory wasted, and it preserves
+  16-byte alignment, which padding destroys — so swizzling is the only option when you need
+  `LDS.128` or `ldmatrix`. That alignment constraint is why production kernels swizzle and
+  tutorials pad.
+
+</Probe>
+
+<Probe q="You double the tile size to get more reuse and the kernel gets slower.">
+
+You bought intensity and paid in concurrency, and the payment was larger. Usually more than one
+mechanism at once:
+
+- **Occupancy collapse.** Shared memory per block roughly quadruples with $T$. Cross the threshold
+  where two blocks per SM becomes one and you halve the warps available to hide latency, failing
+  Little's Law. The kernel is now underfed despite needing less bandwidth.
+- **Register spilling.** Larger thread tiles need more accumulators; crossing 255 registers per
+  thread spills to local memory, which is global memory wearing a different name.
+- **Worse quantisation.** Going from 528 blocks to 132 on 132 SMs turns a smooth load into an
+  all-or-nothing one, and one slow block now sets the kernel's duration.
+- **You were already above the ridge.** If $T = 128$ put you at $I = 64$ and that boundary was
+  already compute-bound, extra reuse buys nothing and the costs are pure loss.
+
+Tile size trades reuse against concurrency and both appear in the performance model. Optimising
+one in isolation is how you get slower.
+
+</Probe>
+
+<Probe q="Array of structs or struct of arrays? Give a rule, not a preference.">
+
+The rule is about **what fraction of each fetched line you consume**.
+
+Struct-of-arrays wins when you touch a *subset* of fields across *many* elements. A warp reading
+`pos_x[i]` for 32 consecutive `i` gets 128 B of pure payload. The same warp reading
+`particle[i].pos_x` out of a 48-byte struct strides by 48, touching 12–16 sectors to use 128 bytes
+— about 25% efficiency, having dragged velocity and mass through the cache to discard them.
+
+Array-of-structs wins when you touch *all* fields of *few* elements. One particle's 48 bytes is
+one sector in AoS and six separate streams in SoA: six sectors, six prefetch streams, six TLB
+entries.
+
+So: subset of fields over many elements → SoA. All fields of few elements → AoS. Different kernels
+wanting different answers → AoSoA, blocked into groups of 32 so each group is contiguous per field
+and every warp still gets full lines.
+
+The identical argument decides CPU layouts, with 64 B lines and one lane. This is one of the
+places where GPU and CPU intuition transfers with no adjustment at all.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="Define coalescing so that it survives a follow-up about lane ordering.">
+
+The warp generates 32 addresses; the coalescer computes the minimum set of 32 B sectors covering
+them; that count is the cost. Efficiency is requested bytes over transferred bytes. Lane order is
+irrelevant — an arbitrary permutation within one 128 B window is perfectly coalesced — because the
+hardware cares about the *set* of sectors touched, not the assignment of lanes to addresses.
+
+</SelfCheck>
+
+<SelfCheck q="Compute the bank index for a float at byte offset 4224, then say what happens when 32 lanes read a column of a 32×32 float tile.">
+
+Bank = (4224 / 4) mod 32 = 1056 mod 32 = **0**.
+
+A column access has lane $r$ reading element offset $32r + c$, so its bank is
+$(32r + c) \bmod 32 = c$ for every $r$. All 32 lanes hit bank $c$: a **32-way conflict**,
+serialised into 32 accesses. Padding the row to 33 makes the offset $33r + c$, whose bank
+$(r + c) \bmod 32$ is distinct for every lane.
+
+</SelfCheck>
+
+<SelfCheck q="Derive the intensity a T×T tile buys, and the tile size needed to reach the H100 fp16 ridge.">
+
+Blocking an $M{\times}N{\times}K$ GEMM into $T{\times}T$ tiles cuts traffic from $2MNK$ elements to
+about $2MNK/T$. FLOPs stay at $2MNK$, so
+$I = 2MNK / \left(\tfrac{2MNK}{T} \cdot \text{bytes}\right) = T/\text{bytes}$, which is $T/2$ in
+fp16.
+
+Reaching $I^{*} \approx 295$ needs $T \approx 590$, a tile pair of roughly 700 KB against 228 KB of
+shared memory. It does not fit, which is exactly why real kernels block at register, shared-memory
+and L2 levels rather than at one.
+
+</SelfCheck>
+
+<SelfCheck q="Why do production GEMM kernels swizzle shared memory instead of padding it?">
+
+Padding shifts each row by one element, which fixes bank conflicts but breaks the 16-byte alignment
+that `LDS.128` and `ldmatrix` require. Swizzling — storing $(r,c)$ at column $c \oplus r$ — spreads
+accesses across banks while keeping every 16-byte group aligned, and wastes no memory. Padding is
+the tutorial answer; swizzling is the one compatible with vector and tensor-core loads.
+
+</SelfCheck>
+
+<SelfCheck q="A kernel is perfectly coalesced and still at 60% of peak bandwidth. Name three causes.">
+
+Insufficient memory-level parallelism, so too few independent loads are in flight to satisfy
+Little's Law; scalar rather than vectorised loads, costing issue slots and holding fewer bytes in
+flight per instruction; and partition camping or wave quantisation, where you serialise on one
+channel or dilute the average with a mostly-empty final wave.
+
+The unifying point: coalescing bounds *waste*, not *rate*.
+
+</SelfCheck>
+
+<SelfCheck q="When is array-of-structs the right choice?">
+
+When you consume all fields of a few elements, so a struct fits in one line and one fetch delivers
+everything needed. Struct-of-arrays wins the opposite case — a few fields across many elements —
+because each stream is then contiguous and every fetched byte is used. If different kernels want
+different answers, AoSoA blocked to the warp or line width satisfies both.
+
+</SelfCheck>

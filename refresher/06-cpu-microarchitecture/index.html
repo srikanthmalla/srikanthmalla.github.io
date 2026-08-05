@@ -1,26 +1,299 @@
-<!DOCTYPE html><html lang="en" data-astro-cid-z4jru4n3><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>6. CPU microarchitecture — Refresher</title><meta name="description" content="The substrate under every low-latency system: false sharing, misprediction cost, store buffers, memory ordering, and lock-free SPSC rings."><link rel="icon" href="data:,"><script>
+<!DOCTYPE html><html lang="en" data-astro-cid-z4jru4n3><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>6. CPU microarchitecture — Refresher</title><meta name="description" content="False sharing, dependent chains, store buffers and memory ordering, the AVX-512 downclock, and the cache-line layout that makes an SPSC ring fast."><link rel="icon" href="data:,"><script>
       (() => {
         try {
           const t = localStorage.getItem('refresher:theme');
           if (t === 'light') document.documentElement.classList.add('light');
         } catch (e) {}
       })();
-    </script><link rel="stylesheet" href="/refresher/_astro/BaseLayout.CGyqQs00.css"><style>.wrap[data-astro-cid-mhcwui4e]{max-width:68ch;margin-inline:auto;padding:3rem 1.25rem 6rem}@media (width>=1024px){.wrap[data-astro-cid-mhcwui4e]{max-width:calc(68ch + 6rem);padding-inline:3rem}}.mhead[data-astro-cid-mhcwui4e]{border-block-end:1px solid var(--rule);margin-block-end:.5rem;padding-block-end:1.75rem}.mhead-kicker[data-astro-cid-mhcwui4e]{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint);margin:0 0 .85rem;font-size:.6875rem;font-weight:500}.mhead-n[data-astro-cid-mhcwui4e]{color:var(--accent);font-weight:640}.mhead-dot[data-astro-cid-mhcwui4e]{opacity:.5;padding-inline:.35rem}.mhead-title[data-astro-cid-mhcwui4e]{font-family:var(--font-sans);letter-spacing:-.027em;color:var(--ink-strong);text-wrap:balance;margin:0;font-size:clamp(1.75rem,1.3rem + 1.9vw,2.375rem);font-weight:660;line-height:1.12}.mhead-blurb[data-astro-cid-mhcwui4e]{color:var(--ink-muted);max-width:58ch;margin:.85rem 0 0;font-size:1.0625rem;line-height:1.6}.mfoot[data-astro-cid-mhcwui4e]{border-block-start:1px solid var(--rule);margin-block-start:4rem;padding-block-start:1.75rem}.mark[data-astro-cid-mhcwui4e]{font-family:var(--font-sans);border:1px solid var(--rule);background:var(--bg-raised);color:var(--ink-muted);cursor:pointer;border-radius:5px;padding:.4rem .85rem;font-size:.75rem;font-weight:550}.mark[data-astro-cid-mhcwui4e]:hover{color:var(--ink-strong);border-color:var(--ink-faint)}.mark[data-astro-cid-mhcwui4e][aria-pressed=true]{color:var(--bridge);border-color:color-mix(in oklab, var(--bridge) 45%, var(--rule))}.pager[data-astro-cid-mhcwui4e]{grid-template-columns:1fr 1fr;gap:1rem;margin-block-start:2rem;display:grid}.pager-link[data-astro-cid-mhcwui4e]{border:1px solid var(--rule);font-family:var(--font-sans);border-radius:6px;flex-direction:column;gap:.25rem;padding:.75rem .9rem;text-decoration:none;display:flex}.pager-link[data-astro-cid-mhcwui4e]:hover{border-color:var(--ink-faint);background:var(--bg-raised)}.pager-link[data-astro-cid-mhcwui4e].is-next{text-align:end}.pager-dir[data-astro-cid-mhcwui4e]{text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);font-size:.6875rem}.pager-title[data-astro-cid-mhcwui4e]{color:var(--ink-strong);font-size:.8125rem;font-weight:550;line-height:1.35}
-</style><style>.callout{border:1px solid var(--rule);border-inline-start-width:2px;border-radius:5px;margin-block:1.75rem;padding:.9rem 1.1rem 1rem;font-size:.9375rem;line-height:1.65}.callout-probe{border-inline-start-color:var(--probe);background:var(--probe-bg)}.callout-trap{border-inline-start-color:var(--trap);background:var(--trap-bg)}.callout-bridge{border-inline-start-color:var(--bridge);background:var(--bridge-bg)}.callout-label{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;align-items:center;gap:.45rem;margin:0 0 .5rem;font-size:.6875rem;font-weight:620;display:flex}.callout-probe .callout-label{color:var(--probe)}.callout-trap .callout-label{color:var(--trap)}.callout-bridge .callout-label{color:var(--bridge)}.callout-mark{background:currentColor;border-radius:50%;flex:none;width:5px;height:5px}.callout-title{text-transform:none;letter-spacing:0;color:var(--ink-muted);font-weight:500}.callout-body>:first-child{margin-block-start:0}.callout-body>:last-child{margin-block-end:0}.callout-body>*+*{margin-block-start:.75em}
-</style></head><body data-astro-cid-z4jru4n3><a href="#content" class="skip" data-astro-cid-z4jru4n3>Skip to content</a><div class="shell" data-astro-cid-z4jru4n3><aside class="rail" data-rail data-astro-cid-z4jru4n3><nav class="rail-nav" aria-label="Modules" data-astro-cid-wv7whodv><div class="rail-head" data-astro-cid-wv7whodv><a href="/refresher/" class="rail-home" data-astro-cid-wv7whodv><span class="rail-home-title" data-astro-cid-wv7whodv>Refresher</span><span class="rail-home-sub" data-astro-cid-wv7whodv>ML hardware &amp; low-latency systems</span></a><p class="rail-progress" data-astro-cid-wv7whodv><span class="rail-progress-bar" data-astro-cid-wv7whodv><span data-progress-fill data-astro-cid-wv7whodv></span></span><span class="rail-progress-text" data-astro-cid-wv7whodv><span data-progress-count data-astro-cid-wv7whodv>0</span>/12 reviewed</span></p></div><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part A</span>Foundations</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/refresher/01-roofline/" class="rail-link" data-module="01-roofline" title="What the roofline actually bounds, why the ridge point keeps running away from us, and the exact point at which the model stops being useful." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>1</span><span class="rail-title" data-astro-cid-wv7whodv>Memory hierarchy, roofline, arithmetic intensity</span><span class="rail-tick" data-tick="01-roofline" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/refresher/02-layout-coalescing/" class="rail-link is-draft" data-module="02-layout-coalescing" title="Coalescing is a transaction count, not a thread count. Bank conflicts, padding and swizzling, and the three-way tension in every tile size." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>2</span><span class="rail-title" data-astro-cid-wv7whodv>Layout, coalescing, bank conflicts, tiling</span><span class="rail-tick" data-tick="02-layout-coalescing" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/refresher/03-pipelining/" class="rail-link is-draft" data-module="03-pipelining" title="Initiation interval versus depth, double and triple buffering, prefetch distance — and why every one of these tools fails at batch 1." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>3</span><span class="rail-title" data-astro-cid-wv7whodv>Pipelining, multi-buffering, latency hiding</span><span class="rail-tick" data-tick="03-pipelining" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part B</span>The pivot</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/refresher/04-latency-vs-throughput/" class="rail-link is-draft" data-module="04-latency-vs-throughput" title="Where batching, occupancy and amortization stop being virtues and become liabilities. Spending 10× area to save 50 ns." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>4</span><span class="rail-title" data-astro-cid-wv7whodv>Latency versus throughput as a design axis</span><span class="rail-tick" data-tick="04-latency-vs-throughput" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/refresher/05-tail-latency/" class="rail-link is-draft" data-module="05-tail-latency" title="Why the mean is the wrong statistic, where jitter actually comes from, and the measurement error that makes your p99 a fiction." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>5</span><span class="rail-title" data-astro-cid-wv7whodv>Tail latency and determinism</span><span class="rail-tick" data-tick="05-tail-latency" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part C</span>Substrate</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/refresher/06-cpu-microarchitecture/" class="rail-link is-active is-draft" aria-current="page" data-module="06-cpu-microarchitecture" title="The substrate under every low-latency system: false sharing, misprediction cost, store buffers, memory ordering, and lock-free SPSC rings." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>6</span><span class="rail-title" data-astro-cid-wv7whodv>CPU microarchitecture</span><span class="rail-tick" data-tick="06-cpu-microarchitecture" aria-hidden="true" data-astro-cid-wv7whodv></span></a><ul class="rail-sub" data-rail-sub data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="#planned-coverage" class="rail-sub-link" data-toc="planned-coverage" data-astro-cid-wv7whodv>Planned coverage</a></li></ul></li><li data-astro-cid-wv7whodv><a href="/refresher/07-off-chip-movement/" class="rail-link is-draft" data-module="07-off-chip-movement" title="PCIe round trips, DMA, NUMA locality, kernel bypass, hardware timestamping — and the rigorous answer to &quot;why not just use a GPU?&quot;." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>7</span><span class="rail-title" data-astro-cid-wv7whodv>Off-chip data movement</span><span class="rail-tick" data-tick="07-off-chip-movement" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part D</span>Numerics</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/refresher/08-fixed-point/" class="rail-link is-draft" data-module="08-fixed-point" title="Q-format, saturation versus wraparound, truncation bias, accumulator width growth, and error propagation you can actually bound." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>8</span><span class="rail-title" data-astro-cid-wv7whodv>Fixed-point and rounding</span><span class="rail-tick" data-tick="08-fixed-point" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/refresher/09-nonlinearities/" class="rail-link is-draft" data-module="09-nonlinearities" title="LUT, piecewise-linear, minimax polynomial, CORDIC. Range reduction, and computing exp and softmax when you have no divider." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>9</span><span class="rail-title" data-astro-cid-wv7whodv>Nonlinearities without dividers</span><span class="rail-tick" data-tick="09-nonlinearities" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part E</span>Workloads</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/refresher/10-small-mlps/" class="rail-link is-draft" data-module="10-small-mlps" title="Fully unrolled dataflow, weight-stationary arrays, adder-tree depth, and resource budgeting. Where Modules 3, 4 and 8 converge." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>10</span><span class="rail-title" data-astro-cid-wv7whodv>Small MLPs at nanosecond scale</span><span class="rail-tick" data-tick="10-small-mlps" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/refresher/11-gbdt-inference/" class="rail-link is-draft" data-module="11-gbdt-inference" title="Comparator trees, not GEMM. Latency set by depth, feature fetch as the real bottleneck, and why gradient-boosted trees beat DNNs at this scale." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>11</span><span class="rail-title" data-astro-cid-wv7whodv>GBDT inference in hardware</span><span class="rail-tick" data-tick="11-gbdt-inference" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/refresher/12-partitioning/" class="rail-link is-draft" data-module="12-partitioning" title="Order book mechanics, the tick-to-trade budget, the fast-path/slow-path split, and risk checks in silicon. The synthesis module." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>12</span><span class="rail-title" data-astro-cid-wv7whodv>Hardware/software partitioning and market microstructure</span><span class="rail-tick" data-tick="12-partitioning" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><div class="rail-foot" data-astro-cid-wv7whodv><p data-astro-cid-wv7whodv><kbd data-astro-cid-wv7whodv>j</kbd> <kbd data-astro-cid-wv7whodv>k</kbd> section · <kbd data-astro-cid-wv7whodv>/</kbd> search · <kbd data-astro-cid-wv7whodv>[</kbd><kbd data-astro-cid-wv7whodv>]</kbd> module</p></div></nav></aside><div class="col" data-astro-cid-z4jru4n3><header class="topbar" data-astro-cid-z4jru4n3><button class="icon-btn only-narrow" data-rail-toggle aria-label="Toggle contents" data-astro-cid-z4jru4n3><svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M1.5 3.5h12M1.5 7.5h12M1.5 11.5h12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg></button><p class="crumb" data-astro-cid-z4jru4n3>Part C · Substrate › CPU microarchitecture</p><div class="topbar-actions" data-astro-cid-z4jru4n3><button class="search-btn" data-search-open aria-label="Search" data-astro-cid-z4jru4n3><span aria-hidden="true" data-astro-cid-z4jru4n3>⌕</span><span class="search-btn-label" data-astro-cid-z4jru4n3>Search</span><kbd data-astro-cid-z4jru4n3>/</kbd></button><button class="icon-btn" data-theme-toggle aria-label="Toggle theme" data-astro-cid-z4jru4n3><svg class="i-sun" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><circle cx="7.5" cy="7.5" r="3" stroke="currentColor" stroke-width="1.2" data-astro-cid-z4jru4n3></circle><path d="M7.5 .8v1.7M7.5 12.5v1.7M14.2 7.5h-1.7M2.5 7.5H.8M12.24 2.76l-1.2 1.2M3.96 11.04l-1.2 1.2M12.24 12.24l-1.2-1.2M3.96 3.96l-1.2-1.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg><svg class="i-moon" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M13 9.3A5.8 5.8 0 0 1 5.7 2 5.9 5.9 0 1 0 13 9.3Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" data-astro-cid-z4jru4n3></path></svg></button><a class="site-link" href="/learning.html" data-astro-cid-z4jru4n3>srikanthmalla.com</a></div></header><main id="content" data-astro-cid-z4jru4n3><article class="wrap" data-article data-astro-cid-mhcwui4e><header class="mhead" data-astro-cid-mhcwui4e><p class="mhead-kicker" data-astro-cid-mhcwui4e><span class="mhead-n" data-astro-cid-mhcwui4e>Module 6</span><span class="mhead-dot" data-astro-cid-mhcwui4e>·</span>Part C — Substrate<span class="mhead-dot" data-astro-cid-mhcwui4e>·</span>15 min</p><h1 class="mhead-title" data-astro-cid-mhcwui4e>CPU microarchitecture</h1><p class="mhead-blurb" data-astro-cid-mhcwui4e>The substrate under every low-latency system: false sharing, misprediction cost, store buffers, memory ordering, and lock-free SPSC rings.</p></header><div class="prose" data-astro-cid-mhcwui4e><h2 id="planned-coverage">Planned coverage<a class="anchor" href="#planned-coverage" aria-hidden="true" tabindex="-1">#</a></h2>
-<p>Not written yet. This module will cover:</p>
-<ul>
-<li>64 B lines and false sharing as the first thing to check in any multi-threaded hot path</li>
-<li>Out-of-order execution, the reorder buffer, and what a ~15–20 cycle misprediction really costs</li>
-<li>Hardware prefetchers: what patterns they catch, and how to stop fighting them</li>
-<li>Store buffers, memory ordering, fences, and the cost of a <code>lock</code> prefix</li>
-<li>Atomics and CAS under contention, and why the retry loop is the problem</li>
-<li>SIMD and AVX-512, including the downclock question and when 512-bit is a net loss</li>
-<li>Lock-free SPSC ring buffers: the cache-line layout that makes them fast</li>
-</ul>
-<aside class="callout callout-bridge"><p class="callout-label"><span class="callout-mark" aria-hidden="true"></span>Bridge to what you know<span class="callout-title"> · structure</span></p><div class="callout-body"><p>Every module follows the same four beats: the core mental model, the numbers worth
-memorizing, a critical-thinking section that pushes on the model until it breaks, and
-self-checks with the answers hidden. Module 1 is the reference for tone and density.</p></div></aside></div><footer class="mfoot" data-astro-cid-mhcwui4e><button class="mark" data-mark="06-cpu-microarchitecture" aria-pressed="false" data-astro-cid-mhcwui4e>Mark as reviewed</button><nav class="pager" data-astro-cid-mhcwui4e><a class="pager-link" href="/refresher/05-tail-latency/" data-prev data-astro-cid-mhcwui4e><span class="pager-dir" data-astro-cid-mhcwui4e>← Previous</span><span class="pager-title" data-astro-cid-mhcwui4e>5. Tail latency and determinism</span></a><a class="pager-link is-next" href="/refresher/07-off-chip-movement/" data-next data-astro-cid-mhcwui4e><span class="pager-dir" data-astro-cid-mhcwui4e>Next →</span><span class="pager-title" data-astro-cid-mhcwui4e>7. Off-chip data movement</span></a></nav></footer></article></main></div></div><div class="search-overlay" data-search hidden data-astro-cid-ac66eqjo><div class="search-backdrop" data-search-close data-astro-cid-ac66eqjo></div><div class="search-panel" role="dialog" aria-modal="true" aria-label="Search modules" data-astro-cid-ac66eqjo><div class="search-input-row" data-astro-cid-ac66eqjo><span class="search-icon" aria-hidden="true" data-astro-cid-ac66eqjo>⌕</span><input type="text" class="search-input" placeholder="Search all modules…" autocomplete="off" spellcheck="false" data-search-input data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>esc</kbd></div><ul class="search-results" data-search-results data-astro-cid-ac66eqjo></ul><p class="search-empty" data-search-empty hidden data-astro-cid-ac66eqjo>No matches.</p><p class="search-hint" data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>↑</kbd><kbd data-astro-cid-ac66eqjo>↓</kbd> move · <kbd data-astro-cid-ac66eqjo>↵</kbd> open</p></div></div><script>(function(){const indexUrl = "/refresher/search.json";
+    </script><link rel="stylesheet" href="/refresher/_astro/BaseLayout.DFAY61X-.css"><style>.wrap[data-astro-cid-mhcwui4e]{max-width:68ch;margin-inline:auto;padding:3rem 1.25rem 6rem}@media (width>=1024px){.wrap[data-astro-cid-mhcwui4e]{max-width:calc(68ch + 6rem);padding-inline:3rem}}.mhead[data-astro-cid-mhcwui4e]{border-block-end:1px solid var(--rule);margin-block-end:.5rem;padding-block-end:1.75rem}.mhead-kicker[data-astro-cid-mhcwui4e]{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint);margin:0 0 .85rem;font-size:.6875rem;font-weight:500}.mhead-n[data-astro-cid-mhcwui4e]{color:var(--accent);font-weight:640}.mhead-dot[data-astro-cid-mhcwui4e]{opacity:.5;padding-inline:.35rem}.mhead-title[data-astro-cid-mhcwui4e]{font-family:var(--font-sans);letter-spacing:-.027em;color:var(--ink-strong);text-wrap:balance;margin:0;font-size:clamp(1.75rem,1.3rem + 1.9vw,2.375rem);font-weight:660;line-height:1.12}.mhead-blurb[data-astro-cid-mhcwui4e]{color:var(--ink-muted);max-width:58ch;margin:.85rem 0 0;font-size:1.0625rem;line-height:1.6}.mfoot[data-astro-cid-mhcwui4e]{border-block-start:1px solid var(--rule);margin-block-start:4rem;padding-block-start:1.75rem}.mark[data-astro-cid-mhcwui4e]{font-family:var(--font-sans);border:1px solid var(--rule);background:var(--bg-raised);color:var(--ink-muted);cursor:pointer;border-radius:5px;padding:.4rem .85rem;font-size:.75rem;font-weight:550}.mark[data-astro-cid-mhcwui4e]:hover{color:var(--ink-strong);border-color:var(--ink-faint)}.mark[data-astro-cid-mhcwui4e][aria-pressed=true]{color:var(--bridge);border-color:color-mix(in oklab, var(--bridge) 45%, var(--rule))}.pager[data-astro-cid-mhcwui4e]{grid-template-columns:1fr 1fr;gap:1rem;margin-block-start:2rem;display:grid}.pager-link[data-astro-cid-mhcwui4e]{border:1px solid var(--rule);font-family:var(--font-sans);border-radius:6px;flex-direction:column;gap:.25rem;padding:.75rem .9rem;text-decoration:none;display:flex}.pager-link[data-astro-cid-mhcwui4e]:hover{border-color:var(--ink-faint);background:var(--bg-raised)}.pager-link[data-astro-cid-mhcwui4e].is-next{text-align:end}.pager-dir[data-astro-cid-mhcwui4e]{text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);font-size:.6875rem}.pager-title[data-astro-cid-mhcwui4e]{color:var(--ink-strong);font-size:.8125rem;font-weight:550;line-height:1.35}
+</style><style>.callout{border:1px solid var(--rule);border-inline-start-width:2px;border-radius:5px;margin-block:1.75rem;padding:.9rem 1.1rem 1rem;font-size:.9375rem;line-height:1.65}.callout-probe{border-inline-start-color:var(--probe);background:var(--probe-bg)}.callout-trap{border-inline-start-color:var(--trap);background:var(--trap-bg)}.callout-bridge{border-inline-start-color:var(--bridge);background:var(--bridge-bg)}.callout-label{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;align-items:center;gap:.45rem;margin:0 0 .5rem;font-size:.6875rem;font-weight:620;display:flex}.callout-probe .callout-label{color:var(--probe)}.callout-trap .callout-label{color:var(--trap)}.callout-bridge .callout-label{color:var(--bridge)}.callout-mark{background:currentColor;border-radius:50%;flex:none;width:5px;height:5px}.callout-title{text-transform:none;letter-spacing:0;color:var(--ink-muted);font-weight:500}.callout-body>:first-child{margin-block-start:0}.callout-body>:last-child{margin-block-end:0}.callout-body>*+*{margin-block-start:.75em}.probe{margin-block:1.75rem}.prose .probe-q{font-family:var(--font-sans);letter-spacing:-.01em;color:var(--ink-strong);margin:0 0 .6rem;padding-inline-start:1.15rem;font-size:1rem;font-weight:600;line-height:1.45;position:relative}.prose .probe-q:before{content:"›";color:var(--accent);font-weight:700;position:absolute;inset-inline-start:0}.probe-a{border-inline-start:1px solid var(--rule);margin-inline-start:.1rem;padding-inline-start:1.15rem}.probe-a>*+*{margin-block-start:1.15em}.probe-a>:first-child{margin-block-start:0}.probe-a>:last-child{margin-block-end:0}.selfcheck{border-block-start:1px solid var(--rule-soft)}.selfcheck:last-of-type{border-block-end:1px solid var(--rule-soft)}.prose>.selfcheck+.selfcheck{margin-block-start:0}.selfcheck>summary{cursor:pointer;color:var(--ink);align-items:baseline;gap:1rem;padding:.7rem .2rem;list-style:none;display:flex}.selfcheck>summary::-webkit-details-marker{display:none}.selfcheck>summary:hover{color:var(--ink-strong)}.selfcheck-q{flex:1}.selfcheck-q code{white-space:nowrap}.selfcheck-cue{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);flex:none;padding-block-start:.15rem;font-size:.6875rem;font-weight:600}.selfcheck>summary:hover .selfcheck-cue{color:var(--accent)}.selfcheck-cue-hide,.selfcheck[open] .selfcheck-cue-show{display:none}.selfcheck[open] .selfcheck-cue-hide{display:inline}.selfcheck-a{color:var(--ink-muted);border-inline-start:2px solid var(--rule);margin-block-end:.9rem;margin-inline-start:.2rem;padding:.15rem .2rem 1.05rem;padding-inline-start:1rem;font-size:.9375rem}.selfcheck-a>:first-child{margin-block-start:0}.selfcheck-a>:last-child{margin-block-end:0}.selfcheck-a>*+*{margin-block-start:.7em}.selfcheck-a strong{color:var(--ink)}
+</style></head><body data-astro-cid-z4jru4n3><a href="#content" class="skip" data-astro-cid-z4jru4n3>Skip to content</a><div class="shell" data-astro-cid-z4jru4n3><aside class="rail" data-rail data-astro-cid-z4jru4n3><nav class="rail-nav" aria-label="Modules" data-astro-cid-wv7whodv><div class="rail-head" data-astro-cid-wv7whodv><a href="/refresher/" class="rail-home" data-astro-cid-wv7whodv><span class="rail-home-title" data-astro-cid-wv7whodv>Refresher</span><span class="rail-home-sub" data-astro-cid-wv7whodv>ML hardware &amp; low-latency systems</span></a><p class="rail-progress" data-astro-cid-wv7whodv><span class="rail-progress-bar" data-astro-cid-wv7whodv><span data-progress-fill data-astro-cid-wv7whodv></span></span><span class="rail-progress-text" data-astro-cid-wv7whodv><span data-progress-count data-astro-cid-wv7whodv>0</span>/12 reviewed</span></p></div><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part A</span>Foundations</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/refresher/01-roofline/" class="rail-link" data-module="01-roofline" title="What the roofline actually bounds, why the ridge point keeps running away from us, and the exact point at which the model stops being useful." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>1</span><span class="rail-title" data-astro-cid-wv7whodv>Memory hierarchy, roofline, arithmetic intensity</span><span class="rail-tick" data-tick="01-roofline" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/refresher/02-layout-coalescing/" class="rail-link" data-module="02-layout-coalescing" title="Coalescing is a transaction count, not a thread count. Bank conflicts, padding versus swizzling, and the three-way tension inside every tile size." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>2</span><span class="rail-title" data-astro-cid-wv7whodv>Layout, coalescing, bank conflicts, tiling</span><span class="rail-tick" data-tick="02-layout-coalescing" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/refresher/03-pipelining/" class="rail-link" data-module="03-pipelining" title="Initiation interval versus depth, prefetch distance as a ratio, and the moment every one of these tools stops working." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>3</span><span class="rail-title" data-astro-cid-wv7whodv>Pipelining, multi-buffering, latency hiding</span><span class="rail-tick" data-tick="03-pipelining" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part B</span>The pivot</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/refresher/04-latency-vs-throughput/" class="rail-link" data-module="04-latency-vs-throughput" title="Where batching, occupancy and amortization stop being virtues. Why high utilization is a defect, and why a barrier samples the tail." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>4</span><span class="rail-title" data-astro-cid-wv7whodv>Latency versus throughput as a design axis</span><span class="rail-tick" data-tick="04-latency-vs-throughput" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/refresher/05-tail-latency/" class="rail-link" data-module="05-tail-latency" title="Why the mean describes no request that ever happened, where jitter actually comes from, and the measurement error that makes your p99 a fiction." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>5</span><span class="rail-title" data-astro-cid-wv7whodv>Tail latency and determinism</span><span class="rail-tick" data-tick="05-tail-latency" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part C</span>Substrate</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/refresher/06-cpu-microarchitecture/" class="rail-link is-active" aria-current="page" data-module="06-cpu-microarchitecture" title="False sharing, dependent chains, store buffers and memory ordering, the AVX-512 downclock, and the cache-line layout that makes an SPSC ring fast." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>6</span><span class="rail-title" data-astro-cid-wv7whodv>CPU microarchitecture</span><span class="rail-tick" data-tick="06-cpu-microarchitecture" aria-hidden="true" data-astro-cid-wv7whodv></span></a><ul class="rail-sub" data-rail-sub data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="#the-core-mental-model" class="rail-sub-link" data-toc="the-core-mental-model" data-astro-cid-wv7whodv>The core mental model</a></li><li data-astro-cid-wv7whodv><a href="#numbers-worth-memorizing" class="rail-sub-link" data-toc="numbers-worth-memorizing" data-astro-cid-wv7whodv>Numbers worth memorizing</a></li><li data-astro-cid-wv7whodv><a href="#critical-thinking" class="rail-sub-link" data-toc="critical-thinking" data-astro-cid-wv7whodv>Critical thinking</a></li><li data-astro-cid-wv7whodv><a href="#self-check" class="rail-sub-link" data-toc="self-check" data-astro-cid-wv7whodv>Self-check</a></li></ul></li><li data-astro-cid-wv7whodv><a href="/refresher/07-off-chip-movement/" class="rail-link" data-module="07-off-chip-movement" title="Posted versus non-posted, why the round trip and not the bandwidth is what kills you, and the rigorous answer to “why not just use a GPU?”" data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>7</span><span class="rail-title" data-astro-cid-wv7whodv>Off-chip data movement</span><span class="rail-tick" data-tick="07-off-chip-movement" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part D</span>Numerics</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/refresher/08-fixed-point/" class="rail-link" data-module="08-fixed-point" title="Q-format as a contract, why truncation bias grows linearly while random error grows as a square root, and how fixed point buys reproducibility for free." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>8</span><span class="rail-title" data-astro-cid-wv7whodv>Fixed-point and rounding</span><span class="rail-tick" data-tick="08-fixed-point" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/refresher/09-nonlinearities/" class="rail-link" data-module="09-nonlinearities" title="LUT, piecewise-linear, minimax polynomial and CORDIC — and why range reduction is the step that makes any of them work." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>9</span><span class="rail-title" data-astro-cid-wv7whodv>Nonlinearities without dividers</span><span class="rail-tick" data-tick="09-nonlinearities" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part E</span>Workloads</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/refresher/10-small-mlps/" class="rail-link" data-module="10-small-mlps" title="When you stop executing the network and start being it. Constant-weight multipliers, adder-tree depth, and the resource budget that co-designs the model." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>10</span><span class="rail-title" data-astro-cid-wv7whodv>Small MLPs at nanosecond scale</span><span class="rail-tick" data-tick="10-small-mlps" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/refresher/11-gbdt-inference/" class="rail-link" data-module="11-gbdt-inference" title="Routing, not arithmetic. Why a depth-6 tree costs three levels rather than six, why feature fetch is the real bottleneck, and why trees beat DNNs at this scale." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>11</span><span class="rail-title" data-astro-cid-wv7whodv>GBDT inference in hardware</span><span class="rail-tick" data-tick="11-gbdt-inference" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/refresher/12-partitioning/" class="rail-link" data-module="12-partitioning" title="Order books, the tick-to-trade budget allocated stage by stage, the fast-path/slow-path contract, and risk checks that must not trust the strategy." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>12</span><span class="rail-title" data-astro-cid-wv7whodv>Hardware/software partitioning and market microstructure</span><span class="rail-tick" data-tick="12-partitioning" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><div class="rail-foot" data-astro-cid-wv7whodv><p data-astro-cid-wv7whodv><kbd data-astro-cid-wv7whodv>j</kbd> <kbd data-astro-cid-wv7whodv>k</kbd> section · <kbd data-astro-cid-wv7whodv>/</kbd> search · <kbd data-astro-cid-wv7whodv>[</kbd><kbd data-astro-cid-wv7whodv>]</kbd> module</p></div></nav></aside><div class="col" data-astro-cid-z4jru4n3><header class="topbar" data-astro-cid-z4jru4n3><button class="icon-btn only-narrow" data-rail-toggle aria-label="Toggle contents" data-astro-cid-z4jru4n3><svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M1.5 3.5h12M1.5 7.5h12M1.5 11.5h12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg></button><p class="crumb" data-astro-cid-z4jru4n3>Part C · Substrate › CPU microarchitecture</p><div class="topbar-actions" data-astro-cid-z4jru4n3><button class="search-btn" data-search-open aria-label="Search" data-astro-cid-z4jru4n3><span aria-hidden="true" data-astro-cid-z4jru4n3>⌕</span><span class="search-btn-label" data-astro-cid-z4jru4n3>Search</span><kbd data-astro-cid-z4jru4n3>/</kbd></button><button class="icon-btn" data-theme-toggle aria-label="Toggle theme" data-astro-cid-z4jru4n3><svg class="i-sun" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><circle cx="7.5" cy="7.5" r="3" stroke="currentColor" stroke-width="1.2" data-astro-cid-z4jru4n3></circle><path d="M7.5 .8v1.7M7.5 12.5v1.7M14.2 7.5h-1.7M2.5 7.5H.8M12.24 2.76l-1.2 1.2M3.96 11.04l-1.2 1.2M12.24 12.24l-1.2-1.2M3.96 3.96l-1.2-1.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg><svg class="i-moon" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M13 9.3A5.8 5.8 0 0 1 5.7 2 5.9 5.9 0 1 0 13 9.3Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" data-astro-cid-z4jru4n3></path></svg></button><a class="site-link" href="/learning.html" data-astro-cid-z4jru4n3>srikanthmalla.com</a></div></header><main id="content" data-astro-cid-z4jru4n3><article class="wrap" data-article data-astro-cid-mhcwui4e><header class="mhead" data-astro-cid-mhcwui4e><p class="mhead-kicker" data-astro-cid-mhcwui4e><span class="mhead-n" data-astro-cid-mhcwui4e>Module 6</span><span class="mhead-dot" data-astro-cid-mhcwui4e>·</span>Part C — Substrate<span class="mhead-dot" data-astro-cid-mhcwui4e>·</span>18 min</p><h1 class="mhead-title" data-astro-cid-mhcwui4e>CPU microarchitecture</h1><p class="mhead-blurb" data-astro-cid-mhcwui4e>False sharing, dependent chains, store buffers and memory ordering, the AVX-512 downclock, and the cache-line layout that makes an SPSC ring fast.</p></header><div class="prose" data-astro-cid-mhcwui4e><h2 id="the-core-mental-model">The core mental model<a class="anchor" href="#the-core-mental-model" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>A modern core is an out-of-order machine that goes to enormous lengths to <em>appear</em> sequential.
+Instructions issue in order, execute whenever their operands are ready, and retire in order, with a
+reorder buffer of 350–512 entries holding the illusion together. Performance is therefore a
+question of whether that window stays full of useful, independent work, and there are exactly three
+ways to fail. You can be <strong>latency-bound</strong>, where a chain of dependent operations means the window
+is full but almost everything in it is waiting. You can be <strong>throughput-bound</strong>, where you have run
+out of some resource — a port, a load buffer, decode bandwidth. Or you can be <strong>flushing</strong>, where
+mispredicted branches and memory-ordering violations throw away work you already did. Those three
+diagnoses need three different fixes, and guessing between them is where most CPU optimisation
+effort is wasted.</p>
+<p>The dependent-chain case has a Little’s Law of its own, and it is the single most useful number in
+this module. An FMA has latency 4 cycles and throughput 2 per cycle, so saturating the units
+requires <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>4</mn><mo>×</mo><mn>2</mn><mo>=</mo><mn>8</mn></mrow><annotation encoding="application/x-tex">4 \times 2 = 8</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.7278em;vertical-align:-0.0833em"></span><span class="mord">4</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">2</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">8</span></span></span></span> independent accumulators in flight. A dot product written with one
+accumulator runs at one FMA per 4 cycles instead of 2 per cycle: <strong>one eighth of peak</strong>, from code
+that looks perfectly reasonable. This is the same shape as needing bytes in flight to saturate HBM,
+one level down.</p>
+<p>Memory is where the surprises live. The 64-byte line is the unit of coherence, so two threads
+writing <em>different variables in the same line</em> ping-pong that line between caches and turn a
+1 ns store into 100 ns — false sharing, invisible in the source, catastrophic in the profile. On
+ordering, x86 is Total Store Order: loads are not reordered with loads, stores are not reordered
+with stores, but <strong>a store can be reordered after a later load</strong>, because stores sit in a store
+buffer. So the only barrier x86 ever needs is StoreLoad, which is why <code>memory_order_release</code> and
+<code>memory_order_acquire</code> compile to plain <code>mov</code> instructions and cost nothing, while
+<code>memory_order_seq_cst</code> on a store compiles to a locked exchange and costs about 20 cycles. Getting
+this straight is what lets you write a single-producer/single-consumer ring with genuinely zero
+synchronisation instructions on the fast path.</p>
+<aside class="callout callout-bridge"><p class="callout-label"><span class="callout-mark" aria-hidden="true"></span>Bridge to what you know<span class="callout-title"> · the GPU mapping is almost one-to-one</span></p><div class="callout-body"><p>Warp divergence is branch misprediction. Coalescing is cache-line efficiency. Occupancy is the
+reorder buffer plus the line-fill buffers. Bank conflicts are cache-set conflicts. The mechanisms
+differ in whether the hardware or the compiler finds the parallelism; the accounting is identical.</p></div></aside>
+<h2 id="numbers-worth-memorizing">Numbers worth memorizing<a class="anchor" href="#numbers-worth-memorizing" aria-hidden="true" tabindex="-1">#</a></h2>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Structure</th><th>Size / cost</th><th>Consequence</th></tr></thead><tbody><tr><td>Cache line</td><td>64 B (prefetch pairs → 128 B)</td><td>false-sharing granularity</td></tr><tr><td>L1d</td><td>32–48 KB, 4–5 cyc</td><td>~1.3 ns</td></tr><tr><td>L2</td><td>1–2 MB, 14–16 cyc</td><td>~5 ns</td></tr><tr><td>L3</td><td>1.5–3 MB/core, 40–60 cyc</td><td>~15–25 ns, shared and therefore noisy</td></tr><tr><td>DRAM</td><td>~80 ns local</td><td>~240 cycles</td></tr><tr><td>Reorder buffer</td><td>350–512 entries</td><td>the out-of-order window</td></tr><tr><td>Line-fill buffers (MSHRs)</td><td><strong>10–16</strong></td><td>caps single-core memory parallelism</td></tr><tr><td>Store buffer</td><td>56–72 entries</td><td>why x86 needs a StoreLoad fence</td></tr><tr><td>dTLB / STLB</td><td>~64–96 / 1536–2048</td><td>~6 MB reach on 4 KB pages</td></tr></tbody></table></div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Operation</th><th>Cost</th><th>Note</th></tr></thead><tbody><tr><td>FMA latency / throughput</td><td>4 cyc / 2 per cyc</td><td><strong>needs 8 accumulators</strong></td></tr><tr><td>Branch mispredict</td><td>15–20 cyc</td><td>≈ pipeline depth</td></tr><tr><td><code>lock</code> op, uncontended</td><td>~20 cyc</td><td>cheap enough to ignore</td></tr><tr><td><code>lock</code> op, contended</td><td>100–300 cyc</td><td>a cache-line transfer</td></tr><tr><td><code>mfence</code></td><td>20–30 cyc</td><td>only StoreLoad needs one on x86</td></tr><tr><td><strong>False sharing</strong></td><td><strong>10–100× slowdown</strong></td><td>the highest-leverage bug in this module</td></tr><tr><td>Store-to-load forward, aligned</td><td>~5 cyc</td><td>fast path</td></tr><tr><td>Store-to-load forward, partial overlap</td><td>+15–20 cyc</td><td>a real and easily-created stall</td></tr><tr><td>Single-core DRAM bandwidth</td><td>8–12 GB/s</td><td>10–16 MSHRs × 64 B / 80 ns</td></tr></tbody></table></div>
+<p>Ordering on x86-TSO, and what each maps to:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>C++ memory order</th><th>x86 instruction</th><th>Cost</th></tr></thead><tbody><tr><td><code>relaxed</code> load / store</td><td><code>mov</code></td><td>free</td></tr><tr><td><code>acquire</code> load</td><td><code>mov</code></td><td>free</td></tr><tr><td><code>release</code> store</td><td><code>mov</code></td><td>free</td></tr><tr><td><code>seq_cst</code> load</td><td><code>mov</code></td><td>free</td></tr><tr><td><code>seq_cst</code> store</td><td><code>xchg</code> (implicit lock)</td><td>~20 cyc</td></tr><tr><td><code>acq_rel</code> RMW</td><td><code>lock</code>-prefixed op</td><td>~20 cyc uncontended</td></tr></tbody></table></div>
+<aside class="callout callout-trap"><p class="callout-label"><span class="callout-mark" aria-hidden="true"></span>Common trap<span class="callout-title"> · padding to 64 bytes fixes false sharing</span></p><div class="callout-body"><p>Mostly. But the L2 adjacent-line prefetcher pulls lines in pairs, so two hot variables in
+<em>neighbouring</em> 64 B lines can still interfere. For the hottest structures — a ring buffer’s head
+and tail — align to <strong>128 B</strong>.</p></div></aside>
+<h2 id="critical-thinking">Critical thinking<a class="anchor" href="#critical-thinking" aria-hidden="true" tabindex="-1">#</a></h2>
+<section class="probe"><h3 class="probe-q">A dot product loop reaches one quarter of peak FLOPs. The assembly looks fine. What is wrong?</h3><div class="probe-a"><p>Almost certainly a single accumulator, making the loop a dependent chain of FMAs. Each FMA must
+wait for the previous one’s result, so you run at one per 4-cycle latency instead of two per cycle
+— one eighth of peak, and a quarter is what you see once the compiler has partially unrolled.</p><p>The fix is <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mtext>latency</mtext><mo>×</mo><mtext>throughput</mtext><mo>=</mo><mn>4</mn><mo>×</mo><mn>2</mn><mo>=</mo><mn>8</mn></mrow><annotation encoding="application/x-tex">\text{latency} \times \text{throughput} = 4 \times 2 = 8</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8889em;vertical-align:-0.1944em"></span><span class="mord text"><span class="mord">latency</span></span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.8889em;vertical-align:-0.1944em"></span><span class="mord text"><span class="mord">throughput</span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.7278em;vertical-align:-0.0833em"></span><span class="mord">4</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">2</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">8</span></span></span></span> independent accumulators,
+summed once at the end. This is Little’s Law applied to the execution engine, and the general form
+is worth carrying: <strong>the number of independent operations you need in flight is the product of an
+operation’s latency and its throughput.</strong> It is the same reasoning that produced “80 sectors per
+SM” in Module 1 and “8 to 16 warps is not enough” in Module 3.</p><p>Two caveats that matter in practice. Compilers will not do this for you in floating point without
+<code>-ffast-math</code> or an explicit <code>#pragma omp simd reduction</code>, because reassociating a float sum
+changes the result (Module 8) and the compiler is not permitted to change your answer. And if the
+data does not fit in cache, none of this helps — you are then bound by the 10–16 line-fill buffers,
+which cap a single core at 8–12 GB/s no matter how many accumulators you have.</p></div></section>
+<section class="probe"><h3 class="probe-q">Write the minimum synchronization for an SPSC ring on x86, and name the three things that make it slow anyway.</h3><div class="probe-a"><p>Synchronisation first, and there is essentially none. The producer writes the payload, then
+publishes with a <strong>release</strong> store to the write index. The consumer reads the write index with an
+<strong>acquire</strong> load, then reads the payload. On x86-TSO both compile to plain <code>mov</code>: no fences, no
+locked instructions. The release ordering guarantees the payload writes are visible before the
+index update, which is the only invariant the algorithm needs.</p><p>The three things that make it slow anyway are all about layout and traffic:</p><ol>
+<li><strong>Head and tail on the same cache line.</strong> The producer writes one, the consumer writes the
+other, and they ping-pong a shared line on every single operation. This alone can cost 100×.
+Separate them by 128 B (adjacent-line prefetch, above).</li>
+<li><strong>Reading the other side’s index every iteration.</strong> Even correctly padded, each read of the
+consumer’s index pulls a line the consumer keeps dirtying. Cache a local copy of the far index
+and only refresh it when the local view says the ring is full or empty — typically cutting
+coherence traffic by the batch size.</li>
+<li><strong>A non-power-of-two capacity.</strong> Wraparound then needs a modulo (20+ cycles) rather than a mask
+(1 cycle). Always size to a power of two.</li>
+</ol><p>Worth stating explicitly: none of this generalises. The absence of atomics is a property of
+<em>single</em> producer and <em>single</em> consumer. Add a second producer and you need a real RMW, and the
+whole cost structure changes.</p></div></section>
+<section class="probe"><h3 class="probe-q">Why does AVX-512 sometimes make a program slower?</h3><div class="probe-a"><p>Four mechanisms, and the first is the notorious one.</p><ul>
+<li><strong>Frequency licensing.</strong> On Skylake-SP-era Intel server parts, sustained heavy 512-bit operations
+(FP and integer multiply) drop the core into a lower frequency licence — up to roughly 40% below
+base — and the <em>transition</em> costs tens of microseconds. Worse, the licence applies to the whole
+core, so a brief burst of AVX-512 slows down all the scalar code around it. Ice Lake and later
+reduced this considerably, and AMD’s Zen 4/5 implementation avoids most of it, but on the wrong
+part it is decisive.</li>
+<li><strong>You are memory-bound.</strong> Wider vectors do not move more bytes if you are already limited by
+bandwidth or by the 10–16 line-fill buffers. You keep the downclock and gain nothing.</li>
+<li><strong>Register pressure and spills.</strong> Thirty-two 512-bit registers sound generous until the compiler
+starts spilling 64-byte values.</li>
+<li><strong>Alignment and line splits.</strong> A 64-byte load spans an entire line, so any misalignment splits
+across two lines every time rather than occasionally.</li>
+</ul><p>Practical rule: use 256-bit for mixed or latency-sensitive code, and 512-bit only for long,
+compute-dense loops where you have measured both the throughput gain and the actual achieved
+frequency. And measure frequency, not just time — a change that looks neutral may be a real
+speedup masked by a downclock, or vice versa.</p></div></section>
+<section class="probe"><h3 class="probe-q">You add a mutex around a 5 ns operation and throughput collapses. Quantify it.</h3><div class="probe-a"><p>The lock has become the operation, by more than an order of magnitude.</p><p>Uncontended, <code>lock</code>-prefixed instructions cost about 20 cycles each, and a lock/unlock pair is two
+of them plus the surrounding code: call it 40–60 cycles, roughly 15–20 ns against a 5 ns payload.
+You have quadrupled the cost before any contention at all.</p><p>Contended is where it collapses. The lock line must transfer between caches — 100–300 cycles — and
+if the lock is held when you arrive, <code>pthread_mutex</code> will eventually make a <code>futex</code> syscall and
+park the thread. That is a context switch: 1–5 µs direct plus tens of microseconds of cache and TLB
+damage afterwards. Against a 5 ns operation you are now three to four orders of magnitude out, and
+the operation is serialised on top.</p><p>The correct shapes, in order of preference: give each thread its own data and never share; hand off
+through an SPSC ring (previous probe) so there is no mutual exclusion at all; use a seqlock if the
+data is read-mostly and readers can retry; and only then reach for a lock, keeping the critical
+section large enough that 40 cycles of overhead is amortised — which for a 5 ns operation means
+batching thousands of them.</p></div></section>
+<section class="probe"><h3 class="probe-q">Branchless code is slower on your benchmark. Why might you ship it anyway?</h3><div class="probe-a"><p>Because you may be buying determinism rather than speed, and Part B established that those are
+different objectives.</p><p>A predictable branch costs about 1–2 cycles; a <code>cmov</code> or arithmetic mask costs a fixed 1–3 cycles
+and cannot be predicted away. So on predictable data, branchless loses — that is what your
+benchmark measured. On <em>unpredictable</em> data the branch costs 15–20 cycles roughly half the time,
+about 8–10 cycles on average, and branchless wins outright.</p><p>The decisive point for a latency path is the distribution rather than the mean. A branch gives you
+a bimodal 1-cycle/20-cycle result whose mixture depends on the input data; branchless gives a
+constant. If you are defending a p99, you will take a slower deterministic path over a faster
+bimodal one, because the tail is what the deadline is written against. And in a decision tree
+(Module 11) the branches are unpredictable <em>by construction</em> — a predictable split carries no
+information — so branchless is both faster and more deterministic there.</p><p>The general framing: benchmarks report means on whatever data you fed them. Ask what the branch
+predictor’s accuracy will be on <em>production</em> data, and whether you are optimising the mean or the
+tail, before believing the result.</p></div></section>
+<h2 id="self-check">Self-check<a class="anchor" href="#self-check" aria-hidden="true" tabindex="-1">#</a></h2>
+<details class="selfcheck"><summary><span class="selfcheck-q">How many independent accumulators does an FMA-bound loop need, and why exactly that many?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Eight. The requirement is <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mtext>latency</mtext><mo>×</mo><mtext>throughput</mtext><mo>=</mo><mn>4</mn><mtext> cyc</mtext><mo>×</mo><mn>2</mn><mtext> per cyc</mtext></mrow><annotation encoding="application/x-tex">\text{latency} \times \text{throughput} = 4 \text{ cyc} \times 2
+\text{ per cyc}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8889em;vertical-align:-0.1944em"></span><span class="mord text"><span class="mord">latency</span></span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.8889em;vertical-align:-0.1944em"></span><span class="mord text"><span class="mord">throughput</span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.8389em;vertical-align:-0.1944em"></span><span class="mord">4</span><span class="mord text"><span class="mord"> cyc</span></span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.8389em;vertical-align:-0.1944em"></span><span class="mord">2</span><span class="mord text"><span class="mord"> per cyc</span></span></span></span></span> — Little’s Law applied to a functional unit. With one accumulator the loop is a
+dependent chain running at one FMA per 4 cycles, an eighth of peak. Note the compiler will not
+introduce them for floating point without explicit permission, because reassociation changes the
+result.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">State the x86-TSO reordering rule and say which C++ memory orders are therefore free.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Loads are not reordered with loads, stores are not reordered with stores, but a store may be
+reordered <em>after</em> a later load, because stores retire through a store buffer. Only <strong>StoreLoad</strong>
+needs a barrier. So <code>relaxed</code>, <code>acquire</code>, <code>release</code> and even <code>seq_cst</code> <em>loads</em> compile to plain
+<code>mov</code> and are free; a <code>seq_cst</code> <strong>store</strong> compiles to a locked exchange at about 20 cycles, and
+read-modify-write operations cost a <code>lock</code> prefix.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Why can a single CPU core not saturate its socket's memory bandwidth?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Because it has only 10–16 line-fill buffers, capping outstanding misses. At 64 B each over an 80 ns
+latency that is 8–12 GB/s against a socket’s 200–400 GB/s. The limit is memory-level parallelism,
+not bandwidth, which is why the fixes are more independent streams, prefetching, and multiple
+cores — not a faster memory part.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Name the three things that make a correctly-synchronized SPSC ring slow, in order of cost.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Head and tail sharing a cache line, so every operation ping-pongs it between cores (up to 100×);
+reading the far index every iteration, which pulls a line the other side keeps dirtying (fixed by
+caching it locally and refreshing only on apparent full/empty); and a non-power-of-two capacity,
+forcing a 20-cycle modulo where a 1-cycle mask would do. Pad to 128 B rather than 64, because the
+adjacent-line prefetcher works in pairs.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Give two reasons AVX-512 can be a net loss, one about frequency and one about memory.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Frequency licensing: sustained heavy 512-bit operations drop the core’s clock — historically up to
+~40% on Skylake-SP — with a transition costing tens of microseconds, and the penalty applies to all
+code on that core, including the scalar code around the vectorised loop. Memory: if the loop is
+already bandwidth- or MSHR-limited, wider vectors move no additional bytes per unit time, so you
+keep the downclock and gain nothing.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">When is a branchless implementation the right choice despite being slower on your benchmark?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>When the branch will be unpredictable on production data, and when you are defending a tail rather
+than a mean. A branch is bimodal — 1–2 cycles predicted, 15–20 mispredicted — while branchless is a
+constant 1–3. Benchmarks on predictable data flatter the branch; decision trees, where a
+predictable split would carry no information, are the canonical case where branchless wins on both
+counts.</p></div></details></div><footer class="mfoot" data-astro-cid-mhcwui4e><button class="mark" data-mark="06-cpu-microarchitecture" aria-pressed="false" data-astro-cid-mhcwui4e>Mark as reviewed</button><nav class="pager" data-astro-cid-mhcwui4e><a class="pager-link" href="/refresher/05-tail-latency/" data-prev data-astro-cid-mhcwui4e><span class="pager-dir" data-astro-cid-mhcwui4e>← Previous</span><span class="pager-title" data-astro-cid-mhcwui4e>5. Tail latency and determinism</span></a><a class="pager-link is-next" href="/refresher/07-off-chip-movement/" data-next data-astro-cid-mhcwui4e><span class="pager-dir" data-astro-cid-mhcwui4e>Next →</span><span class="pager-title" data-astro-cid-mhcwui4e>7. Off-chip data movement</span></a></nav></footer></article></main></div></div><div class="search-overlay" data-search hidden data-astro-cid-ac66eqjo><div class="search-backdrop" data-search-close data-astro-cid-ac66eqjo></div><div class="search-panel" role="dialog" aria-modal="true" aria-label="Search modules" data-astro-cid-ac66eqjo><div class="search-input-row" data-astro-cid-ac66eqjo><span class="search-icon" aria-hidden="true" data-astro-cid-ac66eqjo>⌕</span><input type="text" class="search-input" placeholder="Search all modules…" autocomplete="off" spellcheck="false" data-search-input data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>esc</kbd></div><ul class="search-results" data-search-results data-astro-cid-ac66eqjo></ul><p class="search-empty" data-search-empty hidden data-astro-cid-ac66eqjo>No matches.</p><p class="search-hint" data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>↑</kbd><kbd data-astro-cid-ac66eqjo>↓</kbd> move · <kbd data-astro-cid-ac66eqjo>↵</kbd> open</p></div></div><script>(function(){const indexUrl = "/refresher/search.json";
 
   (() => {
     const overlay = document.querySelector('[data-search]');

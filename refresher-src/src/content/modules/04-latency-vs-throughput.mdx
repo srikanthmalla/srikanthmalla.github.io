@@ -1,27 +1,266 @@
 ---
 n: 4
-title: "Latency versus throughput as a design axis"
-blurb: "Where batching, occupancy and amortization stop being virtues and become liabilities. Spending 10× area to save 50 ns."
-part: "B"
-draft: true
+title: 'Latency versus throughput as a design axis'
+blurb: 'Where batching, occupancy and amortization stop being virtues. Why high utilization is a defect, and why a barrier samples the tail.'
+part: 'B'
 minutes: 15
-tags: ["latency","throughput","unrolling","critical path","batch size 1"]
+draft: false
+tags:
+  ['latency', 'throughput', 'unrolling', 'critical path', 'batch size 1', 'queueing', 'utilization', 'amortization']
 ---
 
 import Callout from '../../components/Callout.astro';
+import Probe from '../../components/Probe.astro';
+import SelfCheck from '../../components/SelfCheck.astro';
 
-## Planned coverage
+## The core mental model
 
-Not written yet. This module will cover:
+Throughput engineering is the art of amortising fixed costs over many items. Batching amortises
+setup, pipelining amortises depth, tiling amortises fetches, occupancy amortises latency, caches
+amortise misses, JIT amortises compilation. Every one of these techniques either **adds latency to
+an individual item** or **requires several items to be in flight**. When the item count is pinned
+at one and there is a deadline, the entire toolbox inverts: each technique becomes a cost with no
+corresponding benefit. This is not a matter of degree. Batching at batch 1 is not "slightly less
+useful", it is a pure loss of the amortisation you were counting on, and the design has to be
+rebuilt around a different objective.
 
-- The inversion: every throughput technique that adds a stage adds latency
-- Full spatial unrolling versus temporal resource reuse, and what each costs in area
-- Why trading 10× area for 50 ns is rational, and how to know when it stops being
-- Critical-path depth as the objective function, replacing bytes-over-bandwidth
-- Designing for batch size 1 forever
+That objective is **the depth of the critical path**: the longest chain of dependent operations
+from input arriving to output leaving, measured in time. Not FLOPs, not bytes, not utilisation.
+Once you accept it, some conclusions follow that look wrong from a throughput seat. Spending 10×
+the area to save 50 ns is rational, because area is cheap and the deadline is not — a temporal
+design that reuses one multiplier $N$ times has latency $N \cdot t_{\text{mac}}$, while a spatial
+design that instantiates $N$ multipliers has latency $t_{\text{mac}} + \lceil \log_2 N \rceil$
+levels of adder tree. For $N = 64$ that is 64 sequential steps against about 7, purchased with 63
+extra multipliers. In a throughput design that trade is obviously bad. Here it is obviously good.
 
-<Callout type="bridge" title="structure">
-  Every module follows the same four beats: the core mental model, the numbers worth
-  memorizing, a critical-thinking section that pushes on the model until it breaks, and
-  self-checks with the answers hidden. Module 1 is the reference for tone and density.
+The sharpest inversion is **utilisation**. Queueing theory gives waiting time growing like
+$1/(1-\rho)$, so a server at 50% utilisation has twice its service time in latency, at 80% five
+times, at 95% twenty times. High utilisation is what you want when you are selling compute and the
+worst thing you can do when you are meeting a deadline. A fast path should idle most of the time,
+on purpose, and the idleness is not waste — it is the headroom that keeps the tail bounded when a
+burst arrives. The related trap is that **a barrier's latency is the maximum over its
+participants**, so splitting work across $N$ units and joining converts one sample from the latency
+distribution into the max of $N$ samples. Parallelism deliberately samples the tail. That is fine
+when you are optimising a mean and actively harmful when you are defending a p99.
+
+<Callout type="bridge" title="you have already lived this">
+  Prefill and decode are the two regimes of this axis inside one model. Prefill is a throughput
+  problem you batch and tile; decode at batch 1 is a latency problem where every one of those moves
+  is unavailable. The tuning advice for the two phases contradicts itself for exactly this reason.
 </Callout>
+
+<Callout type="trap" title="optimise the average">
+  Nobody experiences the average, and many mean-improving mechanisms make the tail worse by
+  construction: caches create a cold/warm bimodality, adaptive algorithms create input-dependent
+  paths, branch predictors create a fast case and a 20-cycle slow one. Improving the mean by adding
+  a fast path *always* widens the distribution.
+</Callout>
+
+## Numbers worth memorizing
+
+Queueing, for a single server with random arrivals. $S$ is service time, $\rho$ utilisation:
+
+| Utilisation $\rho$ | Latency $\approx S/(1-\rho)$ | Reading                       |
+| ------------------ | ---------------------------- | ----------------------------- |
+| 0.3                | 1.4 $S$                      | the design point for a fast path |
+| 0.5                | 2 $S$                        | already doubling              |
+| 0.8                | 5 $S$                        | visible in every percentile   |
+| 0.95               | 20 $S$                       | the system is a queue with a CPU attached |
+
+Spatial versus temporal, summing $N$ values:
+
+| Design                | Latency                        | Area        | $N = 64$          |
+| --------------------- | ------------------------------ | ----------- | ----------------- |
+| One adder, reused     | $N$ steps                      | 1 adder     | 64 steps          |
+| Adder tree            | $\lceil \log_2 N \rceil$ levels | $N-1$ adders | 6 levels, 63 adders |
+| Ratio                 | $N / \log_2 N$                 | $N-1$×      | ~10× faster, 63× area |
+
+Fixed overheads that set the floor, regardless of how fast your compute is:
+
+| Overhead                        | Cost         | Consequence                          |
+| ------------------------------- | ------------ | ------------------------------------ |
+| CUDA kernel launch              | 3–5 µs       | alone exceeds most HFT budgets       |
+| CUDA graph launch               | 1–2 µs       | better, still fatal at 1 µs          |
+| PCIe round trip                 | 1–2 µs       | Module 7                             |
+| C-state C6 exit                 | 50–100 µs    | Module 5                             |
+| CPU function call               | ~1 ns        | free at this scale                   |
+| FPGA "launch"                   | 0            | there is no launch                   |
+
+Clock periods, for converting depth into time:
+
+| Device      | Clock        | Period    | 20 pipeline stages |
+| ----------- | ------------ | --------- | ------------------ |
+| FPGA        | 200–500 MHz  | 2–5 ns    | 40–100 ns          |
+| ASIC        | 1–3 GHz      | 0.3–1 ns  | 7–20 ns            |
+| Server CPU  | ~3 GHz       | ~0.33 ns  | ~7 ns              |
+
+## Critical thinking
+
+<Probe q="Why is running a fast path at 95% utilization a defect rather than an efficiency?">
+
+Because waiting time grows like $1/(1-\rho)$ and the derivative is brutal near 1. At $\rho = 0.95$
+a request waits roughly twenty service times; the same system at $\rho = 0.3$ waits 0.4. You have
+not gained 3× the work, you have given up an order of magnitude of latency.
+
+Three further reasons, all of which matter more than the arithmetic:
+
+- **Arrivals are bursty.** Market data arrives in microbursts at the open, on news, and on any
+  large trade. Sizing for mean load means the burst finds you with no headroom, and the queue
+  builds exactly when the information is most valuable.
+- **Variance rises faster than the mean.** The waiting-time *distribution* widens with $\rho$ even
+  faster than its mean does, so p99 degrades before p50 shows anything. By the time your average
+  looks bad the tail has been unusable for a while.
+- **Recovery is not linear.** A queue that builds during a burst drains at the difference between
+  service and arrival rate, so a one-second burst at $\rho = 0.95$ can take many seconds to clear,
+  during which every request is late.
+
+The design rule that falls out: size the fast path so that $\rho \le 0.3$ at *peak*, not at mean,
+and treat the idle capacity as the product rather than as waste.
+
+</Probe>
+
+<Probe q="When is spending 10× the area to save 50 ns the wrong call?">
+
+Four conditions, and it is worth being able to name them because "spend area for latency" becomes
+a reflex that needs a brake.
+
+1. **When 50 ns is below your jitter floor.** If p99 minus p50 is 500 ns, shaving 50 ns off the
+   mean is invisible to anything that matters. Fix the variance first; a deterministic 400 ns beats
+   a 350 ns mean with a 900 ns tail.
+2. **When it pushes you across a physical boundary.** Ten times the area may not fit on the die or
+   the FPGA, and crossing to a second chip costs far more than 50 ns in SerDes and protocol. The
+   trade is only valid while you stay inside the same package.
+3. **When it breaks timing closure.** A wider, more parallel structure has more fanout and longer
+   routes, so $T_{\text{clk}}$ can rise enough that $\text{depth} \times T_{\text{clk}}$ gets worse
+   despite fewer stages. Module 3's product, again.
+4. **When the 50 ns has no economic value.** If you are already faster than the opportunity
+   requires — the quote you are racing for updates every 10 µs — the saved time earns nothing, and
+   the area and power are pure cost. Latency is a constraint to satisfy, not a quantity to
+   maximise, and knowing where the constraint stops binding is most of the skill.
+
+</Probe>
+
+<Probe q="Requests are already queued up, so batching them costs nothing. Where is the error?">
+
+The error is in "already queued". If a queue has genuinely formed, you are running at high
+$\rho$ and every latency number is already inflated — you are in the regime the previous probe
+described, and batching is the smaller of your problems.
+
+But even granting a full queue, batching still costs. Take a batch of $B$ served together in
+$T(B) = T_0 + B t$. The *last* request in the batch experiences $T_0 + Bt$; the *first* one
+experiences that too, because it waits for the batch to be assembled and processed as a unit. Per
+item you have improved throughput from $1/(T_0+t)$ to $B/(T_0+Bt)$ and worsened the latency of
+every member. Continuous or in-flight batching removes the assembly wait but not the fact that a
+request now shares its service with $B-1$ others.
+
+The tail is where it shows up worst. p99 is populated by requests that arrive just after a batch
+closes and must wait for the next one. So batching compresses the mean and stretches the tail,
+which is precisely the wrong direction for a deadline and precisely the right one for a serving
+cluster billed on tokens per dollar. Both are correct engineering; they are answers to different
+questions.
+
+</Probe>
+
+<Probe q="You are told to “just use more threads” to hit a latency target.">
+
+More threads raises throughput. For the latency of a *single* request it usually does harm, and
+the mechanisms are worth having ready:
+
+- **A join is a max.** Splitting one request across $N$ threads and joining makes its latency the
+  maximum of $N$ samples from the per-thread latency distribution. If each thread has a 1% chance
+  of a 50 µs excursion, eight threads give you a 7.7% chance. **Parallelism converts a mean into a
+  tail sample.**
+- **Synchronisation lands on the critical path.** The barrier, the atomic, the cache line carrying
+  the completion flag — all of it is new dependent work that did not exist in the serial version.
+- **Shared resources become contended.** More threads means more cache pressure, more TLB pressure,
+  more memory-controller contention, and on a CPU, more scheduler involvement, which is a
+  jitter source in its own right (Module 5).
+- **The critical path may not be divisible at all.** A dependent chain — parse, then update the
+  book, then compute features, then evaluate — has no parallelism to exploit. Threads help across
+  *independent* requests, which is throughput.
+
+The shape of the correct answer is often the opposite: one thread, pinned to an isolated core,
+spinning, owning its data, never synchronising with anything on the fast path.
+
+</Probe>
+
+<Probe q="Roofline is gone. What equation replaces it?">
+
+$$
+T = \sum_{i \in \text{critical path}} d_i \cdot T_{\text{clk}} \;+\; \sum \text{fixed overheads}
+$$
+
+subject to area and power budgets, and with the *worst case* rather than the mean on the left.
+
+Four levers, in the order they usually pay:
+
+1. **Remove fixed overheads.** These do not shrink with cleverness and they often dominate: a
+   kernel launch, a PCIe crossing, a syscall, a C-state exit. Removing one is worth more than any
+   amount of tuning inside the compute.
+2. **Shorten the longest chain.** Adder trees instead of accumulation, carry-save instead of
+   ripple, speculation instead of branching.
+3. **Move work off the path.** Precompute anything not dependent on the input; defer anything the
+   output does not need.
+4. **Reduce $T_{\text{clk}}$ only if depth does not grow to compensate.**
+
+The corresponding version of Amdahl's law is the useful discipline: if the irreducible wire and bus
+time is 1.5 µs, driving compute to zero still leaves 1.5 µs, and effort spent below that floor is
+wasted no matter how good the engineering is.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="Give the latency multiplier at 50%, 80% and 95% utilization, and say what design point follows.">
+
+Roughly $1/(1-\rho)$: **2×, 5×, 20×** the service time. The fast path should be sized so that
+$\rho \le 0.3$ at *peak* load, giving about 1.4×. The idle capacity is the mechanism that keeps the
+tail bounded through bursts, so it is the deliverable rather than the waste.
+
+</SelfCheck>
+
+<SelfCheck q="Compare temporal and spatial designs for summing 64 values, in latency and area.">
+
+Temporal: one adder reused, 64 sequential steps, area 1. Spatial: an adder tree of depth
+$\lceil \log_2 64 \rceil = 6$, area 63 adders. About 10× the speed for 63× the area — a terrible
+trade for throughput, an obvious one against a deadline, and the general ratio is
+$N/\log_2 N$ speedup for $N-1$ units.
+
+</SelfCheck>
+
+<SelfCheck q="Why does splitting a single request across 8 threads often make its p99 worse?">
+
+Because the join is a maximum over the eight per-thread latencies, so the request now samples the
+tail of that distribution eight times and takes the worst. With a 1% chance of an excursion per
+thread, the request has a $1 - 0.99^8 \approx 7.7\%$ chance of hitting one. Synchronisation also
+adds dependent work to the critical path, and the extra threads contend for caches, TLB and memory
+bandwidth.
+
+</SelfCheck>
+
+<SelfCheck q="Name three fixed overheads that alone exceed a 1 µs budget.">
+
+A CUDA kernel launch at 3–5 µs (1–2 µs with graphs), a PCIe round trip at 1–2 µs, and a C6
+C-state exit at 50–100 µs. Each is a constant that no amount of compute optimisation touches, which
+is why the first move in a latency design is removing them rather than tuning around them.
+
+</SelfCheck>
+
+<SelfCheck q="State the objective function that replaces the roofline, and its Amdahl-style corollary.">
+
+$T = \sum d_i T_{\text{clk}} + \sum \text{fixed overheads}$, evaluated at the worst case and
+subject to area and power. The corollary: irreducible overheads set a floor, so if the wire and bus
+cost 1.5 µs, reducing compute to zero still leaves 1.5 µs and further compute optimisation has zero
+value.
+
+</SelfCheck>
+
+<SelfCheck q="Why does improving the mean frequently worsen the tail?">
+
+Because most mean-improving mechanisms work by adding a fast case, and a fast case implies a slow
+case: caches give hits and misses, branch predictors give predicted and mispredicted, adaptive
+algorithms give easy and hard inputs, JIT gives warm and cold. Each widens the distribution while
+lowering its centre. A deadline is a statement about the right tail, so the two objectives are
+genuinely in tension rather than merely differently weighted.
+
+</SelfCheck>
