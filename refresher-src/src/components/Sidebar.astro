@@ -1,0 +1,278 @@
+---
+import { modulesByPart } from '../lib/parts';
+import type { MarkdownHeading } from 'astro';
+
+interface Props {
+  /** id of the module currently being read, if any */
+  current?: string;
+  /** h2/h3 headings of the current module, nested under it in the rail */
+  headings?: MarkdownHeading[];
+}
+
+const { current, headings = [] } = Astro.props;
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const parts = await modulesByPart();
+const total = parts.reduce((n, p) => n + p.modules.length, 0);
+
+// Only h2s in the rail. h3s make it noisy at this width.
+const railHeadings = headings.filter((h) => h.depth === 2);
+---
+
+<nav class="rail-nav" aria-label="Modules">
+  <div class="rail-head">
+    <a href={`${base}/`} class="rail-home">
+      <span class="rail-home-title">Refresher</span>
+      <span class="rail-home-sub">ML hardware &amp; low-latency systems</span>
+    </a>
+    <p class="rail-progress">
+      <span class="rail-progress-bar"><span data-progress-fill></span></span>
+      <span class="rail-progress-text">
+        <span data-progress-count>0</span>/{total} reviewed
+      </span>
+    </p>
+  </div>
+
+  {
+    parts.map((part) => (
+      <section class="rail-part">
+        <h2 class="rail-part-title">
+          <span class="rail-part-letter">Part {part.id}</span>
+          {part.title}
+        </h2>
+        <ul class="rail-list">
+          {part.modules.map((m) => {
+            const active = m.id === current;
+            return (
+              <li>
+                <a
+                  href={`${base}/${m.id}/`}
+                  class:list={['rail-link', { 'is-active': active, 'is-draft': m.data.draft }]}
+                  aria-current={active ? 'page' : undefined}
+                  data-module={m.id}
+                  title={m.data.blurb}
+                >
+                  <span class="rail-n">{m.data.n}</span>
+                  <span class="rail-title">{m.data.title}</span>
+                  <span class="rail-tick" data-tick={m.id} aria-hidden="true" />
+                </a>
+                {active && railHeadings.length > 0 && (
+                  <ul class="rail-sub" data-rail-sub>
+                    {railHeadings.map((h) => (
+                      <li>
+                        <a href={`#${h.slug}`} class="rail-sub-link" data-toc={h.slug}>
+                          {h.text}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+    ))
+  }
+
+  <div class="rail-foot">
+    <p>
+      <kbd>j</kbd> <kbd>k</kbd> section · <kbd>/</kbd> search · <kbd>[</kbd>
+      <kbd>]</kbd> module
+    </p>
+  </div>
+</nav>
+
+<style>
+  .rail-nav {
+    padding: 1.5rem 0.85rem 3rem 1.5rem;
+    font-family: var(--font-sans);
+  }
+
+  .rail-head {
+    padding-inline-start: 0.15rem;
+    margin-block-end: 2rem;
+  }
+
+  .rail-home {
+    display: block;
+    text-decoration: none;
+  }
+
+  .rail-home-title {
+    display: block;
+    font-size: 0.9375rem;
+    font-weight: 640;
+    letter-spacing: -0.012em;
+    color: var(--ink-strong);
+  }
+
+  .rail-home-sub {
+    display: block;
+    font-size: 0.6875rem;
+    color: var(--ink-faint);
+    letter-spacing: 0.01em;
+    margin-block-start: 0.1rem;
+  }
+
+  .rail-progress {
+    margin: 0.85rem 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .rail-progress-bar {
+    display: block;
+    height: 2px;
+    background: var(--rule);
+    border-radius: 1px;
+    overflow: hidden;
+  }
+
+  .rail-progress-bar > span {
+    display: block;
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    transition: width 0.2s ease-out;
+  }
+
+  .rail-progress-text {
+    font-size: 0.6875rem;
+    color: var(--ink-faint);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .rail-part + .rail-part {
+    margin-block-start: 1.5rem;
+  }
+
+  .rail-part-title {
+    display: flex;
+    align-items: baseline;
+    gap: 0.45rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-muted);
+    margin: 0 0 0.5rem;
+    padding-inline-start: 0.15rem;
+  }
+
+  .rail-part-letter {
+    color: var(--accent);
+    opacity: 0.85;
+  }
+
+  .rail-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .rail-link {
+    display: grid;
+    grid-template-columns: 1.35rem 1fr auto;
+    align-items: baseline;
+    gap: 0.1rem;
+    padding: 0.3rem 0.5rem 0.3rem 0.15rem;
+    border-radius: 4px;
+    text-decoration: none;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    color: var(--ink-muted);
+    border-inline-start: 2px solid transparent;
+  }
+
+  .rail-link:hover {
+    color: var(--ink-strong);
+    background: var(--bg-raised);
+  }
+
+  .rail-link.is-active {
+    color: var(--ink-strong);
+    font-weight: 600;
+    border-inline-start-color: var(--accent);
+    background: var(--bg-raised);
+  }
+
+  .rail-link.is-draft {
+    color: var(--ink-faint);
+  }
+
+  .rail-link.is-draft .rail-title::after {
+    content: 'soon';
+    font-size: 0.5625rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 0 0.25rem;
+    margin-inline-start: 0.4rem;
+    vertical-align: 0.1em;
+    white-space: nowrap;
+  }
+
+  .rail-n {
+    font-size: 0.6875rem;
+    color: var(--ink-faint);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .rail-link.is-active .rail-n {
+    color: var(--accent);
+  }
+
+  .rail-tick {
+    width: 0.75rem;
+    text-align: end;
+    font-size: 0.6875rem;
+    color: var(--bridge);
+  }
+
+  .rail-tick[data-read]::before {
+    content: '✓';
+  }
+
+  .rail-sub {
+    list-style: none;
+    margin: 0.15rem 0 0.5rem;
+    padding: 0 0 0 1.6rem;
+    border-inline-start: 1px solid var(--rule);
+    margin-inline-start: 0.6rem;
+  }
+
+  .rail-sub-link {
+    display: block;
+    padding: 0.22rem 0.4rem;
+    font-size: 0.75rem;
+    line-height: 1.35;
+    color: var(--ink-faint);
+    text-decoration: none;
+    border-radius: 3px;
+  }
+
+  .rail-sub-link:hover {
+    color: var(--ink-strong);
+    background: var(--bg-raised);
+  }
+
+  .rail-sub-link.is-current {
+    color: var(--accent);
+  }
+
+  .rail-foot {
+    margin-block-start: 2rem;
+    padding-block-start: 1rem;
+    padding-inline-start: 0.15rem;
+    border-block-start: 1px solid var(--rule-soft);
+  }
+
+  .rail-foot p {
+    margin: 0;
+    font-size: 0.6875rem;
+    color: var(--ink-faint);
+    line-height: 2;
+  }
+</style>

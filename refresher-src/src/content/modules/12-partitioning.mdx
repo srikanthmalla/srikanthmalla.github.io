@@ -1,0 +1,28 @@
+---
+n: 12
+title: "Hardware/software partitioning and market microstructure"
+blurb: "Order book mechanics, the tick-to-trade budget, the fast-path/slow-path split, and risk checks in silicon. The synthesis module."
+part: "E"
+draft: true
+minutes: 15
+tags: ["order book","market data","tick to trade","fast path","risk checks","FPGA"]
+---
+
+import Callout from '../../components/Callout.astro';
+
+## Planned coverage
+
+Not written yet. This module will cover:
+
+- Order book mechanics and the data structure the latency budget forces on you
+- Market data parsing: the wire formats and where the parse cost hides
+- The tick-to-trade budget, allocated stage by stage
+- What belongs on silicon and what belongs on the host, decided by a rule rather than taste
+- The fast-path/slow-path split and how the slow path stays correct
+- Risk checks in hardware: the ones you cannot skip and what they cost
+
+<Callout type="bridge" title="structure">
+  Every module follows the same four beats: the core mental model, the numbers worth
+  memorizing, a critical-thinking section that pushes on the model until it breaks, and
+  self-checks with the answers hidden. Module 1 is the reference for tone and density.
+</Callout>

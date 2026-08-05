@@ -1,0 +1,102 @@
+---
+/**
+ * Three flavours, per the brief:
+ *   probe  — a question worth sitting with; the sharp edge of the topic
+ *   trap   — the plausible-but-wrong answer people reach for
+ *   bridge — "you already know this, here is its other name"
+ */
+interface Props {
+  type?: 'probe' | 'trap' | 'bridge';
+  title?: string;
+}
+
+const { type = 'probe', title } = Astro.props;
+
+const META = {
+  probe: { label: 'Critical probe', tone: 'probe' },
+  trap: { label: 'Common trap', tone: 'trap' },
+  bridge: { label: 'Bridge to what you know', tone: 'bridge' },
+} as const;
+
+const meta = META[type];
+---
+
+<aside class={`callout callout-${type}`}>
+  <p class="callout-label">
+    <span class="callout-mark" aria-hidden="true"></span>
+    {meta.label}{title ? <span class="callout-title"> · {title}</span> : null}
+  </p>
+  <div class="callout-body"><slot /></div>
+</aside>
+
+<style is:global>
+  .callout {
+    margin-block: 1.75rem;
+    padding: 0.9rem 1.1rem 1rem;
+    border: 1px solid var(--rule);
+    border-inline-start-width: 2px;
+    border-radius: 5px;
+    font-size: 0.9375rem;
+    line-height: 1.65;
+  }
+
+  .callout-probe {
+    border-inline-start-color: var(--probe);
+    background: var(--probe-bg);
+  }
+  .callout-trap {
+    border-inline-start-color: var(--trap);
+    background: var(--trap-bg);
+  }
+  .callout-bridge {
+    border-inline-start-color: var(--bridge);
+    background: var(--bridge-bg);
+  }
+
+  .callout-label {
+    font-family: var(--font-sans);
+    font-size: 0.6875rem;
+    font-weight: 620;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin: 0 0 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+  }
+
+  .callout-probe .callout-label {
+    color: var(--probe);
+  }
+  .callout-trap .callout-label {
+    color: var(--trap);
+  }
+  .callout-bridge .callout-label {
+    color: var(--bridge);
+  }
+
+  .callout-mark {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+    flex: none;
+  }
+
+  .callout-title {
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 500;
+    color: var(--ink-muted);
+  }
+
+  .callout-body > :first-child {
+    margin-block-start: 0;
+  }
+  .callout-body > :last-child {
+    margin-block-end: 0;
+  }
+  .callout-body > * + * {
+    margin-block-start: 0.75em;
+  }
+</style>

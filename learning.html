@@ -1,120 +1,169 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Learning Hierarchy</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            text-align: center;
-        }
-        .hierarchy {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        .hierarchy button {
-            margin: 10px;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 5px;
-            font-size: 16px;
-            cursor: pointer;
-            color: white;
-            width: 50%;
-        }
-        .hierarchy button.active {
-            outline: 3px solid #000;
-        }
-        .hierarchy button.empty {
-            background-color: gray;
-            cursor: not-allowed;
-        }
-        .hierarchy button:not(.empty):hover {
-            opacity: 0.8;
-        }
-        .hierarchy button.problem { background-color: #ff5722; }
-        .hierarchy button.algorithm { background-color: #4caf50; }
-        .hierarchy button.program { background-color: #9c27b0; }
-        .hierarchy button.system { background-color: #2196f3; }
-        .hierarchy button.interface { background-color: #ff9800; }
-        .hierarchy button.micro { background-color: #607d8b; }
-        .hierarchy button.logic { background-color: #3f51b5; }
-        .hierarchy button.devices { background-color: #795548; }
-        .hierarchy button.electrons { background-color: #009688; }
-        .content {
-            display: none;
-            margin-top: 10px;
-            padding: 20px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            width: 60%;
-            margin-left: auto;
-            margin-right: auto;
-            background-color: #f9f9f9;
-            text-align: left;
-        }
-        .content.active {
-            display: block;
-        }
-    </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Srikanth Malla | Blog</title>
+  <meta name="description" content="Long-form technical writing by Srikanth Malla on ML systems, hardware and low-latency inference." />
+
+  <link rel="stylesheet" type="text/css" href="css/bootstrap.css" />
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+  <!-- 3.4.1 is the Bootstrap 3 line that accepts jQuery 3, which index.html also loads. -->
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
+
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      background-color: #f8f8f8;
+      color: #333333;
+      margin: 0;
+      padding: 0;
+      font-size: 15px;
+    }
+
+    a { color: #1772d0; text-decoration: none; }
+    a:focus, a:hover { color: #f09228; text-decoration: none; }
+
+    .container {
+      max-width: 950px;
+      margin: auto;
+      padding: 0 15px;
+    }
+
+    .page-head {
+      padding: 40px 0 10px;
+    }
+
+    .page-head h1 {
+      margin: 0 0 8px;
+      font-size: 2em;
+      font-weight: bold;
+      color: #222;
+    }
+
+    .page-head p {
+      margin: 0;
+      color: #666;
+      max-width: 640px;
+      line-height: 1.6;
+    }
+
+    .post-list {
+      list-style: none;
+      margin: 30px 0 60px;
+      padding: 0;
+    }
+
+    .post-list li { margin-bottom: 16px; }
+
+    .post-tile {
+      display: block;
+      background: #ffffff;
+      border: 1px solid #e2e2e2;
+      border-radius: 6px;
+      padding: 18px 22px;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .post-tile:hover {
+      border-color: #1772d0;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+    }
+
+    .post-meta {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #999;
+      margin-bottom: 6px;
+    }
+
+    .post-meta .tag {
+      color: #f09228;
+      font-weight: bold;
+    }
+
+    .post-title {
+      font-size: 1.15em;
+      font-weight: bold;
+      color: #222;
+      margin: 0 0 6px;
+    }
+
+    .post-tile:hover .post-title { color: #1772d0; }
+
+    .post-desc {
+      color: #555;
+      line-height: 1.6;
+      margin: 0;
+    }
+
+    .post-tile.soon {
+      background: none;
+      border-style: dashed;
+      opacity: 0.7;
+      cursor: default;
+    }
+
+    .post-tile.soon:hover {
+      border-color: #e2e2e2;
+      box-shadow: none;
+    }
+
+    .post-tile.soon .post-title { color: #777; }
+  </style>
 </head>
+
 <body>
-    <h1>Learning Resources</h1>
-
-    <div class="hierarchy">
-        <button class="problem empty">Problem (No Content)</button>
-        <button class="algorithm">Algorithm</button>
-        <div id="algorithm-content" class="content">
-            <p><strong>Large-Scale Convex Optimization:</strong> <a href="https://youtube.com/playlist?list=PL78FHFrrKomKUjQcRjfarU1FnuGZtseib&feature=shared" target="_blank">YouTube Playlist</a></p>
-        </div>
-
-        <button class="program empty">Program/Language (No Content)</button>
-
-        <button class="system">System Software</button>
-        <div id="system-content" class="content">
-            <p><strong>GPU System Software:</strong> <a href="https://youtube.com/@gpumode?feature=shared" target="_blank">YouTube Channel</a></p>
-        </div>
-
-        <button class="interface">SW/HW Interface</button>
-        <div id="interface-content" class="content">
-            <p><strong>General:</strong> <a href="https://youtube.com/playlist?list=PL0oekSefhQVJdk0hSRu6sZ2teWM740NtL&feature=shared" target="_blank">YouTube Playlist</a></p>
-            <p><strong>Compilers:</strong> <a href="https://youtube.com/playlist?list=PL0300FE43396456C1&feature=shared" target="_blank">YouTube Playlist</a></p>
-            <p><strong>Operating Systems:</strong> <a href="https://youtube.com/playlist?list=PLF2K2xZjNEf97A_uBCwEl61sdxWVP7VWC&feature=shared" target="_blank">YouTube Playlist</a></p>
-        </div>
-
-        <button class="micro empty">Micro-architecture (No Content)</button>
-
-        <button class="logic">Logic</button>
-        <div id="logic-content" class="content">
-            <p><strong>Digital Design:</strong> <a href="https://youtube.com/playlist?list=PL5Q2soXY2Zi9UFWwfRtSjpKX_IRF0lPSe&feature=shared" target="_blank">YouTube Playlist</a></p>
-        </div>
-
-        <button class="devices empty">Devices (No Content)</button>
-        <button class="electrons">Electrons </button>
-        <div id="electrons-content" class="content">
-            <p><strong>History of Physics:</strong><a href="https://youtube.com/playlist?list=PLUl4u3cNGP63bAfjGas3TuA4ZCPUtN6Xf&feature=shared" target="_blank"> Youtube Playlist </a> </p>
-            <p><strong>Quantum Mechanics for Scientists and Engineers:</strong><a href="https://youtube.com/playlist?list=PLMhLnbR_fjulHFfFUnZydh04A3B8Cn5Vo&feature=shared" target="_blank"> Youtube Playlist </a> </p>
-        </div>
-    </div>
+  <!-- Navigation Bar -->
+  <div container id="nav_bar">
     <script>
-        const buttons = document.querySelectorAll('.hierarchy button:not(.empty)');
-        const contents = document.querySelectorAll('.content');
-
-        buttons.forEach(button => {
-            button.addEventListener('click', () => {
-                // Close all other contents
-                contents.forEach(content => content.classList.remove('active'));
-                buttons.forEach(btn => btn.classList.remove('active'));
-
-                // Show the clicked button's content
-                const contentId = button.className.split(' ')[0] + '-content';
-                document.getElementById(contentId)?.classList.add('active');
-                button.classList.add('active');
-            });
-        });
+      $("#nav_bar").load("nav_bar.html");
     </script>
+  </div>
+
+  <div class="container">
+    <div class="page-head">
+      <h1>Blog</h1>
+      <p>
+        Long-form technical notes. Mostly the things I wanted to read and could not
+        find written at the right level of detail.
+      </p>
+    </div>
+
+    <ul class="post-list">
+      <li>
+        <a class="post-tile" href="refresher/">
+          <div class="post-meta">
+            <span class="tag">Series</span> &middot; 12 modules &middot; ML hardware &amp; low-latency systems
+          </div>
+          <div class="post-title">Refresher: ML hardware and low-latency systems</div>
+          <p class="post-desc">
+            A twelve-module refresher, written for someone who already knows the basics.
+            Starts from roofline, arithmetic intensity and GPU throughput instincts, then
+            inverts them for the batch-of-one regime: tail latency and determinism, CPU
+            microarchitecture, PCIe and the wire, fixed-point numerics, and the workloads
+            that have to answer in nanoseconds. Each module is a mental model, the numbers
+            worth memorizing, critical-thinking probes, and self-checks.
+          </p>
+        </a>
+      </li>
+
+      <li>
+        <a class="post-tile" href="blogs/diffusion.html">
+          <div class="post-meta">
+            <span class="tag">Notes</span> &middot; Generative models
+          </div>
+          <div class="post-title">Diffusion models</div>
+          <p class="post-desc">
+            Working notes on diffusion: the forward and reverse processes, score matching,
+            samplers, and where the practical knobs actually sit.
+          </p>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script src="js/main.js"></script>
 </body>
 </html>

@@ -1,0 +1,27 @@
+---
+n: 2
+title: "Layout, coalescing, bank conflicts, tiling"
+blurb: "Coalescing is a transaction count, not a thread count. Bank conflicts, padding and swizzling, and the three-way tension in every tile size."
+part: "A"
+draft: true
+minutes: 15
+tags: ["coalescing","bank conflicts","tiling","row major","swizzle","occupancy"]
+---
+
+import Callout from '../../components/Callout.astro';
+
+## Planned coverage
+
+Not written yet. This module will cover:
+
+- Coalescing as transactions per warp, not threads per request — the metric that actually predicts time
+- Row- versus column-major as one question: which index is contiguous
+- Shared-memory bank conflicts, XOR swizzling, and why padding costs you a different resource
+- Tiling raises intensity by the reuse factor ≈ T, tying this module back to Module 1
+- Tile-size tension: reuse versus occupancy versus register and shared-memory fit
+
+<Callout type="bridge" title="structure">
+  Every module follows the same four beats: the core mental model, the numbers worth
+  memorizing, a critical-thinking section that pushes on the model until it breaks, and
+  self-checks with the answers hidden. Module 1 is the reference for tone and density.
+</Callout>

@@ -1,0 +1,58 @@
+---
+/**
+ * One entry in the "Critical thinking" section: a question that pushes on the
+ * model, followed by the answer worth having ready. Answer is visible — this
+ * section is for reading, not testing. Testing is what <SelfCheck> is for.
+ */
+interface Props {
+  q: string;
+}
+const { q } = Astro.props;
+---
+
+<section class="probe">
+  <h3 class="probe-q" set:html={q} />
+  <div class="probe-a"><slot /></div>
+</section>
+
+<style is:global>
+  .probe {
+    margin-block: 1.75rem;
+  }
+
+  .prose .probe-q {
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.45;
+    letter-spacing: -0.01em;
+    color: var(--ink-strong);
+    margin: 0 0 0.6rem;
+    padding-inline-start: 1.15rem;
+    position: relative;
+  }
+
+  .prose .probe-q::before {
+    content: '›';
+    position: absolute;
+    inset-inline-start: 0;
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  .probe-a {
+    padding-inline-start: 1.15rem;
+    border-inline-start: 1px solid var(--rule);
+    margin-inline-start: 0.1rem;
+  }
+
+  .probe-a > * + * {
+    margin-block-start: 1.15em;
+  }
+  .probe-a > :first-child {
+    margin-block-start: 0;
+  }
+  .probe-a > :last-child {
+    margin-block-end: 0;
+  }
+</style>

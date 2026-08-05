@@ -1,0 +1,113 @@
+---
+/**
+ * A self-check item: question always visible, answer behind a native
+ * <details> toggle. No JS — the disclosure is free.
+ *
+ *   <SelfCheck q="Why is the ridge point ~300 FLOP/byte on H100?">
+ *     Because ...
+ *   </SelfCheck>
+ */
+interface Props {
+  q: string;
+}
+const { q } = Astro.props;
+---
+
+<details class="selfcheck">
+  <summary>
+    <span class="selfcheck-q" set:html={q} />
+    <span class="selfcheck-cue" aria-hidden="true">
+      <span class="selfcheck-cue-show">show</span>
+      <span class="selfcheck-cue-hide">hide</span>
+    </span>
+  </summary>
+  <div class="selfcheck-a"><slot /></div>
+</details>
+
+<style is:global>
+  .selfcheck {
+    border-block-start: 1px solid var(--rule-soft);
+  }
+
+  .selfcheck:last-of-type {
+    border-block-end: 1px solid var(--rule-soft);
+  }
+
+  /* Sits inside .prose, whose child spacing would otherwise separate them. */
+  .prose > .selfcheck + .selfcheck {
+    margin-block-start: 0;
+  }
+
+  .selfcheck > summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+    padding: 0.7rem 0.2rem;
+    color: var(--ink);
+  }
+
+  .selfcheck > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .selfcheck > summary:hover {
+    color: var(--ink-strong);
+  }
+
+  .selfcheck-q {
+    flex: 1;
+  }
+
+  .selfcheck-q code {
+    white-space: nowrap;
+  }
+
+  .selfcheck-cue {
+    font-family: var(--font-sans);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--ink-faint);
+    flex: none;
+    padding-block-start: 0.15rem;
+  }
+
+  .selfcheck > summary:hover .selfcheck-cue {
+    color: var(--accent);
+  }
+
+  .selfcheck-cue-hide,
+  .selfcheck[open] .selfcheck-cue-show {
+    display: none;
+  }
+
+  .selfcheck[open] .selfcheck-cue-hide {
+    display: inline;
+  }
+
+  .selfcheck-a {
+    padding: 0.15rem 0.2rem 1.05rem;
+    color: var(--ink-muted);
+    font-size: 0.9375rem;
+    border-inline-start: 2px solid var(--rule);
+    padding-inline-start: 1rem;
+    margin-inline-start: 0.2rem;
+    margin-block-end: 0.9rem;
+  }
+
+  .selfcheck-a > :first-child {
+    margin-block-start: 0;
+  }
+  .selfcheck-a > :last-child {
+    margin-block-end: 0;
+  }
+  .selfcheck-a > * + * {
+    margin-block-start: 0.7em;
+  }
+  .selfcheck-a strong {
+    color: var(--ink);
+  }
+</style>

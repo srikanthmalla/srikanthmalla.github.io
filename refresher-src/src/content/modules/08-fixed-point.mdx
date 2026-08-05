@@ -1,0 +1,29 @@
+---
+n: 8
+title: "Fixed-point and rounding"
+blurb: "Q-format, saturation versus wraparound, truncation bias, accumulator width growth, and error propagation you can actually bound."
+part: "D"
+draft: true
+minutes: 15
+tags: ["fixed point","Q format","rounding","saturation","FP8","determinism"]
+---
+
+import Callout from '../../components/Callout.astro';
+
+## Planned coverage
+
+Not written yet. This module will cover:
+
+- Q-format and scaling as a contract between stages, not a per-tensor afterthought
+- Saturation versus wraparound, and why the wrong choice fails silently then catastrophically
+- Truncation bias, round-to-nearest-even, and stochastic rounding
+- Accumulator width growth: the bits you must budget for, derived not guessed
+- Error propagation across layers, and the bound worth carrying
+- FP8 e4m3 versus e5m2, and accumulating in higher precision
+- Float non-associativity, reproducibility, and bit-exact determinism as a requirement
+
+<Callout type="bridge" title="structure">
+  Every module follows the same four beats: the core mental model, the numbers worth
+  memorizing, a critical-thinking section that pushes on the model until it breaks, and
+  self-checks with the answers hidden. Module 1 is the reference for tone and density.
+</Callout>

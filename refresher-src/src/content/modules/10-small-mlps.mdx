@@ -1,0 +1,28 @@
+---
+n: 10
+title: "Small MLPs at nanosecond scale"
+blurb: "Fully unrolled dataflow, weight-stationary arrays, adder-tree depth, and resource budgeting. Where Modules 3, 4 and 8 converge."
+part: "E"
+draft: true
+minutes: 15
+tags: ["MLP","systolic","weight stationary","adder tree","DSP","unrolling"]
+---
+
+import Callout from '../../components/Callout.astro';
+
+## Planned coverage
+
+Not written yet. This module will cover:
+
+- Fully unrolled dataflow: what "no loop" means for area and for timing closure
+- Weight-stationary as the only sane choice when weights are small and fixed
+- Systolic versus broadcast, and why broadcast wins at small scale
+- MAC array shapes and adder-tree depth as the latency you actually pay
+- DSP and resource budgeting against a real device
+- The synthesis: Modules 3, 4 and 8 in one datapath
+
+<Callout type="bridge" title="structure">
+  Every module follows the same four beats: the core mental model, the numbers worth
+  memorizing, a critical-thinking section that pushes on the model until it breaks, and
+  self-checks with the answers hidden. Module 1 is the reference for tone and density.
+</Callout>

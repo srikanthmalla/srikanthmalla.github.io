@@ -1,0 +1,29 @@
+---
+n: 6
+title: "CPU microarchitecture"
+blurb: "The substrate under every low-latency system: false sharing, misprediction cost, store buffers, memory ordering, and lock-free SPSC rings."
+part: "C"
+draft: true
+minutes: 15
+tags: ["cache line","false sharing","branch prediction","prefetcher","memory ordering","SIMD","AVX-512","lock-free"]
+---
+
+import Callout from '../../components/Callout.astro';
+
+## Planned coverage
+
+Not written yet. This module will cover:
+
+- 64 B lines and false sharing as the first thing to check in any multi-threaded hot path
+- Out-of-order execution, the reorder buffer, and what a ~15–20 cycle misprediction really costs
+- Hardware prefetchers: what patterns they catch, and how to stop fighting them
+- Store buffers, memory ordering, fences, and the cost of a `lock` prefix
+- Atomics and CAS under contention, and why the retry loop is the problem
+- SIMD and AVX-512, including the downclock question and when 512-bit is a net loss
+- Lock-free SPSC ring buffers: the cache-line layout that makes them fast
+
+<Callout type="bridge" title="structure">
+  Every module follows the same four beats: the core mental model, the numbers worth
+  memorizing, a critical-thinking section that pushes on the model until it breaks, and
+  self-checks with the answers hidden. Module 1 is the reference for tone and density.
+</Callout>

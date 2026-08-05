@@ -1,0 +1,29 @@
+---
+n: 7
+title: "Off-chip data movement"
+blurb: "PCIe round trips, DMA, NUMA locality, kernel bypass, hardware timestamping — and the rigorous answer to \"why not just use a GPU?\"."
+part: "C"
+draft: true
+minutes: 15
+tags: ["PCIe","DMA","NUMA","kernel bypass","tick to trade","timestamping"]
+---
+
+import Callout from '../../components/Callout.astro';
+
+## Planned coverage
+
+Not written yet. This module will cover:
+
+- Why the PCIe round trip, not the bandwidth, is what dominates
+- DMA engines, descriptor rings, and who pays the doorbell cost
+- NUMA locality as a first-class constraint, not a tuning flag
+- Kernel bypass networking and what you give up to get it
+- NIC hardware timestamping and measuring a path you cannot instrument
+- The tick-to-trade budget, laid out stage by stage
+- The rigorous answer to "why not just use a GPU?" — assembled from Modules 1, 3 and 4
+
+<Callout type="bridge" title="structure">
+  Every module follows the same four beats: the core mental model, the numbers worth
+  memorizing, a critical-thinking section that pushes on the model until it breaks, and
+  self-checks with the answers hidden. Module 1 is the reference for tone and density.
+</Callout>

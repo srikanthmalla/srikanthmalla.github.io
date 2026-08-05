@@ -1,0 +1,27 @@
+---
+n: 4
+title: "Latency versus throughput as a design axis"
+blurb: "Where batching, occupancy and amortization stop being virtues and become liabilities. Spending 10× area to save 50 ns."
+part: "B"
+draft: true
+minutes: 15
+tags: ["latency","throughput","unrolling","critical path","batch size 1"]
+---
+
+import Callout from '../../components/Callout.astro';
+
+## Planned coverage
+
+Not written yet. This module will cover:
+
+- The inversion: every throughput technique that adds a stage adds latency
+- Full spatial unrolling versus temporal resource reuse, and what each costs in area
+- Why trading 10× area for 50 ns is rational, and how to know when it stops being
+- Critical-path depth as the objective function, replacing bytes-over-bandwidth
+- Designing for batch size 1 forever
+
+<Callout type="bridge" title="structure">
+  Every module follows the same four beats: the core mental model, the numbers worth
+  memorizing, a critical-thinking section that pushes on the model until it breaks, and
+  self-checks with the answers hidden. Module 1 is the reference for tone and density.
+</Callout>

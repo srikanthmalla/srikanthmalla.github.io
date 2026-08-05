@@ -1,0 +1,26 @@
+---
+n: 5
+title: "Tail latency and determinism"
+blurb: "Why the mean is the wrong statistic, where jitter actually comes from, and the measurement error that makes your p99 a fiction."
+part: "B"
+draft: true
+minutes: 15
+tags: ["p99","tail latency","jitter","huge pages","coordinated omission","DVFS"]
+---
+
+import Callout from '../../components/Callout.astro';
+
+## Planned coverage
+
+Not written yet. This module will cover:
+
+- p50 versus p99 versus p99.9, and why the mean answers a question nobody asked
+- Jitter inventory: page faults, interrupts, TLB misses, cache eviction, DVFS, allocator pauses
+- Huge pages, core pinning, busy-poll versus interrupt, cache warming, keeping the hot path hot
+- Coordinated omission: the reason your load generator is lying to you
+
+<Callout type="bridge" title="structure">
+  Every module follows the same four beats: the core mental model, the numbers worth
+  memorizing, a critical-thinking section that pushes on the model until it breaks, and
+  self-checks with the answers hidden. Module 1 is the reference for tone and density.
+</Callout>

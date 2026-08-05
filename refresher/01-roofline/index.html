@@ -1,0 +1,694 @@
+<!DOCTYPE html><html lang="en" data-astro-cid-z4jru4n3><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>1. Memory hierarchy, roofline, arithmetic intensity — Refresher</title><meta name="description" content="What the roofline actually bounds, why the ridge point keeps running away from us, and the exact point at which the model stops being useful."><link rel="icon" href="data:,"><script>
+      (() => {
+        try {
+          const t = localStorage.getItem('refresher:theme');
+          if (t === 'light') document.documentElement.classList.add('light');
+        } catch (e) {}
+      })();
+    </script><link rel="stylesheet" href="/refresher/_astro/BaseLayout.CGyqQs00.css"><style>.wrap[data-astro-cid-mhcwui4e]{max-width:68ch;margin-inline:auto;padding:3rem 1.25rem 6rem}@media (width>=1024px){.wrap[data-astro-cid-mhcwui4e]{max-width:calc(68ch + 6rem);padding-inline:3rem}}.mhead[data-astro-cid-mhcwui4e]{border-block-end:1px solid var(--rule);margin-block-end:.5rem;padding-block-end:1.75rem}.mhead-kicker[data-astro-cid-mhcwui4e]{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint);margin:0 0 .85rem;font-size:.6875rem;font-weight:500}.mhead-n[data-astro-cid-mhcwui4e]{color:var(--accent);font-weight:640}.mhead-dot[data-astro-cid-mhcwui4e]{opacity:.5;padding-inline:.35rem}.mhead-title[data-astro-cid-mhcwui4e]{font-family:var(--font-sans);letter-spacing:-.027em;color:var(--ink-strong);text-wrap:balance;margin:0;font-size:clamp(1.75rem,1.3rem + 1.9vw,2.375rem);font-weight:660;line-height:1.12}.mhead-blurb[data-astro-cid-mhcwui4e]{color:var(--ink-muted);max-width:58ch;margin:.85rem 0 0;font-size:1.0625rem;line-height:1.6}.mfoot[data-astro-cid-mhcwui4e]{border-block-start:1px solid var(--rule);margin-block-start:4rem;padding-block-start:1.75rem}.mark[data-astro-cid-mhcwui4e]{font-family:var(--font-sans);border:1px solid var(--rule);background:var(--bg-raised);color:var(--ink-muted);cursor:pointer;border-radius:5px;padding:.4rem .85rem;font-size:.75rem;font-weight:550}.mark[data-astro-cid-mhcwui4e]:hover{color:var(--ink-strong);border-color:var(--ink-faint)}.mark[data-astro-cid-mhcwui4e][aria-pressed=true]{color:var(--bridge);border-color:color-mix(in oklab, var(--bridge) 45%, var(--rule))}.pager[data-astro-cid-mhcwui4e]{grid-template-columns:1fr 1fr;gap:1rem;margin-block-start:2rem;display:grid}.pager-link[data-astro-cid-mhcwui4e]{border:1px solid var(--rule);font-family:var(--font-sans);border-radius:6px;flex-direction:column;gap:.25rem;padding:.75rem .9rem;text-decoration:none;display:flex}.pager-link[data-astro-cid-mhcwui4e]:hover{border-color:var(--ink-faint);background:var(--bg-raised)}.pager-link[data-astro-cid-mhcwui4e].is-next{text-align:end}.pager-dir[data-astro-cid-mhcwui4e]{text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);font-size:.6875rem}.pager-title[data-astro-cid-mhcwui4e]{color:var(--ink-strong);font-size:.8125rem;font-weight:550;line-height:1.35}
+</style><style>.probe{margin-block:1.75rem}.prose .probe-q{font-family:var(--font-sans);letter-spacing:-.01em;color:var(--ink-strong);margin:0 0 .6rem;padding-inline-start:1.15rem;font-size:1rem;font-weight:600;line-height:1.45;position:relative}.prose .probe-q:before{content:"›";color:var(--accent);font-weight:700;position:absolute;inset-inline-start:0}.probe-a{border-inline-start:1px solid var(--rule);margin-inline-start:.1rem;padding-inline-start:1.15rem}.probe-a>*+*{margin-block-start:1.15em}.probe-a>:first-child{margin-block-start:0}.probe-a>:last-child{margin-block-end:0}.selfcheck{border-block-start:1px solid var(--rule-soft)}.selfcheck:last-of-type{border-block-end:1px solid var(--rule-soft)}.prose>.selfcheck+.selfcheck{margin-block-start:0}.selfcheck>summary{cursor:pointer;color:var(--ink);align-items:baseline;gap:1rem;padding:.7rem .2rem;list-style:none;display:flex}.selfcheck>summary::-webkit-details-marker{display:none}.selfcheck>summary:hover{color:var(--ink-strong)}.selfcheck-q{flex:1}.selfcheck-q code{white-space:nowrap}.selfcheck-cue{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);flex:none;padding-block-start:.15rem;font-size:.6875rem;font-weight:600}.selfcheck>summary:hover .selfcheck-cue{color:var(--accent)}.selfcheck-cue-hide,.selfcheck[open] .selfcheck-cue-show{display:none}.selfcheck[open] .selfcheck-cue-hide{display:inline}.selfcheck-a{color:var(--ink-muted);border-inline-start:2px solid var(--rule);margin-block-end:.9rem;margin-inline-start:.2rem;padding:.15rem .2rem 1.05rem;padding-inline-start:1rem;font-size:.9375rem}.selfcheck-a>:first-child{margin-block-start:0}.selfcheck-a>:last-child{margin-block-end:0}.selfcheck-a>*+*{margin-block-start:.7em}.selfcheck-a strong{color:var(--ink)}
+</style><style>.callout{border:1px solid var(--rule);border-inline-start-width:2px;border-radius:5px;margin-block:1.75rem;padding:.9rem 1.1rem 1rem;font-size:.9375rem;line-height:1.65}.callout-probe{border-inline-start-color:var(--probe);background:var(--probe-bg)}.callout-trap{border-inline-start-color:var(--trap);background:var(--trap-bg)}.callout-bridge{border-inline-start-color:var(--bridge);background:var(--bridge-bg)}.callout-label{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;align-items:center;gap:.45rem;margin:0 0 .5rem;font-size:.6875rem;font-weight:620;display:flex}.callout-probe .callout-label{color:var(--probe)}.callout-trap .callout-label{color:var(--trap)}.callout-bridge .callout-label{color:var(--bridge)}.callout-mark{background:currentColor;border-radius:50%;flex:none;width:5px;height:5px}.callout-title{text-transform:none;letter-spacing:0;color:var(--ink-muted);font-weight:500}.callout-body>:first-child{margin-block-start:0}.callout-body>:last-child{margin-block-end:0}.callout-body>*+*{margin-block-start:.75em}
+</style></head><body data-astro-cid-z4jru4n3><a href="#content" class="skip" data-astro-cid-z4jru4n3>Skip to content</a><div class="shell" data-astro-cid-z4jru4n3><aside class="rail" data-rail data-astro-cid-z4jru4n3><nav class="rail-nav" aria-label="Modules" data-astro-cid-wv7whodv><div class="rail-head" data-astro-cid-wv7whodv><a href="/refresher/" class="rail-home" data-astro-cid-wv7whodv><span class="rail-home-title" data-astro-cid-wv7whodv>Refresher</span><span class="rail-home-sub" data-astro-cid-wv7whodv>ML hardware &amp; low-latency systems</span></a><p class="rail-progress" data-astro-cid-wv7whodv><span class="rail-progress-bar" data-astro-cid-wv7whodv><span data-progress-fill data-astro-cid-wv7whodv></span></span><span class="rail-progress-text" data-astro-cid-wv7whodv><span data-progress-count data-astro-cid-wv7whodv>0</span>/12 reviewed</span></p></div><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part A</span>Foundations</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/refresher/01-roofline/" class="rail-link is-active" aria-current="page" data-module="01-roofline" title="What the roofline actually bounds, why the ridge point keeps running away from us, and the exact point at which the model stops being useful." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>1</span><span class="rail-title" data-astro-cid-wv7whodv>Memory hierarchy, roofline, arithmetic intensity</span><span class="rail-tick" data-tick="01-roofline" aria-hidden="true" data-astro-cid-wv7whodv></span></a><ul class="rail-sub" data-rail-sub data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="#the-core-mental-model" class="rail-sub-link" data-toc="the-core-mental-model" data-astro-cid-wv7whodv>The core mental model</a></li><li data-astro-cid-wv7whodv><a href="#numbers-worth-memorizing" class="rail-sub-link" data-toc="numbers-worth-memorizing" data-astro-cid-wv7whodv>Numbers worth memorizing</a></li><li data-astro-cid-wv7whodv><a href="#critical-thinking" class="rail-sub-link" data-toc="critical-thinking" data-astro-cid-wv7whodv>Critical thinking</a></li><li data-astro-cid-wv7whodv><a href="#self-check" class="rail-sub-link" data-toc="self-check" data-astro-cid-wv7whodv>Self-check</a></li></ul></li><li data-astro-cid-wv7whodv><a href="/refresher/02-layout-coalescing/" class="rail-link is-draft" data-module="02-layout-coalescing" title="Coalescing is a transaction count, not a thread count. Bank conflicts, padding and swizzling, and the three-way tension in every tile size." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>2</span><span class="rail-title" data-astro-cid-wv7whodv>Layout, coalescing, bank conflicts, tiling</span><span class="rail-tick" data-tick="02-layout-coalescing" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/refresher/03-pipelining/" class="rail-link is-draft" data-module="03-pipelining" title="Initiation interval versus depth, double and triple buffering, prefetch distance — and why every one of these tools fails at batch 1." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>3</span><span class="rail-title" data-astro-cid-wv7whodv>Pipelining, multi-buffering, latency hiding</span><span class="rail-tick" data-tick="03-pipelining" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part B</span>The pivot</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/refresher/04-latency-vs-throughput/" class="rail-link is-draft" data-module="04-latency-vs-throughput" title="Where batching, occupancy and amortization stop being virtues and become liabilities. Spending 10× area to save 50 ns." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>4</span><span class="rail-title" data-astro-cid-wv7whodv>Latency versus throughput as a design axis</span><span class="rail-tick" data-tick="04-latency-vs-throughput" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/refresher/05-tail-latency/" class="rail-link is-draft" data-module="05-tail-latency" title="Why the mean is the wrong statistic, where jitter actually comes from, and the measurement error that makes your p99 a fiction." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>5</span><span class="rail-title" data-astro-cid-wv7whodv>Tail latency and determinism</span><span class="rail-tick" data-tick="05-tail-latency" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part C</span>Substrate</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/refresher/06-cpu-microarchitecture/" class="rail-link is-draft" data-module="06-cpu-microarchitecture" title="The substrate under every low-latency system: false sharing, misprediction cost, store buffers, memory ordering, and lock-free SPSC rings." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>6</span><span class="rail-title" data-astro-cid-wv7whodv>CPU microarchitecture</span><span class="rail-tick" data-tick="06-cpu-microarchitecture" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/refresher/07-off-chip-movement/" class="rail-link is-draft" data-module="07-off-chip-movement" title="PCIe round trips, DMA, NUMA locality, kernel bypass, hardware timestamping — and the rigorous answer to &quot;why not just use a GPU?&quot;." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>7</span><span class="rail-title" data-astro-cid-wv7whodv>Off-chip data movement</span><span class="rail-tick" data-tick="07-off-chip-movement" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part D</span>Numerics</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/refresher/08-fixed-point/" class="rail-link is-draft" data-module="08-fixed-point" title="Q-format, saturation versus wraparound, truncation bias, accumulator width growth, and error propagation you can actually bound." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>8</span><span class="rail-title" data-astro-cid-wv7whodv>Fixed-point and rounding</span><span class="rail-tick" data-tick="08-fixed-point" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/refresher/09-nonlinearities/" class="rail-link is-draft" data-module="09-nonlinearities" title="LUT, piecewise-linear, minimax polynomial, CORDIC. Range reduction, and computing exp and softmax when you have no divider." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>9</span><span class="rail-title" data-astro-cid-wv7whodv>Nonlinearities without dividers</span><span class="rail-tick" data-tick="09-nonlinearities" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part E</span>Workloads</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/refresher/10-small-mlps/" class="rail-link is-draft" data-module="10-small-mlps" title="Fully unrolled dataflow, weight-stationary arrays, adder-tree depth, and resource budgeting. Where Modules 3, 4 and 8 converge." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>10</span><span class="rail-title" data-astro-cid-wv7whodv>Small MLPs at nanosecond scale</span><span class="rail-tick" data-tick="10-small-mlps" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/refresher/11-gbdt-inference/" class="rail-link is-draft" data-module="11-gbdt-inference" title="Comparator trees, not GEMM. Latency set by depth, feature fetch as the real bottleneck, and why gradient-boosted trees beat DNNs at this scale." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>11</span><span class="rail-title" data-astro-cid-wv7whodv>GBDT inference in hardware</span><span class="rail-tick" data-tick="11-gbdt-inference" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/refresher/12-partitioning/" class="rail-link is-draft" data-module="12-partitioning" title="Order book mechanics, the tick-to-trade budget, the fast-path/slow-path split, and risk checks in silicon. The synthesis module." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>12</span><span class="rail-title" data-astro-cid-wv7whodv>Hardware/software partitioning and market microstructure</span><span class="rail-tick" data-tick="12-partitioning" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><div class="rail-foot" data-astro-cid-wv7whodv><p data-astro-cid-wv7whodv><kbd data-astro-cid-wv7whodv>j</kbd> <kbd data-astro-cid-wv7whodv>k</kbd> section · <kbd data-astro-cid-wv7whodv>/</kbd> search · <kbd data-astro-cid-wv7whodv>[</kbd><kbd data-astro-cid-wv7whodv>]</kbd> module</p></div></nav></aside><div class="col" data-astro-cid-z4jru4n3><header class="topbar" data-astro-cid-z4jru4n3><button class="icon-btn only-narrow" data-rail-toggle aria-label="Toggle contents" data-astro-cid-z4jru4n3><svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M1.5 3.5h12M1.5 7.5h12M1.5 11.5h12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg></button><p class="crumb" data-astro-cid-z4jru4n3>Part A · Foundations › Memory hierarchy, roofline, arithmetic intensity</p><div class="topbar-actions" data-astro-cid-z4jru4n3><button class="search-btn" data-search-open aria-label="Search" data-astro-cid-z4jru4n3><span aria-hidden="true" data-astro-cid-z4jru4n3>⌕</span><span class="search-btn-label" data-astro-cid-z4jru4n3>Search</span><kbd data-astro-cid-z4jru4n3>/</kbd></button><button class="icon-btn" data-theme-toggle aria-label="Toggle theme" data-astro-cid-z4jru4n3><svg class="i-sun" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><circle cx="7.5" cy="7.5" r="3" stroke="currentColor" stroke-width="1.2" data-astro-cid-z4jru4n3></circle><path d="M7.5 .8v1.7M7.5 12.5v1.7M14.2 7.5h-1.7M2.5 7.5H.8M12.24 2.76l-1.2 1.2M3.96 11.04l-1.2 1.2M12.24 12.24l-1.2-1.2M3.96 3.96l-1.2-1.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg><svg class="i-moon" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M13 9.3A5.8 5.8 0 0 1 5.7 2 5.9 5.9 0 1 0 13 9.3Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" data-astro-cid-z4jru4n3></path></svg></button><a class="site-link" href="/learning.html" data-astro-cid-z4jru4n3>srikanthmalla.com</a></div></header><main id="content" data-astro-cid-z4jru4n3><article class="wrap" data-article data-astro-cid-mhcwui4e><header class="mhead" data-astro-cid-mhcwui4e><p class="mhead-kicker" data-astro-cid-mhcwui4e><span class="mhead-n" data-astro-cid-mhcwui4e>Module 1</span><span class="mhead-dot" data-astro-cid-mhcwui4e>·</span>Part A — Foundations<span class="mhead-dot" data-astro-cid-mhcwui4e>·</span>16 min</p><h1 class="mhead-title" data-astro-cid-mhcwui4e>Memory hierarchy, roofline, arithmetic intensity</h1><p class="mhead-blurb" data-astro-cid-mhcwui4e>What the roofline actually bounds, why the ridge point keeps running away from us, and the exact point at which the model stops being useful.</p></header><div class="prose" data-astro-cid-mhcwui4e><h2 id="the-core-mental-model">The core mental model<a class="anchor" href="#the-core-mental-model" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>Roofline is one inequality: <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>P</mi><mo>=</mo><mi>min</mi><mo>⁡</mo><mo stretchy="false">(</mo><mi>π</mi><mo separator="true">,</mo><mtext> </mtext><mi>β</mi><mi>I</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">P = \min(\pi,\ \beta I)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.1389em">P</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mop">min</span><span class="mopen">(</span><span class="mord mathnormal" style="margin-right:0.0359em">π</span><span class="mpunct">,</span><span class="mspace"> </span><span class="mspace" style="margin-right:0.1667em"></span><span class="mord mathnormal" style="margin-right:0.0528em">β</span><span class="mord mathnormal" style="margin-right:0.0785em">I</span><span class="mclose">)</span></span></span></span>, where <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>π</mi></mrow><annotation encoding="application/x-tex">\pi</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.4306em"></span><span class="mord mathnormal" style="margin-right:0.0359em">π</span></span></span></span> is peak compute, <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>β</mi></mrow><annotation encoding="application/x-tex">\beta</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8889em;vertical-align:-0.1944em"></span><span class="mord mathnormal" style="margin-right:0.0528em">β</span></span></span></span> is
+peak bandwidth, and <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>I</mi></mrow><annotation encoding="application/x-tex">I</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0785em">I</span></span></span></span> is arithmetic intensity in FLOPs per byte. Everything interesting is in
+<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>I</mi></mrow><annotation encoding="application/x-tex">I</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0785em">I</span></span></span></span>, and specifically in the denominator, because <strong>arithmetic intensity is not a property of an
+algorithm. It is a property of a triple: algorithm, boundary, implementation.</strong> The FLOPs are
+fixed by the math. The bytes are whatever crosses one specific interface, and you get to choose
+which interface you are asking about. A tiled GEMM and a naive GEMM do identical arithmetic and
+have identical <em>minimum</em> traffic, yet differ by three orders of magnitude in achieved <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>I</mi></mrow><annotation encoding="application/x-tex">I</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0785em">I</span></span></span></span> at the
+HBM boundary. Anyone who quotes “the arithmetic intensity of attention” without naming a boundary
+has said nothing.</p>
+<p>Which is why the roofline is hierarchical. Each level of the memory system has its own <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>β</mi></mrow><annotation encoding="application/x-tex">\beta</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8889em;vertical-align:-0.1944em"></span><span class="mord mathnormal" style="margin-right:0.0528em">β</span></span></span></span>
+and therefore its own roof, and a kernel sits somewhere different under each one. A kernel can be
+comfortably above the HBM ridge and still be starved by shared-memory bandwidth or L2. The ridge
+point <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>I</mi><mo lspace="0em" rspace="0em">∗</mo></msup><mo>=</mo><mi>π</mi><mi mathvariant="normal">/</mi><mi>β</mi></mrow><annotation encoding="application/x-tex">I^{*} = \pi/\beta</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6887em"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.0785em">I</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.6887em"><span style="top:-3.063em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">∗</span></span></span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal" style="margin-right:0.0359em">π</span><span class="mord">/</span><span class="mord mathnormal" style="margin-right:0.0528em">β</span></span></span></span> is where the two roofs meet, and its long-run behavior is the single
+most important fact about the last decade of accelerators: peak FLOPs has grown roughly 3× per
+generation while HBM bandwidth has grown roughly 1.5×, so <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>I</mi><mo lspace="0em" rspace="0em">∗</mo></msup></mrow><annotation encoding="application/x-tex">I^{*}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6887em"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.0785em">I</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.6887em"><span style="top:-3.063em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">∗</span></span></span></span></span></span></span></span></span></span></span></span> keeps climbing. On an H100 with
+dense fp16 tensor cores it is about <strong>295 FLOPs per byte</strong>. Being compute-bound is now a rare and
+privileged condition, achieved by engineering, not stumbled into. Essentially all of kernel
+optimization is manufacturing reuse until you reach the ridge.</p>
+<p>Map that onto inference and the two phases separate cleanly. Prefill is GEMM-shaped: for a square
+fp16 matmul of size <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>n</mi></mrow><annotation encoding="application/x-tex">n</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.4306em"></span><span class="mord mathnormal">n</span></span></span></span>, HBM-boundary intensity is <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>2</mn><msup><mi>n</mi><mn>3</mn></msup><mi mathvariant="normal">/</mi><mn>6</mn><msup><mi>n</mi><mn>2</mn></msup><mo>=</mo><mi>n</mi><mi mathvariant="normal">/</mi><mn>3</mn></mrow><annotation encoding="application/x-tex">2n^3 / 6n^2 = n/3</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.0641em;vertical-align:-0.25em"></span><span class="mord">2</span><span class="mord"><span class="mord mathnormal">n</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141em"><span style="top:-3.063em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">3</span></span></span></span></span></span></span></span><span class="mord">/6</span><span class="mord"><span class="mord mathnormal">n</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141em"><span style="top:-3.063em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal">n</span><span class="mord">/3</span></span></span></span>, so it crosses the H100
+ridge somewhere around <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>n</mi><mo>≈</mo><mn>900</mn></mrow><annotation encoding="application/x-tex">n \approx 900</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.4831em"></span><span class="mord mathnormal">n</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">900</span></span></span></span> and is solidly compute-bound at realistic sizes. Decode is
+GEMV-shaped: each weight element is read once and used for two FLOPs, giving <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>I</mi><mo>≈</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">I \approx 1</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0785em">I</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">1</span></span></span></span> at
+fp16, roughly 300× below the ridge. The consequence is the number that governs single-stream
+serving: <strong>batch-1 decode latency has a hard floor of model bytes divided by memory bandwidth</strong>,
+and no amount of compute changes it. The clean way to see the whole batching story is that
+<strong>decode intensity is approximately the batch size</strong>, because the weights are read once and
+amortized across <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>B</mi></mrow><annotation encoding="application/x-tex">B</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0502em">B</span></span></span></span> tokens. You need <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>B</mi><mo>≈</mo><mn>300</mn></mrow><annotation encoding="application/x-tex">B \approx 300</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0502em">B</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">300</span></span></span></span> before an H100 stops being memory-bound on
+the weight matmuls, which is exactly why continuous batching exists and exactly why it does
+nothing for the tail of a single request.</p>
+<aside class="callout callout-bridge"><p class="callout-label"><span class="callout-mark" aria-hidden="true"></span>Bridge to what you know<span class="callout-title"> · you already run this model</span></p><div class="callout-body"><p>This is the “Speed of Light” section of Nsight Compute: percent of peak compute against percent
+of peak memory throughput. Same inequality, same hierarchy. Nothing in Parts B through E
+changes the machine. What changes is the objective function you point at it.</p></div></aside>
+<p>The last paragraph is the one to carry forward, because it is the seam this whole sequence is
+built on. Roofline is a <strong>steady-state throughput</strong> model. It silently assumes enough concurrent
+work to saturate the pipes, no dependent-stall bubbles, warm caches, and fixed overheads
+amortized to zero. At batch 1 against a hard deadline, every one of those assumptions fails. You
+are not under either roof, you are in a regime the model does not describe, and its central
+prescription (raise <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>I</mi></mrow><annotation encoding="application/x-tex">I</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0785em">I</span></span></span></span> by batching and reusing) is precisely the move that is unavailable to
+you. Part B replaces the objective with critical-path depth. Keep the roofline for what it is
+genuinely excellent at, which is telling you what you are <em>not</em> limited by.</p>
+<h2 id="numbers-worth-memorizing">Numbers worth memorizing<a class="anchor" href="#numbers-worth-memorizing" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>The latency ladder, in the units that matter. Cycle counts assume roughly 1.7 GHz on the GPU and
+3 GHz on the CPU. Treat these as order-of-magnitude anchors, not datasheet values.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Level</th><th>Latency</th><th>Bandwidth</th><th>Capacity</th></tr></thead><tbody><tr><td>GPU register file</td><td>~1 cyc</td><td>effectively ∞</td><td>256 KB / SM</td></tr><tr><td>GPU shared memory / L1</td><td>~25–35 cyc, ~20 ns</td><td>~128 B/clk/SM</td><td>228 KB / SM</td></tr><tr><td>GPU L2</td><td>~200–350 cyc, ~150–250 ns</td><td>~5–10 TB/s</td><td>50 MB (H100)</td></tr><tr><td>GPU HBM3</td><td>~350–450 ns</td><td>3.35 TB/s</td><td>80 GB</td></tr><tr><td>NVLink 4 (peer GPU)</td><td>~1.5–2.5 µs</td><td>450 GB/s / dir</td><td>—</td></tr><tr><td>PCIe Gen5 ×16 round trip</td><td>~1–2 µs</td><td>64 GB/s / dir</td><td>—</td></tr><tr><td>CPU L1d</td><td>4–5 cyc, ~1.3 ns</td><td>~200 GB/s/core</td><td>32–48 KB</td></tr><tr><td>CPU L2</td><td>14–16 cyc, ~5 ns</td><td>~100 GB/s/core</td><td>1–2 MB</td></tr><tr><td>CPU L3 (LLC)</td><td>40–60 cyc, ~15–25 ns</td><td>~400 GB/s</td><td>30–100 MB</td></tr><tr><td>DRAM, local socket</td><td>~80–100 ns</td><td>200–400 GB/s</td><td>—</td></tr><tr><td>DRAM, one NUMA hop</td><td>~130–160 ns</td><td>lower, contended</td><td>—</td></tr><tr><td>Cut-through switch hop</td><td>~50–100 ns</td><td>—</td><td>—</td></tr></tbody></table></div>
+<p>Ridge points. This is the table that explains why your kernel is memory-bound.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Machine</th><th>Peak <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>π</mi></mrow><annotation encoding="application/x-tex">\pi</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.4306em"></span><span class="mord mathnormal" style="margin-right:0.0359em">π</span></span></span></span></th><th><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>β</mi></mrow><annotation encoding="application/x-tex">\beta</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8889em;vertical-align:-0.1944em"></span><span class="mord mathnormal" style="margin-right:0.0528em">β</span></span></span></span></th><th>Ridge <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>I</mi><mo lspace="0em" rspace="0em">∗</mo></msup></mrow><annotation encoding="application/x-tex">I^{*}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6887em"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.0785em">I</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.6887em"><span style="top:-3.063em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">∗</span></span></span></span></span></span></span></span></span></span></span></span></th></tr></thead><tbody><tr><td>H100 SXM, fp8 tensor, dense</td><td>1979 TFLOP/s</td><td>3.35 TB/s</td><td>~590</td></tr><tr><td>H100 SXM, fp16 tensor, dense</td><td>989 TFLOP/s</td><td>3.35 TB/s</td><td>~295</td></tr><tr><td>H100 SXM, fp32 CUDA cores</td><td>67 TFLOP/s</td><td>3.35 TB/s</td><td>~20</td></tr><tr><td>A100 80GB, fp16 tensor</td><td>312 TFLOP/s</td><td>2.0 TB/s</td><td>~156</td></tr><tr><td>Server CPU, AVX-512 fp32</td><td>~2–3 TFLOP/s</td><td>~0.4 TB/s</td><td>~6–8</td></tr></tbody></table></div>
+<p>Intensities of things you actually run, all at the HBM boundary, fp16 unless noted.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Workload</th><th><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>I</mi></mrow><annotation encoding="application/x-tex">I</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0785em">I</span></span></span></span> (FLOP/byte)</th><th>Regime</th></tr></thead><tbody><tr><td>Elementwise add, SAXPY</td><td>0.08–0.17</td><td>memory, hopelessly</td></tr><tr><td>LayerNorm, softmax</td><td>~0.5</td><td>memory</td></tr><tr><td>GEMV / batch-1 decode weight matmul</td><td>~1</td><td>memory, ~300× under ridge</td></tr><tr><td>Decode attention, KV-cache read</td><td>~1</td><td>memory</td></tr><tr><td>Decode at batch <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>B</mi></mrow><annotation encoding="application/x-tex">B</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0502em">B</span></span></span></span></td><td><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>≈</mo><mi>B</mi></mrow><annotation encoding="application/x-tex">\approx B</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.4831em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0502em">B</span></span></span></span></td><td>memory until <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>B</mi><mo>≈</mo><msup><mi>I</mi><mo lspace="0em" rspace="0em">∗</mo></msup></mrow><annotation encoding="application/x-tex">B \approx I^{*}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0502em">B</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6887em"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.0785em">I</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.6887em"><span style="top:-3.063em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">∗</span></span></span></span></span></span></span></span></span></span></span></span></td></tr><tr><td>Square GEMM, dimension <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>n</mi></mrow><annotation encoding="application/x-tex">n</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.4306em"></span><span class="mord mathnormal">n</span></span></span></span></td><td><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>n</mi><mi mathvariant="normal">/</mi><mn>3</mn></mrow><annotation encoding="application/x-tex">n/3</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal">n</span><span class="mord">/3</span></span></span></span></td><td>compute above <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>n</mi><mo>≈</mo><mn>900</mn></mrow><annotation encoding="application/x-tex">n \approx 900</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.4831em"></span><span class="mord mathnormal">n</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">900</span></span></span></span></td></tr><tr><td>FlashAttention prefill</td><td>~<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>O</mi><mo stretchy="false">(</mo><msub><mi>d</mi><mrow><mi>h</mi><mi>e</mi><mi>a</mi><mi>d</mi></mrow></msub><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">O(d_{head})</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal" style="margin-right:0.0278em">O</span><span class="mopen">(</span><span class="mord"><span class="mord mathnormal">d</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361em"><span style="top:-2.55em;margin-left:0em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathnormal mtight">h</span><span class="mord mathnormal mtight">e</span><span class="mord mathnormal mtight">a</span><span class="mord mathnormal mtight">d</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em"><span></span></span></span></span></span></span><span class="mclose">)</span></span></span></span></td><td>compute-ish</td></tr><tr><td>Training forward+backward</td><td>100s–1000s</td><td>compute</td></tr></tbody></table></div>
+<p>Batch-1 decode floors on one H100 at 3.35 TB/s, assuming perfect bandwidth utilization. Real
+achieved bandwidth is 70–85% of peak, so multiply the times by ~1.25 for an honest number.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Model</th><th>Weight bytes</th><th>Floor / token</th><th>Ceiling</th></tr></thead><tbody><tr><td>8B fp16</td><td>16 GB</td><td>4.8 ms</td><td>210 tok/s</td></tr><tr><td>8B fp8</td><td>8 GB</td><td>2.4 ms</td><td>420 tok/s</td></tr><tr><td>70B fp16</td><td>140 GB</td><td>42 ms</td><td>24 tok/s</td></tr><tr><td>70B fp8</td><td>70 GB</td><td>21 ms</td><td>48 tok/s</td></tr><tr><td>70B int4</td><td>35 GB</td><td>10.4 ms</td><td>96 tok/s</td></tr></tbody></table></div>
+<p>Little’s Law, <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mtext>concurrency</mtext><mo>=</mo><mtext>latency</mtext><mo>×</mo><mtext>throughput</mtext></mrow><annotation encoding="application/x-tex">\text{concurrency} = \text{latency} \times \text{throughput}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.625em;vertical-align:-0.1944em"></span><span class="mord text"><span class="mord">concurrency</span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.8889em;vertical-align:-0.1944em"></span><span class="mord text"><span class="mord">latency</span></span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.8889em;vertical-align:-0.1944em"></span><span class="mord text"><span class="mord">throughput</span></span></span></span></span>, applied to memory:</p>
+<ul>
+<li><strong>H100 HBM:</strong> <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>3.35</mn><mtext> TB/s</mtext><mo>×</mo><mn>400</mn><mtext> ns</mtext><mo>≈</mo><mn>1.34</mn><mtext> MB</mtext></mrow><annotation encoding="application/x-tex">3.35\ \text{TB/s} \times 400\ \text{ns} \approx 1.34\ \text{MB}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord">3.35</span><span class="mspace"> </span><span class="mord text"><span class="mord">TB/s</span></span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">400</span><span class="mspace"> </span><span class="mord text"><span class="mord">ns</span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord">1.34</span><span class="mspace"> </span><span class="mord text"><span class="mord">MB</span></span></span></span></span> in flight, which
+is roughly 10,500 outstanding 128 B sectors, or ~80 per SM. Occupancy is not a virtue in
+itself. It is the mechanism by which you meet this number.</li>
+<li><strong>One CPU core:</strong> ~10–16 line-fill buffers × 64 B / 80 ns ≈ <strong>8–12 GB/s</strong>, an order of
+magnitude below the socket’s 200–400 GB/s. A single core cannot saturate its own DRAM. This is
+a memory-level-parallelism limit, not a bandwidth limit, and it is why prefetching and
+multiple independent pointer chases matter so much on CPU.</li>
+</ul>
+<aside class="callout callout-trap"><p class="callout-label"><span class="callout-mark" aria-hidden="true"></span>Common trap<span class="callout-title"> · peak versus achieved</span></p><div class="callout-body"><p>Ridge points computed from datasheet peaks are optimistic on both axes. Achieved DRAM bandwidth
+is 70–85% of peak on a good day, and peak tensor-core FLOPs assumes back-to-back <code>HMMA</code> issue
+with no address arithmetic, no epilogue, and no tail. The ratio survives roughly intact, so the
+ridge is still the right anchor. Absolute distances to it are not.</p></div></aside>
+<h2 id="critical-thinking">Critical thinking<a class="anchor" href="#critical-thinking" aria-hidden="true" tabindex="-1">#</a></h2>
+<section class="probe"><h3 class="probe-q">The profiler reports 45% of peak FLOPs and 35% of peak HBM bandwidth. Where is the bottleneck?</h3><div class="probe-a"><p>Neither roof, which means the binding constraint is not in this roofline at all. Roofline gives
+an upper bound. Sitting under both roofs tells you only that something outside the model is
+limiting you. Ranked suspects:</p><ol>
+<li><strong>You are bound at a level this roofline cannot see.</strong> Shared-memory or L2 bandwidth, or
+register-file bandwidth. Draw the hierarchical roofline before drawing conclusions.</li>
+<li><strong>Latency-bound, not bandwidth-bound.</strong> Insufficient memory-level parallelism to satisfy
+Little’s Law: low occupancy, long dependent chains, address arithmetic on the critical path.
+The pipes are wide open and you are not putting enough in flight.</li>
+<li><strong>Issue-bound.</strong> The limiter is instruction throughput on a pipe that is neither FMA nor
+memory: address math, predication, shared-memory instructions, or the epilogue.</li>
+<li><strong>Wave quantization.</strong> A partly-empty final wave dilutes the whole-kernel average. 132 SMs and
+140 blocks means a second wave running at 6% utilization.</li>
+<li><strong>Synchronization.</strong> <code>__syncthreads()</code> in an inner loop serializes what the roofline assumes
+is concurrent.</li>
+</ol><p>The discipline worth internalizing: roofline names what you are not limited by. It never names
+the limiter.</p></div></section>
+<section class="probe"><h3 class="probe-q">You fuse two memory-bound elementwise kernels. Bound the speedup before you measure.</h3><div class="probe-a"><p>Count bytes at the binding boundary, not FLOPs. Two passes over <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>N</mi></mrow><annotation encoding="application/x-tex">N</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.109em">N</span></span></span></span> bytes, each reading and
+writing: <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>4</mn><mi>N</mi></mrow><annotation encoding="application/x-tex">4N</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord">4</span><span class="mord mathnormal" style="margin-right:0.109em">N</span></span></span></span> total. Fused: <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>2</mn><mi>N</mi></mrow><annotation encoding="application/x-tex">2N</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord">2</span><span class="mord mathnormal" style="margin-right:0.109em">N</span></span></span></span>. Ceiling is <strong>2×</strong>, and that is the whole answer at the HBM
+level.</p><p>Reality lands below it for three reasons and above it for one. Below: if <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>N</mi></mrow><annotation encoding="application/x-tex">N</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.109em">N</span></span></span></span> is small enough that
+the intermediate stayed resident in L2, the second pass never touched HBM, so fusion bought you
+nothing at that boundary. On H100, with 50 MB of L2, anything under ~25 MB of working set is
+already in this regime. Fusion also raises register pressure, which lowers occupancy, which
+lowers memory-level parallelism, which lowers <em>achieved</em> bandwidth, so the fused kernel can run
+at a worse point on the same roof. Above: you also eliminated a kernel launch, roughly 3–5 µs,
+which dominates everything else for small <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>N</mi></mrow><annotation encoding="application/x-tex">N</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.109em">N</span></span></span></span>.</p><p>Generalized: <strong>the ceiling on any fusion is bytes-before over bytes-after, evaluated at whichever
+boundary is actually binding.</strong> The same arithmetic sizes recomputation-versus-storage tradeoffs,
+FlashAttention included.</p></div></section>
+<section class="probe"><h3 class="probe-q">Decode is memory-bound. So why does speculative decoding help, and where is its ceiling?</h3><div class="probe-a"><p>Because in decode, arithmetic intensity is tokens-verified-per-weight-load. Reading the weights
+is the entire cost. The FLOPs are free, since you are sitting 300× below the ridge with all that
+compute idle. Verifying <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi></mrow><annotation encoding="application/x-tex">k</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6944em"></span><span class="mord mathnormal" style="margin-right:0.0315em">k</span></span></span></span> drafted tokens in a single forward pass loads the weights exactly
+once and does <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi><mo>×</mo></mrow><annotation encoding="application/x-tex">k\times</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.7778em;vertical-align:-0.0833em"></span><span class="mord mathnormal" style="margin-right:0.0315em">k</span><span class="mord">×</span></span></span></span> the arithmetic: <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>I</mi></mrow><annotation encoding="application/x-tex">I</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0785em">I</span></span></span></span> goes from ~1 to ~<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi></mrow><annotation encoding="application/x-tex">k</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6944em"></span><span class="mord mathnormal" style="margin-right:0.0315em">k</span></span></span></span>, and you move right along the
+memory roof at constant byte cost. You are spending headroom you already owned.</p><p>Four ceilings, in the order you hit them:</p><ol>
+<li><strong>Acceptance.</strong> Expected accepted tokens per round is set by draft-target agreement, typically
+2–4 for a well-matched draft. Everything past that is discarded work.</li>
+<li><strong>The draft model’s own serial decode</strong>, which is itself batch-1 memory-bound and sits on the
+critical path.</li>
+<li><strong>KV cache traffic.</strong> The “bytes are free” premise holds only while weights dominate. At long
+context the KV cache becomes the larger read and it scales with the tokens you process, so the
+<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>I</mi><mo>≈</mo><mi>k</mi></mrow><annotation encoding="application/x-tex">I \approx k</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0785em">I</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6944em"></span><span class="mord mathnormal" style="margin-right:0.0315em">k</span></span></span></span> argument decays.</li>
+<li><strong>The ridge itself.</strong> Once effective batch × <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi></mrow><annotation encoding="application/x-tex">k</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6944em"></span><span class="mord mathnormal" style="margin-right:0.0315em">k</span></span></span></span> approaches ~300 you become compute-bound and
+further <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi></mrow><annotation encoding="application/x-tex">k</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6944em"></span><span class="mord mathnormal" style="margin-right:0.0315em">k</span></span></span></span> buys nothing.</li>
+</ol><p>The same one-line test explains GQA, quantization, and continuous batching: they are all
+byte-count or intensity moves. None of them is a FLOP move. In a memory-bound regime, FLOP moves
+are not interesting.</p></div></section>
+<section class="probe"><h3 class="probe-q">Batch 1, hard 5 µs deadline, forever. What does roofline tell you?</h3><div class="probe-a"><p>Close to nothing, and the direction it points is wrong. Three distinct failures:</p><ul>
+<li><strong>It is asymptotic.</strong> <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>min</mi><mo>⁡</mo><mo stretchy="false">(</mo><mi>π</mi><mo separator="true">,</mo><mi>β</mi><mi>I</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">\min(\pi, \beta I)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mop">min</span><span class="mopen">(</span><span class="mord mathnormal" style="margin-right:0.0359em">π</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.1667em"></span><span class="mord mathnormal" style="margin-right:0.0528em">β</span><span class="mord mathnormal" style="margin-right:0.0785em">I</span><span class="mclose">)</span></span></span></span> presumes enough concurrent work to reach steady state
+and hide latency. At batch 1 the machine is overwhelmingly idle and you are under both roofs by
+a wide margin, in a regime the model does not describe.</li>
+<li><strong>Its only lever is unavailable.</strong> “Raise <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>I</mi></mrow><annotation encoding="application/x-tex">I</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0785em">I</span></span></span></span>” means batch or reuse. Batch is pinned at 1 by the
+problem statement, and there is no reuse to find inside a single sample.</li>
+<li><strong>It assumes fixed costs amortize to zero.</strong> At 5 µs nothing amortizes. Kernel launch alone is
+3–5 µs. A PCIe round trip is 1–2 µs. Either one consumes the budget before a single FLOP
+retires.</li>
+</ul><p>The replacement model is <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mtext>latency</mtext><mo>=</mo><mo>∑</mo><mo stretchy="false">(</mo><mtext>dependent stage latencies</mtext><mo stretchy="false">)</mo><mo>+</mo><mtext>fixed overheads</mtext></mrow><annotation encoding="application/x-tex">\text{latency} = \sum(\text{dependent stage latencies}) +
+\text{fixed overheads}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8889em;vertical-align:-0.1944em"></span><span class="mord text"><span class="mord">latency</span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mop op-symbol small-op" style="position:relative;top:0em">∑</span><span class="mopen">(</span><span class="mord text"><span class="mord">dependent stage latencies</span></span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.6944em"></span><span class="mord text"><span class="mord">fixed overheads</span></span></span></span></span>, with the objective being <strong>depth of the critical path</strong> measured in
+cycles or gate delays, not bytes moved. That reframing is the content of Part B, and it is why
+this workload class ends up on an FPGA or ASIC with weights held in on-chip SRAM and registers.
+Flattening the memory hierarchy to a single level does not make “bytes over bandwidth” smaller.
+It removes the term from the equation.</p></div></section>
+<section class="probe"><h3 class="probe-q">Would faster memory fix this kernel? Answer without buying the faster memory.</h3><div class="probe-a"><p>Measure <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>I</mi></mrow><annotation encoding="application/x-tex">I</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0785em">I</span></span></span></span> at the binding boundary and compare to <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>I</mi><mo lspace="0em" rspace="0em">∗</mo></msup></mrow><annotation encoding="application/x-tex">I^{*}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6887em"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.0785em">I</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.6887em"><span style="top:-3.063em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">∗</span></span></span></span></span></span></span></span></span></span></span></span>. Below the ridge, performance scales
+roughly linearly in <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>β</mi></mrow><annotation encoding="application/x-tex">\beta</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8889em;vertical-align:-0.1944em"></span><span class="mord mathnormal" style="margin-right:0.0528em">β</span></span></span></span> and not at all in <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>π</mi></mrow><annotation encoding="application/x-tex">\pi</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.4306em"></span><span class="mord mathnormal" style="margin-right:0.0359em">π</span></span></span></span>. Above it, the reverse. That is the model’s
+answer, and it is worth exactly as much as your byte accounting.</p><p>Two empirical tests that need no model at all. <strong>Clock sweep:</strong> pin the memory clock and sweep
+the SM clock, then swap. The slope of each curve tells you which roof you are on. <strong>Byte
+ablation:</strong> halve the bytes without touching the math, by quantizing weights fp16 → fp8. If the
+kernel gets ~2× faster you were memory-bound. If it barely moves, you were not, and you just
+learned something more reliable than any profiler counter.</p></div></section>
+<h2 id="self-check">Self-check<a class="anchor" href="#self-check" aria-hidden="true" tabindex="-1">#</a></h2>
+<details class="selfcheck"><summary><span class="selfcheck-q">State the definition of arithmetic intensity so that it survives the follow-up “at which level?”</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>FLOPs performed divided by bytes moved <strong>across a named boundary</strong>, for a <strong>specific
+implementation</strong>. The FLOPs come from the algorithm; the bytes come from the implementation and
+the boundary. Naive and tiled GEMM share FLOPs and share a minimum byte count, yet differ by
+~1000× in achieved <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>I</mi></mrow><annotation encoding="application/x-tex">I</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0785em">I</span></span></span></span> at HBM. An unqualified intensity number is not wrong so much as
+meaningless.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">What is the ridge point for dense fp16 tensor cores on H100, and what square GEMM size crosses it?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>I</mi><mo lspace="0em" rspace="0em">∗</mo></msup><mo>=</mo><mn>989</mn><mtext> TFLOP/s</mtext><mi mathvariant="normal">/</mi><mn>3.35</mn><mtext> TB/s</mtext><mo>≈</mo><mn>295</mn></mrow><annotation encoding="application/x-tex">I^{*} = 989\ \text{TFLOP/s} / 3.35\ \text{TB/s} \approx 295</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6887em"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.0785em">I</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.6887em"><span style="top:-3.063em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">∗</span></span></span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord">989</span><span class="mspace"> </span><span class="mord text"><span class="mord">TFLOP/s</span></span><span class="mord">/3.35</span><span class="mspace"> </span><span class="mord text"><span class="mord">TB/s</span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">295</span></span></span></span> FLOP/byte. A square fp16 GEMM of
+dimension <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>n</mi></mrow><annotation encoding="application/x-tex">n</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.4306em"></span><span class="mord mathnormal">n</span></span></span></span> has HBM-boundary intensity <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>2</mn><msup><mi>n</mi><mn>3</mn></msup><mi mathvariant="normal">/</mi><mn>6</mn><msup><mi>n</mi><mn>2</mn></msup><mo>=</mo><mi>n</mi><mi mathvariant="normal">/</mi><mn>3</mn></mrow><annotation encoding="application/x-tex">2n^3/6n^2 = n/3</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.0641em;vertical-align:-0.25em"></span><span class="mord">2</span><span class="mord"><span class="mord mathnormal">n</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141em"><span style="top:-3.063em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">3</span></span></span></span></span></span></span></span><span class="mord">/6</span><span class="mord"><span class="mord mathnormal">n</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141em"><span style="top:-3.063em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal">n</span><span class="mord">/3</span></span></span></span>, so it crosses at <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>n</mi><mo>≈</mo><mn>885</mn></mrow><annotation encoding="application/x-tex">n \approx 885</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.4831em"></span><span class="mord mathnormal">n</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">885</span></span></span></span>, call
+it 900. Below that, a “compute” kernel is memory-bound, which is why small-batch matmuls
+disappoint and why the fp8 ridge at ~590 pushes that crossover out to <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>n</mi><mo>≈</mo><mn>900</mn></mrow><annotation encoding="application/x-tex">n \approx 900</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.4831em"></span><span class="mord mathnormal">n</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">900</span></span></span></span> again once
+you account for halved bytes.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Batch-1 decode floor for a 70B model in fp8 on one H100. Then explain what tensor parallelism does to that number.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>70 GB / 3.35 TB/s ≈ <strong>21 ms per token</strong>, so ~48 tok/s, before derating for ~80% achieved
+bandwidth. Tensor parallelism across <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>P</mi></mrow><annotation encoding="application/x-tex">P</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.1389em">P</span></span></span></span> GPUs divides the per-GPU weight bytes by <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>P</mi></mrow><annotation encoding="application/x-tex">P</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.1389em">P</span></span></span></span> <em>and</em>
+multiplies aggregate bandwidth by <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>P</mi></mrow><annotation encoding="application/x-tex">P</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.1389em">P</span></span></span></span>, so the floor drops roughly as <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>1</mn><mi mathvariant="normal">/</mi><mi>P</mi></mrow><annotation encoding="application/x-tex">1/P</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord">1/</span><span class="mord mathnormal" style="margin-right:0.1389em">P</span></span></span></span>. What it adds is an
+all-reduce per layer on the critical path: two collectives per transformer block over NVLink, at
+a few microseconds of latency each. For 80 layers that is a real fraction of the budget, and it
+is a latency cost, not a bandwidth cost, so it does not shrink as you add GPUs. It is the reason
+TP scaling on decode goes sublinear well before the roofline says it should.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">How many bytes must be in flight to saturate H100 HBM? Why can one CPU core not saturate its socket's DRAM?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>3.35</mn><mtext> TB/s</mtext><mo>×</mo><mn>400</mn><mtext> ns</mtext><mo>≈</mo><mn>1.34</mn><mtext> MB</mtext></mrow><annotation encoding="application/x-tex">3.35\ \text{TB/s} \times 400\ \text{ns} \approx 1.34\ \text{MB}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord">3.35</span><span class="mspace"> </span><span class="mord text"><span class="mord">TB/s</span></span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">400</span><span class="mspace"> </span><span class="mord text"><span class="mord">ns</span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord">1.34</span><span class="mspace"> </span><span class="mord text"><span class="mord">MB</span></span></span></span></span>, roughly 10,500 outstanding
+128 B sectors, ~80 per SM. That is the real reason occupancy matters: it is the mechanism for
+meeting Little’s Law, not a goal in itself.</p><p>One CPU core is capped by its line-fill buffers, roughly 10–16 outstanding misses. At 64 B each
+over ~80 ns that is 8–12 GB/s, against 200–400 GB/s for the socket. The limit is memory-level
+parallelism, not bandwidth, which is why the fix is more independent streams and prefetch
+distance, and why a single-threaded pointer chase is the worst case in both directions.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Two kernels have identical arithmetic intensity. One reaches the memory roof; the other sits at 40% of it. Give three reasons.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Insufficient memory-level parallelism to satisfy Little’s Law, from low occupancy or long
+dependent chains. Poor access patterns, so the bytes <em>requested</em> are far fewer than the bytes
+<em>transferred</em> — intensity computed from useful bytes flatters an uncoalesced kernel that is
+actually pulling whole lines to use four of them. And structural stalls the model ignores:
+<code>__syncthreads()</code>, wave quantization, or partition camping across memory channels.</p><p>The general form: identical <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>I</mi></mrow><annotation encoding="application/x-tex">I</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0785em">I</span></span></span></span> means identical position on the horizontal axis, and says nothing
+about whether you can generate enough concurrency to reach the roof above you.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">One sentence: why does roofline mispredict at batch 1 with a hard deadline?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>It is a steady-state throughput asymptote that assumes saturating concurrency and amortized fixed
+costs, and at batch 1 there is no concurrency to saturate with and nothing over which to amortize,
+so the binding quantity is critical-path depth rather than bytes over bandwidth.</p></div></details></div><footer class="mfoot" data-astro-cid-mhcwui4e><button class="mark" data-mark="01-roofline" aria-pressed="false" data-astro-cid-mhcwui4e>Mark as reviewed</button><nav class="pager" data-astro-cid-mhcwui4e><span data-astro-cid-mhcwui4e></span><a class="pager-link is-next" href="/refresher/02-layout-coalescing/" data-next data-astro-cid-mhcwui4e><span class="pager-dir" data-astro-cid-mhcwui4e>Next →</span><span class="pager-title" data-astro-cid-mhcwui4e>2. Layout, coalescing, bank conflicts, tiling</span></a></nav></footer></article></main></div></div><div class="search-overlay" data-search hidden data-astro-cid-ac66eqjo><div class="search-backdrop" data-search-close data-astro-cid-ac66eqjo></div><div class="search-panel" role="dialog" aria-modal="true" aria-label="Search modules" data-astro-cid-ac66eqjo><div class="search-input-row" data-astro-cid-ac66eqjo><span class="search-icon" aria-hidden="true" data-astro-cid-ac66eqjo>⌕</span><input type="text" class="search-input" placeholder="Search all modules…" autocomplete="off" spellcheck="false" data-search-input data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>esc</kbd></div><ul class="search-results" data-search-results data-astro-cid-ac66eqjo></ul><p class="search-empty" data-search-empty hidden data-astro-cid-ac66eqjo>No matches.</p><p class="search-hint" data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>↑</kbd><kbd data-astro-cid-ac66eqjo>↓</kbd> move · <kbd data-astro-cid-ac66eqjo>↵</kbd> open</p></div></div><script>(function(){const indexUrl = "/refresher/search.json";
+
+  (() => {
+    const overlay = document.querySelector('[data-search]');
+    if (!overlay) return;
+    const input = overlay.querySelector('[data-search-input]');
+    const list = overlay.querySelector('[data-search-results]');
+    const empty = overlay.querySelector('[data-search-empty]');
+
+    let index = null;
+    let loading = null;
+    let active = 0;
+
+    const load = () => {
+      if (index) return Promise.resolve(index);
+      if (!loading) {
+        loading = fetch(indexUrl)
+          .then((r) => r.json())
+          .then((d) => (index = d))
+          .catch(() => (index = []));
+      }
+      return loading;
+    };
+
+    function open() {
+      overlay.hidden = false;
+      document.documentElement.style.overflow = 'hidden';
+      load().then(() => input.focus());
+      input.focus();
+      input.select();
+    }
+
+    function close() {
+      overlay.hidden = true;
+      document.documentElement.style.overflow = '';
+    }
+
+    function escapeHtml(s) {
+      return s.replace(
+        /[&<>"]/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]
+      );
+    }
+
+    // Excerpt around the first matched term, with the term marked.
+    function excerpt(text, terms) {
+      const lower = text.toLowerCase();
+      let at = -1;
+      for (const t of terms) {
+        const i = lower.indexOf(t);
+        if (i !== -1 && (at === -1 || i < at)) at = i;
+      }
+      if (at === -1) at = 0;
+      const start = Math.max(0, at - 60);
+      let slice = text.slice(start, start + 190);
+      if (start > 0) slice = '…' + slice;
+      if (start + 190 < text.length) slice += '…';
+      let html = escapeHtml(slice);
+      for (const t of terms) {
+        html = html.replace(
+          new RegExp(`(${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'),
+          '<mark>$1</mark>'
+        );
+      }
+      return html;
+    }
+
+    function score(rec, terms) {
+      let s = 0;
+      const hay = (rec.m + ' ' + rec.h + ' ' + (rec.k || '')).toLowerCase();
+      const body = rec.t.toLowerCase();
+      for (const t of terms) {
+        if (hay.includes(t)) s += 12;
+        const i = body.indexOf(t);
+        if (i !== -1) s += 4 + Math.max(0, 3 - Math.floor(i / 400));
+        else if (!hay.includes(t)) return 0; // every term must appear
+      }
+      return s;
+    }
+
+    function render(results, terms) {
+      active = 0;
+      list.innerHTML = results
+        .map(
+          (r, i) => `
+          <li>
+            <a href="${r.u}" class="search-hit${i === 0 ? ' is-active' : ''}" data-hit>
+              <span class="search-hit-crumb"><span class="search-hit-n">${r.n}</span>${escapeHtml(r.m)} <span class="search-hit-sep">›</span> ${escapeHtml(r.h)}</span>
+              <span class="search-hit-text">${excerpt(r.t, terms)}</span>
+            </a>
+          </li>`
+        )
+        .join('');
+      empty.hidden = results.length > 0;
+    }
+
+    function run() {
+      const q = input.value.trim().toLowerCase();
+      if (!q || !index) {
+        list.innerHTML = '';
+        empty.hidden = true;
+        return;
+      }
+      const terms = q.split(/\s+/).filter(Boolean);
+      const results = index
+        .map((r) => ({ r, s: score(r, terms) }))
+        .filter((x) => x.s > 0)
+        .sort((a, b) => b.s - a.s || a.r.n - b.r.n)
+        .slice(0, 12)
+        .map((x) => x.r);
+      render(results, terms);
+    }
+
+    function move(delta) {
+      const hits = list.querySelectorAll('[data-hit]');
+      if (!hits.length) return;
+      hits[active]?.classList.remove('is-active');
+      active = (active + delta + hits.length) % hits.length;
+      hits[active].classList.add('is-active');
+      hits[active].scrollIntoView({ block: 'nearest' });
+    }
+
+    input.addEventListener('input', () => {
+      load().then(run);
+      run();
+    });
+
+    overlay.querySelector('[data-search-close]').addEventListener('click', close);
+
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        move(1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        move(-1);
+      } else if (e.key === 'Enter') {
+        const hit = list.querySelectorAll('[data-hit]')[active];
+        if (hit) {
+          e.preventDefault();
+          window.location.href = hit.getAttribute('href');
+        }
+      }
+    });
+
+    document.querySelectorAll('[data-search-open]').forEach((b) =>
+      b.addEventListener('click', open)
+    );
+
+    window.__openSearch = open;
+  })();
+})();</script><script>(function(){const base = "/refresher";
+
+      (() => {
+        const root = document.documentElement;
+
+        /* ---- theme ---------------------------------------------------- */
+        document.querySelector('[data-theme-toggle]')?.addEventListener('click', () => {
+          const light = root.classList.toggle('light');
+          try {
+            localStorage.setItem('refresher:theme', light ? 'light' : 'dark');
+          } catch (e) {}
+        });
+
+        /* ---- progress (localStorage) ---------------------------------- */
+        const KEY = 'refresher:progress';
+        const readSet = () => {
+          try {
+            return new Set(JSON.parse(localStorage.getItem(KEY) || '[]'));
+          } catch (e) {
+            return new Set();
+          }
+        };
+        const writeSet = (s) => {
+          try {
+            localStorage.setItem(KEY, JSON.stringify([...s]));
+          } catch (e) {}
+        };
+
+        function paintProgress() {
+          const done = readSet();
+          const ticks = document.querySelectorAll('[data-tick]');
+          // A module can own more than one tick (rail + contents card), so
+          // count distinct module ids rather than elements.
+          const ids = new Set();
+          ticks.forEach((t) => {
+            const id = t.getAttribute('data-tick');
+            ids.add(id);
+            if (done.has(id)) t.setAttribute('data-read', '');
+            else t.removeAttribute('data-read');
+          });
+          const n = [...ids].filter((id) => done.has(id)).length;
+          const total = ids.size || 1;
+          const fill = document.querySelector('[data-progress-fill]');
+          if (fill) fill.style.width = `${(n / total) * 100}%`;
+          const count = document.querySelector('[data-progress-count]');
+          if (count) count.textContent = String(n);
+          document.querySelectorAll('[data-mark]').forEach((btn) => {
+            const id = btn.getAttribute('data-mark');
+            const on = done.has(id);
+            btn.setAttribute('aria-pressed', String(on));
+            btn.textContent = on ? '✓ Reviewed' : 'Mark as reviewed';
+          });
+        }
+
+        document.querySelectorAll('[data-mark]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-mark');
+            const s = readSet();
+            s.has(id) ? s.delete(id) : s.add(id);
+            writeSet(s);
+            paintProgress();
+          });
+        });
+
+        paintProgress();
+
+        /* ---- scrollspy over h2s, mirrored into the rail --------------- */
+        const article = document.querySelector('[data-article]');
+        const heads = article ? [...article.querySelectorAll('h2[id]')] : [];
+        const subLinks = new Map(
+          [...document.querySelectorAll('[data-toc]')].map((a) => [
+            a.getAttribute('data-toc'),
+            a,
+          ])
+        );
+
+        if (heads.length && subLinks.size) {
+          let currentId = null;
+          const spy = () => {
+            let found = heads[0].id;
+            for (const h of heads) {
+              if (h.getBoundingClientRect().top <= 96) found = h.id;
+              else break;
+            }
+            if (found === currentId) return;
+            subLinks.get(currentId)?.classList.remove('is-current');
+            currentId = found;
+            const el = subLinks.get(currentId);
+            if (el) {
+              el.classList.add('is-current');
+              el.scrollIntoView({ block: 'nearest' });
+            }
+          };
+          spy();
+          addEventListener('scroll', spy, { passive: true });
+        }
+
+        /* ---- keyboard ------------------------------------------------- */
+        const stops = article
+          ? [...article.querySelectorAll('h2[id], h3[id]')]
+          : [];
+
+        function jump(delta) {
+          if (!stops.length) return;
+          // The heading we are "in": the last one scrolled past the threshold.
+          let cur = -1;
+          for (let i = 0; i < stops.length; i++) {
+            if (stops[i].getBoundingClientRect().top <= 100) cur = i;
+            else break;
+          }
+          const target = cur + delta;
+          if (target < 0) return scrollTo({ top: 0, behavior: 'smooth' });
+          if (target >= stops.length) return;
+          stops[target].scrollIntoView({ block: 'start' });
+        }
+
+        addEventListener('keydown', (e) => {
+          const tag = (e.target.tagName || '').toLowerCase();
+          if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+          if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+          if (e.key === '/') {
+            e.preventDefault();
+            window.__openSearch?.();
+          } else if (e.key === 'j') {
+            e.preventDefault();
+            jump(1);
+          } else if (e.key === 'k') {
+            e.preventDefault();
+            jump(-1);
+          } else if (e.key === '[' || e.key === ']') {
+            const sel = e.key === '[' ? '[data-prev]' : '[data-next]';
+            const a = document.querySelector(sel);
+            if (a) {
+              e.preventDefault();
+              window.location.href = a.getAttribute('href');
+            }
+          }
+        });
+
+        /* ---- narrow-screen rail --------------------------------------- */
+        const rail = document.querySelector('[data-rail]');
+        document.querySelector('[data-rail-toggle]')?.addEventListener('click', () => {
+          rail.classList.toggle('is-open');
+        });
+        rail?.addEventListener('click', (e) => {
+          if (e.target.closest('a')) rail.classList.remove('is-open');
+        });
+      })();
+    })();</script></body></html>

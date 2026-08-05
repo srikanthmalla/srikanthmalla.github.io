@@ -1,0 +1,8 @@
+# Astro source project for the /refresher/ blog.
+# The *built output* in /refresher/ IS committed — that is what GitHub Pages serves.
+refresher-src/node_modules/
+refresher-src/.astro/
+refresher-src/dist/
+node_modules/
+.DS_Store
+npm-debug.log*

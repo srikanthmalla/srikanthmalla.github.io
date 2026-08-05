@@ -1,0 +1,26 @@
+---
+n: 3
+title: "Pipelining, multi-buffering, latency hiding"
+blurb: "Initiation interval versus depth, double and triple buffering, prefetch distance — and why every one of these tools fails at batch 1."
+part: "A"
+draft: true
+minutes: 15
+tags: ["pipelining","double buffering","async copy","prefetch","initiation interval"]
+---
+
+import Callout from '../../components/Callout.astro';
+
+## Planned coverage
+
+Not written yet. This module will cover:
+
+- Initiation interval versus pipeline depth: the two numbers, and which one a deadline cares about
+- Double and triple buffering, async copy, and choosing prefetch distance from the latency ratio
+- Warp-level parallelism versus software pipelining as two ways to buy the same hiding
+- The reframe: at batch 1 there is nothing to overlap with. Latency hiding fails and only depth reduction helps
+
+<Callout type="bridge" title="structure">
+  Every module follows the same four beats: the core mental model, the numbers worth
+  memorizing, a critical-thinking section that pushes on the model until it breaks, and
+  self-checks with the answers hidden. Module 1 is the reference for tone and density.
+</Callout>

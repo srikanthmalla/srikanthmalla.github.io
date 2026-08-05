@@ -1,0 +1,420 @@
+@import 'tailwindcss';
+
+@import 'katex/dist/katex.min.css';
+
+/* Self-hosted, latin subset only. Variable axes so one file covers every weight. */
+@font-face {
+  font-family: 'Source Serif 4 Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 900;
+  src: url('/refresher/fonts/source-serif-4-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212,
+    U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Inter Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('/refresher/fonts/inter-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212,
+    U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url('/refresher/fonts/jetbrains-mono-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212,
+    U+2215, U+FEFF, U+FFFD;
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---------------------------------------------------------------------------
+   Palette. Dark is the default; light is a warm paper, not plain white.
+   Both are low-chroma so the accent and the callouts carry all the colour.
+--------------------------------------------------------------------------- */
+:root {
+  --bg: #14161b;
+  --bg-raised: #191c23;
+  --bg-sunken: #101217;
+  --rule: #272c36;
+  --rule-soft: #1e222a;
+  --ink: #c9cedb;
+  --ink-strong: #f0f2f6;
+  --ink-muted: #838c9c;
+  --ink-faint: #5d6675;
+  --accent: #e0a437;
+  --accent-soft: #7a5714;
+  --probe: #7ea6f0;
+  --probe-bg: #171c27;
+  --trap: #e2807f;
+  --trap-bg: #211a1c;
+  --bridge: #6cbfa8;
+  --bridge-bg: #141f1e;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4);
+  color-scheme: dark;
+}
+
+:root.light {
+  --bg: #fbfaf7;
+  --bg-raised: #ffffff;
+  --bg-sunken: #f2f0ea;
+  --rule: #ddd8cc;
+  --rule-soft: #e9e5db;
+  --ink: #33373f;
+  --ink-strong: #16181d;
+  --ink-muted: #6d7280;
+  --ink-faint: #969ba5;
+  --accent: #a06a10;
+  --accent-soft: #e8d5ab;
+  --probe: #2f5fa8;
+  --probe-bg: #f0f4fb;
+  --trap: #a33f3e;
+  --trap-bg: #fcf2f1;
+  --bridge: #1f6f5c;
+  --bridge-bg: #eef7f4;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-raised: var(--bg-raised);
+  --color-sunken: var(--bg-sunken);
+  --color-rule: var(--rule);
+  --color-rule-soft: var(--rule-soft);
+  --color-ink: var(--ink);
+  --color-ink-strong: var(--ink-strong);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-faint: var(--ink-faint);
+  --color-accent: var(--accent);
+
+  --font-serif: 'Source Serif 4 Variable', ui-serif, Georgia, serif;
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+}
+
+/* ---------------------------------------------------------------------------
+   Base
+--------------------------------------------------------------------------- */
+html {
+  scroll-behavior: smooth;
+  /* Sticky header + a little air when jumping to a heading. */
+  scroll-padding-top: 5.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 1.0625rem;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-variant-numeric: oldstyle-nums proportional-nums;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--accent) 30%, transparent);
+  color: var(--ink-strong);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Numerals in tables, code and UI chrome should be lining + tabular. */
+table,
+code,
+kbd,
+.font-sans {
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+/* ---------------------------------------------------------------------------
+   Prose — the reading column. ~68ch measure, real hierarchy.
+--------------------------------------------------------------------------- */
+.prose {
+  max-width: 68ch;
+}
+
+.prose > * + * {
+  margin-block-start: 1.15em;
+}
+
+.prose h2 {
+  font-family: var(--font-sans);
+  font-size: 1.375rem;
+  font-weight: 620;
+  letter-spacing: -0.017em;
+  line-height: 1.25;
+  color: var(--ink-strong);
+  margin-block-start: 3.25rem;
+  padding-block-end: 0.5rem;
+  border-block-end: 1px solid var(--rule);
+  scroll-margin-top: 5.5rem;
+}
+
+.prose h3 {
+  font-family: var(--font-sans);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: -0.011em;
+  color: var(--ink-strong);
+  margin-block-start: 2.25rem;
+  scroll-margin-top: 5.5rem;
+}
+
+.prose h4 {
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--ink-strong);
+  margin-block-start: 1.75rem;
+  scroll-margin-top: 5.5rem;
+}
+
+/* Heading anchors: visible only on hover, never in the way. */
+.prose :is(h2, h3, h4) .anchor {
+  color: var(--ink-faint);
+  text-decoration: none;
+  margin-inline-start: 0.4em;
+  opacity: 0;
+  font-weight: 400;
+  transition: opacity 0.1s;
+}
+
+.prose :is(h2, h3, h4):hover .anchor {
+  opacity: 1;
+}
+
+.prose strong {
+  color: var(--ink-strong);
+  font-weight: 620;
+}
+
+.prose em {
+  font-style: italic;
+}
+
+.prose a:not(.anchor) {
+  color: var(--ink-strong);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--accent) 55%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+
+.prose a:not(.anchor):hover {
+  text-decoration-color: var(--accent);
+}
+
+.prose ul,
+.prose ol {
+  padding-inline-start: 1.35em;
+}
+
+.prose ul {
+  list-style: none;
+}
+
+.prose ul > li {
+  position: relative;
+}
+
+.prose ul > li::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: -0.95em;
+  inset-block-start: 0.72em;
+  width: 4px;
+  height: 4px;
+  border-radius: 1px;
+  background: var(--accent);
+  opacity: 0.75;
+}
+
+.prose ol {
+  list-style: decimal;
+}
+
+.prose ol::marker,
+.prose li::marker {
+  color: var(--ink-faint);
+}
+
+.prose li + li {
+  margin-block-start: 0.4em;
+}
+
+.prose li > ul,
+.prose li > ol {
+  margin-block-start: 0.4em;
+}
+
+.prose blockquote {
+  border-inline-start: 2px solid var(--accent);
+  padding-inline-start: 1.1rem;
+  color: var(--ink-muted);
+  font-style: italic;
+}
+
+.prose hr {
+  border: 0;
+  border-block-start: 1px solid var(--rule);
+  margin-block: 2.5rem;
+}
+
+/* ---- Inline code + code blocks ---- */
+.prose :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.855em;
+  background: var(--bg-sunken);
+  border: 1px solid var(--rule-soft);
+  border-radius: 3px;
+  padding: 0.1em 0.34em;
+  color: var(--ink-strong);
+  white-space: nowrap;
+}
+
+.prose pre {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.65;
+  background: var(--bg-sunken) !important;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 0.95rem 1.1rem;
+  overflow-x: auto;
+  margin-block: 1.5rem;
+}
+
+.prose pre code {
+  font-family: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+}
+
+/* Shiki dual-theme swap driven by the .light class, not a media query. */
+html.light .astro-code,
+html.light .astro-code span {
+  color: var(--shiki-light) !important;
+  background-color: transparent !important;
+  font-style: var(--shiki-light-font-style) !important;
+}
+
+/* ---- Tables — the "numbers worth memorising" workhorse ---- */
+.prose .table-wrap {
+  overflow-x: auto;
+  margin-block: 1.75rem;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--bg-raised);
+}
+
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.prose thead th {
+  text-align: start;
+  font-weight: 600;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-muted);
+  background: var(--bg-sunken);
+  padding: 0.6rem 0.9rem;
+  border-block-end: 1px solid var(--rule);
+  white-space: nowrap;
+}
+
+.prose tbody td {
+  padding: 0.55rem 0.9rem;
+  border-block-start: 1px solid var(--rule-soft);
+  vertical-align: baseline;
+}
+
+.prose tbody tr:first-child td {
+  border-block-start: 0;
+}
+
+.prose tbody td:first-child {
+  color: var(--ink-strong);
+  font-weight: 500;
+}
+
+.prose tbody td code {
+  white-space: nowrap;
+  font-size: 0.9em;
+}
+
+/* ---- Math ---- */
+.prose .katex {
+  font-size: 1.02em;
+}
+
+.prose .katex-display {
+  margin-block: 1.6rem;
+  padding-block: 0.2rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* ---------------------------------------------------------------------------
+   Sidebar / chrome
+--------------------------------------------------------------------------- */
+.rail {
+  scrollbar-width: thin;
+  scrollbar-color: var(--rule) transparent;
+}
+
+.rail::-webkit-scrollbar {
+  width: 8px;
+}
+
+.rail::-webkit-scrollbar-thumb {
+  background: var(--rule);
+  border-radius: 4px;
+}
+
+.rail::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+kbd {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  border: 1px solid var(--rule);
+  border-block-end-width: 2px;
+  border-radius: 4px;
+  padding: 0.05rem 0.3rem;
+  background: var(--bg-raised);
+  color: var(--ink-muted);
+}
+
+[hidden] {
+  display: none !important;
+}

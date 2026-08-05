@@ -1,0 +1,28 @@
+---
+n: 11
+title: "GBDT inference in hardware"
+blurb: "Comparator trees, not GEMM. Latency set by depth, feature fetch as the real bottleneck, and why gradient-boosted trees beat DNNs at this scale."
+part: "E"
+draft: true
+minutes: 15
+tags: ["GBDT","XGBoost","decision tree","comparator","quantized thresholds","latency"]
+---
+
+import Callout from '../../components/Callout.astro';
+
+## Planned coverage
+
+Not written yet. This module will cover:
+
+- The shape change: comparator trees, not matrix multiplies
+- Latency set by tree depth, not FLOP count — and what that does to the roofline
+- Fully parallel tree evaluation across an ensemble
+- Memory-lookup-shaped compute, and feature fetch as the true bottleneck
+- Quantized thresholds and the exactness requirement
+- Why GBDTs dominate small-model trading inference over DNNs, argued properly
+
+<Callout type="bridge" title="structure">
+  Every module follows the same four beats: the core mental model, the numbers worth
+  memorizing, a critical-thinking section that pushes on the model until it breaks, and
+  self-checks with the answers hidden. Module 1 is the reference for tone and density.
+</Callout>
