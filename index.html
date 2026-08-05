@@ -53,7 +53,7 @@ body {
   padding: 0 16px;
 }
 
-/* ---------- header + icon nav ---------- */
+/* ---------- header ---------- */
 .header {
   text-align: center;
   padding: 28px 0 4px;
@@ -71,29 +71,6 @@ body {
   font-size: 15px;
 }
 
-.navigation {
-  display: flex;
-  flex-wrap: wrap;              /* was overflowing off-screen on phones */
-  justify-content: center;
-  align-items: flex-start;
-  gap: 4px 6px;
-  padding: 18px 0 6px;
-}
-
-.navigation div {
-  width: 84px;
-  text-align: center;
-}
-
-.navigation img {
-  height: 40px;
-  width: auto;
-}
-
-.navigation p {
-  margin: 4px 0 0;
-  font-size: 13px;
-}
 
 /* ---------- intro ---------- */
 .intro {
@@ -219,14 +196,6 @@ h3 {
   .header { padding-top: 20px; }
   .header h1 { font-size: 1.9em; }
 
-  /* Four profile links land as a clean 2 x 2 on a phone. */
-  .navigation {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 10px 0;
-  }
-
-  .navigation div { width: auto; }
 
   .profile-pic {
     float: none;
@@ -247,6 +216,7 @@ h3 {
 </head>
 
 <body>
+<link rel="stylesheet" href="/css/site.css">
 <div id="nav_bar"></div>
 <script src="/js/nav.js"></script>
 
@@ -257,26 +227,6 @@ h3 {
     <p class="tagline">Staff AI/ML Engineer, Samsung Semiconductor US</p>
   </header>
 
-  <!-- External profiles only. Site sections live in the shared nav above, so
-       there is exactly one place each destination is listed. -->
-  <nav class="navigation">
-    <div>
-      <a href="files/SrikanthMalla_Resume.pdf" target="_blank" rel="noopener" title="Resume"><img src="files/resume_icon.png" alt="Resume"></a>
-      <p>Resume</p>
-    </div>
-    <div>
-      <a href="https://scholar.google.com/citations?user=TjIKwLcAAAAJ&amp;hl=en" target="_blank" rel="noopener" title="Google Scholar"><img src="files/google_scholar_logo.png" alt="Google Scholar"></a>
-      <p>Scholar</p>
-    </div>
-    <div>
-      <a href="https://www.linkedin.com/in/srikanthmalla/" target="_blank" rel="noopener" title="LinkedIn"><img src="files/linkedin.png" alt="LinkedIn"></a>
-      <p>Linkedin</p>
-    </div>
-    <div>
-      <a href="https://github.com/srikanthmalla/" target="_blank" rel="noopener" title="GitHub"><img src="files/github.png" alt="GitHub"></a>
-      <p>Github</p>
-    </div>
-  </nav>
 
   <section class="intro">
     <img src="files/profile_pic.jpg" class="profile-pic" alt="Srikanth Malla">

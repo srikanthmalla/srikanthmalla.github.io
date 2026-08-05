@@ -1,0 +1,105 @@
+/*
+ * Shared chrome for the plain (non-blog) pages. The blog under /blog/ has its
+ * own reading environment and deliberately does not use this.
+ *
+ * Only the icon nav lives here — page bodies keep their own styles.
+ */
+
+.iconnav {
+  padding: 18px 12px 6px;
+}
+
+.iconnav ul {
+  list-style: none;
+  margin: 0 auto;
+  padding: 0;
+  max-width: 950px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 2px;
+}
+
+.iconnav li {
+  flex: 0 0 auto;
+}
+
+.iconnav a {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  width: 82px;
+  padding: 8px 2px 7px;
+  border-radius: 10px;
+  text-decoration: none;
+  color: #666;
+  font-size: 12.5px;
+  line-height: 1.2;
+  border: 1px solid transparent;
+  transition: background-color 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+}
+
+.iconnav img {
+  width: 42px;
+  height: 42px;
+  object-fit: contain;
+  /* Slightly muted until hovered, so eight colourful icons do not shout. */
+  opacity: 0.88;
+  transition: opacity 0.14s ease, transform 0.14s ease;
+}
+
+.iconnav a:hover,
+.iconnav a:focus-visible {
+  background: #ffffff;
+  border-color: #e3e5e8;
+  color: #1772d0;
+}
+
+.iconnav a:hover img,
+.iconnav a:focus-visible img {
+  opacity: 1;
+  transform: translateY(-1px);
+}
+
+/* Current page */
+.iconnav a.is-current {
+  background: #ffffff;
+  border-color: #dfe2e6;
+  color: #14171c;
+  font-weight: bold;
+}
+
+.iconnav a.is-current img {
+  opacity: 1;
+}
+
+/* A hairline between site sections and external profiles. */
+.iconnav li.iconnav-ext:first-of-type {
+  margin-left: 14px;
+  padding-left: 16px;
+  border-left: 1px solid #e3e5e8;
+}
+
+@media (max-width: 560px) {
+  .iconnav {
+    padding-top: 12px;
+  }
+
+  .iconnav a {
+    width: 72px;
+    font-size: 11.5px;
+  }
+
+  .iconnav img {
+    width: 34px;
+    height: 34px;
+  }
+
+  /* The divider reads as clutter once the row wraps. */
+  .iconnav li.iconnav-ext:first-of-type {
+    margin-left: 0;
+    padding-left: 0;
+    border-left: 0;
+  }
+}

@@ -3,29 +3,58 @@
   Every page includes it with:
 
       <div id="nav_bar"></div>
+      <link rel="stylesheet" href="/css/site.css">
       <script src="/js/nav.js"></script>
 
-  Links are root-relative so the same file works from /, /tutorials/ and
-  /robots/. js/nav.js marks the current page with .active.
+  Links are root-relative so the same file works from any directory.
+  js/nav.js marks the current page with .is-current.
 -->
-<nav class="navbar navbar-inverse bg-inverse">
-  <div class="container-fluid">
-    <div class="navbar-header">
-      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#site-nav-links" aria-expanded="false">
-        <span class="sr-only">Toggle navigation</span>
-        <span class="icon-bar"></span>
-        <span class="icon-bar"></span>
-        <span class="icon-bar"></span>
-      </button>
-      <a class="navbar-brand" href="/index.html">Srikanth Malla</a>
-    </div>
-    <div class="collapse navbar-collapse" id="site-nav-links">
-      <ul class="nav navbar-nav">
-        <li><a href="/projects.html">Projects</a></li>
-        <li><a href="/learning.html">Blog</a></li>
-        <li><a href="/index.html#publications">Publications</a></li>
-        <li><a href="/cv.html">CV</a></li>
-      </ul>
-    </div>
-  </div>
+<nav class="iconnav" aria-label="Site">
+  <ul>
+    <li>
+      <a href="/index.html">
+        <img src="/files/home.png" alt="" width="42" height="42">
+        <span>Home</span>
+      </a>
+    </li>
+    <!-- projects.html is intentionally not linked from anywhere; it stays
+         reachable by direct URL only. -->
+    <li>
+      <a href="/blog/">
+        <img src="/files/learning.png" alt="" width="42" height="42">
+        <span>Blog</span>
+      </a>
+    </li>
+    <li>
+      <a href="/index.html#publications">
+        <img src="/files/papers_logo.png" alt="" width="42" height="42">
+        <span>Papers</span>
+      </a>
+    </li>
+    <li>
+      <!-- Straight to the PDF; there is no wrapper page to render it. -->
+      <a href="/files/SrikanthMalla_Resume.pdf" target="_blank" rel="noopener">
+        <img src="/files/resume_icon.png" alt="" width="42" height="42">
+        <span>CV</span>
+      </a>
+    </li>
+    <li class="iconnav-ext">
+      <a href="https://scholar.google.com/citations?user=TjIKwLcAAAAJ&amp;hl=en" target="_blank" rel="noopener">
+        <img src="/files/google_scholar_logo.png" alt="" width="42" height="42">
+        <span>Scholar</span>
+      </a>
+    </li>
+    <li class="iconnav-ext">
+      <a href="https://www.linkedin.com/in/srikanthmalla/" target="_blank" rel="noopener">
+        <img src="/files/linkedin.png" alt="" width="42" height="42">
+        <span>LinkedIn</span>
+      </a>
+    </li>
+    <li class="iconnav-ext">
+      <a href="https://github.com/srikanthmalla/" target="_blank" rel="noopener">
+        <img src="/files/github.png" alt="" width="42" height="42">
+        <span>GitHub</span>
+      </a>
+    </li>
+  </ul>
 </nav>
