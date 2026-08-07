@@ -1,0 +1,622 @@
+<!DOCTYPE html><html lang="en" data-astro-cid-z4jru4n3><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>11. MoE: dynamism the compiler cannot remove — ML Software &amp; Compilers</title><meta name="description" content="Routing makes every expert's batch size a function of the data. Capacity factors, grouped GEMM and sort-permute are all ways of buying back a static shape — and each one costs something real."><link rel="icon" href="data:,"><script>
+      (() => {
+        try {
+          const t = localStorage.getItem('refresher:theme');
+          if (t === 'light') document.documentElement.classList.add('light');
+        } catch (e) {}
+      })();
+    </script><link rel="stylesheet" href="/blog/_astro/BaseLayout.B9q2yynj.css"><style>.wrap[data-astro-cid-5x65ok44]{max-width:68ch;margin-inline:auto;padding:3rem 1.25rem 6rem}@media (width>=1024px){.wrap[data-astro-cid-5x65ok44]{max-width:calc(68ch + 6rem);padding-inline:3rem}}.mhead[data-astro-cid-5x65ok44]{border-block-end:1px solid var(--rule);margin-block-end:.5rem;padding-block-end:1.75rem}.mhead-kicker[data-astro-cid-5x65ok44]{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint);margin:0 0 .85rem;font-size:.6875rem;font-weight:500}.mhead-n[data-astro-cid-5x65ok44]{color:var(--accent);font-weight:640}.mhead-dot[data-astro-cid-5x65ok44]{opacity:.5;padding-inline:.35rem}.mhead-title[data-astro-cid-5x65ok44]{font-family:var(--font-sans);letter-spacing:-.027em;color:var(--ink-strong);text-wrap:balance;margin:0;font-size:clamp(1.75rem,1.3rem + 1.9vw,2.375rem);font-weight:660;line-height:1.12}.mhead-blurb[data-astro-cid-5x65ok44]{color:var(--ink-muted);max-width:58ch;margin:.85rem 0 0;font-size:1.0625rem;line-height:1.6}.mfoot[data-astro-cid-5x65ok44]{border-block-start:1px solid var(--rule);margin-block-start:4rem;padding-block-start:1.75rem}.mark[data-astro-cid-5x65ok44]{font-family:var(--font-sans);border:1px solid var(--rule);background:var(--bg-raised);color:var(--ink-muted);cursor:pointer;border-radius:5px;padding:.4rem .85rem;font-size:.75rem;font-weight:550}.mark[data-astro-cid-5x65ok44]:hover{color:var(--ink-strong);border-color:var(--ink-faint)}.mark[data-astro-cid-5x65ok44][aria-pressed=true]{color:var(--bridge);border-color:color-mix(in oklab, var(--bridge) 45%, var(--rule))}.pager[data-astro-cid-5x65ok44]{grid-template-columns:1fr 1fr;gap:1rem;margin-block-start:2rem;display:grid}.pager-link[data-astro-cid-5x65ok44]{border:1px solid var(--rule);font-family:var(--font-sans);border-radius:6px;flex-direction:column;gap:.25rem;padding:.75rem .9rem;text-decoration:none;display:flex}.pager-link[data-astro-cid-5x65ok44]:hover{border-color:var(--ink-faint);background:var(--bg-raised)}.pager-link[data-astro-cid-5x65ok44].is-next{text-align:end}.pager-dir[data-astro-cid-5x65ok44]{text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);font-size:.6875rem}.pager-title[data-astro-cid-5x65ok44]{color:var(--ink-strong);font-size:.8125rem;font-weight:550;line-height:1.35}
+</style><style>.callout{border:1px solid var(--rule);border-inline-start-width:2px;border-radius:5px;margin-block:1.75rem;padding:.9rem 1.1rem 1rem;font-size:.9375rem;line-height:1.65}.callout-probe{border-inline-start-color:var(--probe);background:var(--probe-bg)}.callout-trap{border-inline-start-color:var(--trap);background:var(--trap-bg)}.callout-bridge{border-inline-start-color:var(--bridge);background:var(--bridge-bg)}.callout-label{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;align-items:center;gap:.45rem;margin:0 0 .5rem;font-size:.6875rem;font-weight:620;display:flex}.callout-probe .callout-label{color:var(--probe)}.callout-trap .callout-label{color:var(--trap)}.callout-bridge .callout-label{color:var(--bridge)}.callout-mark{background:currentColor;border-radius:50%;flex:none;width:5px;height:5px}.callout-title{text-transform:none;letter-spacing:0;color:var(--ink-muted);font-weight:500}.callout-body>:first-child{margin-block-start:0}.callout-body>:last-child{margin-block-end:0}.callout-body>*+*{margin-block-start:.75em}.probe{margin-block:1.75rem}.prose .probe-q{font-family:var(--font-sans);letter-spacing:-.01em;color:var(--ink-strong);margin:0 0 .6rem;padding-inline-start:1.15rem;font-size:1rem;font-weight:600;line-height:1.45;position:relative}.prose .probe-q:before{content:"›";color:var(--accent);font-weight:700;position:absolute;inset-inline-start:0}.probe-a{border-inline-start:1px solid var(--rule);margin-inline-start:.1rem;padding-inline-start:1.15rem}.probe-a>*+*{margin-block-start:1.15em}.probe-a>:first-child{margin-block-start:0}.probe-a>:last-child{margin-block-end:0}.selfcheck{border-block-start:1px solid var(--rule-soft)}.selfcheck:last-of-type{border-block-end:1px solid var(--rule-soft)}.prose>.selfcheck+.selfcheck{margin-block-start:0}.selfcheck>summary{cursor:pointer;color:var(--ink);align-items:baseline;gap:1rem;padding:.7rem .2rem;list-style:none;display:flex}.selfcheck>summary::-webkit-details-marker{display:none}.selfcheck>summary:hover{color:var(--ink-strong)}.selfcheck-q{flex:1}.selfcheck-q code{white-space:nowrap}.selfcheck-cue{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);flex:none;padding-block-start:.15rem;font-size:.6875rem;font-weight:600}.selfcheck>summary:hover .selfcheck-cue{color:var(--accent)}.selfcheck-cue-hide,.selfcheck[open] .selfcheck-cue-show{display:none}.selfcheck[open] .selfcheck-cue-hide{display:inline}.selfcheck-a{color:var(--ink-muted);border-inline-start:2px solid var(--rule);margin-block-end:.9rem;margin-inline-start:.2rem;padding:.15rem .2rem 1.05rem;padding-inline-start:1rem;font-size:.9375rem}.selfcheck-a>:first-child{margin-block-start:0}.selfcheck-a>:last-child{margin-block-end:0}.selfcheck-a>*+*{margin-block-start:.7em}.selfcheck-a strong{color:var(--ink)}
+</style></head><body data-astro-cid-z4jru4n3><a href="#content" class="skip" data-astro-cid-z4jru4n3>Skip to content</a><div class="shell" data-astro-cid-z4jru4n3><aside class="rail" data-rail data-astro-cid-z4jru4n3><nav class="rail-nav" aria-label="ML Software &amp; Compilers contents" data-astro-cid-wv7whodv><div class="rail-head" data-astro-cid-wv7whodv><a href="/blog/" class="rail-up" data-astro-cid-wv7whodv>All series</a><a href="/blog/ml-software/" class="rail-home" data-astro-cid-wv7whodv><span class="rail-home-title" data-astro-cid-wv7whodv>ML Software &amp; Compilers</span><span class="rail-home-sub" data-astro-cid-wv7whodv>How PyTorch becomes kernels</span></a><p class="rail-progress" data-astro-cid-wv7whodv><span class="rail-progress-bar" data-astro-cid-wv7whodv><span data-progress-fill data-astro-cid-wv7whodv></span></span><span class="rail-progress-text" data-astro-cid-wv7whodv><span data-progress-count data-astro-cid-wv7whodv>0</span>/14 reviewed</span></p></div><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part J</span>The fault line</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-software/01-why-eager-won/" class="rail-link" title="TensorFlow 1 made the right performance bet and lost anyway. The interesting question is why JAX later made the same bet and won." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>1</span><span class="rail-title" data-astro-cid-wv7whodv>Why eager won</span><span class="rail-tick" data-tick="ml-software/01-why-eager-won" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/02-eager-internals/" class="rail-link" title="Python, the dispatcher, the autograd tape and the allocator all run before your kernel does. Roughly 8 µs of CPU work to launch 2 µs of GPU work." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>2</span><span class="rail-title" data-astro-cid-wv7whodv>What eager mode actually does per op</span><span class="rail-tick" data-tick="ml-software/02-eager-internals" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/03-what-graph-mode-buys/" class="rail-link" title="Three overheads, three mechanisms, three different ceilings. Knowing which one binds tells you whether compiling will help before you try it." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>3</span><span class="rail-title" data-astro-cid-wv7whodv>What graph mode actually buys</span><span class="rail-tick" data-tick="ml-software/03-what-graph-mode-buys" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part K</span>Capture</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-software/04-torchdynamo/" class="rail-link" title="Two earlier attempts failed by being silently wrong or by demanding a Python subset. Dynamo takes a third route: capture bytecode, guard the assumptions, and bail out when it cannot." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>4</span><span class="rail-title" data-astro-cid-wv7whodv>TorchDynamo: capturing Python at runtime</span><span class="rail-tick" data-tick="ml-software/04-torchdynamo" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/05-ir-ladder/" class="rail-link" title="ATen to Prims, functionalization, and AOTAutograd. Then the other lowering universe — MLIR dialects, torch-mlir, StableHLO — and why the CUDA path never goes there." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>5</span><span class="rail-title" data-astro-cid-wv7whodv>The IR ladder, and the MLIR fork in the road</span><span class="rail-tick" data-tick="ml-software/05-ir-ladder" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/06-inductor/" class="rail-link" title="The scheduler is the compiler. Fusion is a graph-partitioning problem under register and occupancy constraints, and the interesting failures are all in where it draws the lines." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>6</span><span class="rail-title" data-astro-cid-wv7whodv>Inductor: deciding what to fuse</span><span class="rail-tick" data-tick="ml-software/06-inductor" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/07-triton/" class="rail-link" title="CUDA makes you write per-thread code and manage shared memory. Triton makes you write per-block code and gives the compiler the rest — which is exactly what makes it a codegen target." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>7</span><span class="rail-title" data-astro-cid-wv7whodv>Triton: the block programming model</span><span class="rail-tick" data-tick="ml-software/07-triton" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part L</span>Runtime</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-software/08-caching-allocator/" class="rail-link" title="cudaMalloc synchronises the device, so PyTorch calls it as rarely as possible. The design that follows — pools, splitting, stream ownership — explains almost every confusing OOM you will ever see." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>8</span><span class="rail-title" data-astro-cid-wv7whodv>The caching allocator</span><span class="rail-tick" data-tick="ml-software/08-caching-allocator" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/09-cuda-graphs/" class="rail-link" title="Record the launches once, replay them as one submission. The constraints — static addresses, static shapes, no CPU in the loop — are what the rest of the stack has to bend around." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>9</span><span class="rail-title" data-astro-cid-wv7whodv>CUDA Graphs</span><span class="rail-tick" data-tick="ml-software/09-cuda-graphs" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part M</span>Where it breaks</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-software/10-dynamic-shapes/" class="rail-link" title="Specializing on a shape makes the fastest kernel and the least reusable one. Symbolic shapes are the compromise, and 0/1 specialization is the trap inside it." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>10</span><span class="rail-title" data-astro-cid-wv7whodv>Dynamic shapes and recompilation</span><span class="rail-tick" data-tick="ml-software/10-dynamic-shapes" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/11-moe/" class="rail-link is-active" aria-current="page" title="Routing makes every expert's batch size a function of the data. Capacity factors, grouped GEMM and sort-permute are all ways of buying back a static shape — and each one costs something real." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>11</span><span class="rail-title" data-astro-cid-wv7whodv>MoE: dynamism the compiler cannot remove</span><span class="rail-tick" data-tick="ml-software/11-moe" aria-hidden="true" data-astro-cid-wv7whodv></span></a><ul class="rail-sub" data-rail-sub data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="#the-core-mental-model" class="rail-sub-link" data-toc="the-core-mental-model" data-astro-cid-wv7whodv>The core mental model</a></li><li data-astro-cid-wv7whodv><a href="#numbers-worth-memorizing" class="rail-sub-link" data-toc="numbers-worth-memorizing" data-astro-cid-wv7whodv>Numbers worth memorizing</a></li><li data-astro-cid-wv7whodv><a href="#critical-thinking" class="rail-sub-link" data-toc="critical-thinking" data-astro-cid-wv7whodv>Critical thinking</a></li><li data-astro-cid-wv7whodv><a href="#self-check" class="rail-sub-link" data-toc="self-check" data-astro-cid-wv7whodv>Self-check</a></li></ul></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/12-topk-and-non-gemm/" class="rail-link" title="Selection has low arithmetic intensity, irregular access and a serial dependency. Vocabularies grew to 256k and it became a visible fraction of every decode step." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>12</span><span class="rail-title" data-astro-cid-wv7whodv>top-k, sort, and the ops that are not GEMM</span><span class="rail-tick" data-tick="ml-software/12-topk-and-non-gemm" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part N</span>Synthesis</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-software/13-partitioning-the-stack/" class="rail-link" title="What to compile, what to leave eager, what to hand-write. A decision procedure that starts from which overhead binds, not from which tool is newest." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>13</span><span class="rail-title" data-astro-cid-wv7whodv>Partitioning the stack</span><span class="rail-tick" data-tick="ml-software/13-partitioning-the-stack" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/14-inference-server/" class="rail-link" title="Continuous batching wants shapes that change every step; CUDA Graphs want shapes that never change. Paged KV, bucketing and piecewise compilation are how vLLM and SGLang reconcile them." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>14</span><span class="rail-title" data-astro-cid-wv7whodv>The inference server</span><span class="rail-tick" data-tick="ml-software/14-inference-server" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-other" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv>Other series</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>ML Hardware &amp; Low-Latency Systems</span></a></li><li data-astro-cid-wv7whodv><a href="/blog/diffusion/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>Diffusion</span></a></li></ul></section><div class="rail-foot" data-astro-cid-wv7whodv><p data-astro-cid-wv7whodv><kbd data-astro-cid-wv7whodv>j</kbd> <kbd data-astro-cid-wv7whodv>k</kbd> section · <kbd data-astro-cid-wv7whodv>/</kbd> search · <kbd data-astro-cid-wv7whodv>[</kbd><kbd data-astro-cid-wv7whodv>]</kbd> module</p></div></nav></aside><div class="col" data-astro-cid-z4jru4n3><header class="topbar" data-astro-cid-z4jru4n3><button class="icon-btn only-narrow" data-rail-toggle aria-label="Toggle contents" data-astro-cid-z4jru4n3><svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M1.5 3.5h12M1.5 7.5h12M1.5 11.5h12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg></button><p class="crumb" data-astro-cid-z4jru4n3>Part M · Where it breaks › MoE: dynamism the compiler cannot remove</p><div class="topbar-actions" data-astro-cid-z4jru4n3><button class="search-btn" data-search-open aria-label="Search" data-astro-cid-z4jru4n3><span aria-hidden="true" data-astro-cid-z4jru4n3>⌕</span><span class="search-btn-label" data-astro-cid-z4jru4n3>Search</span><kbd data-astro-cid-z4jru4n3>/</kbd></button><button class="icon-btn" data-theme-toggle aria-label="Toggle theme" data-astro-cid-z4jru4n3><svg class="i-sun" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><circle cx="7.5" cy="7.5" r="3" stroke="currentColor" stroke-width="1.2" data-astro-cid-z4jru4n3></circle><path d="M7.5 .8v1.7M7.5 12.5v1.7M14.2 7.5h-1.7M2.5 7.5H.8M12.24 2.76l-1.2 1.2M3.96 11.04l-1.2 1.2M12.24 12.24l-1.2-1.2M3.96 3.96l-1.2-1.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg><svg class="i-moon" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M13 9.3A5.8 5.8 0 0 1 5.7 2 5.9 5.9 0 1 0 13 9.3Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" data-astro-cid-z4jru4n3></path></svg></button><a class="site-link" href="/" data-astro-cid-z4jru4n3>srikanthmalla.com</a></div></header><main id="content" data-astro-cid-z4jru4n3><article class="wrap" data-article data-astro-cid-5x65ok44><header class="mhead" data-astro-cid-5x65ok44><p class="mhead-kicker" data-astro-cid-5x65ok44><span class="mhead-n" data-astro-cid-5x65ok44>Module 11</span><span class="mhead-dot" data-astro-cid-5x65ok44>·</span>Part M — Where it breaks<span class="mhead-dot" data-astro-cid-5x65ok44>·</span>20 min</p><h1 class="mhead-title" data-astro-cid-5x65ok44>MoE: dynamism the compiler cannot remove</h1><p class="mhead-blurb" data-astro-cid-5x65ok44>Routing makes every expert&#39;s batch size a function of the data. Capacity factors, grouped GEMM and sort-permute are all ways of buying back a static shape — and each one costs something real.</p></header><div class="prose" data-astro-cid-5x65ok44><h2 id="the-core-mental-model">The core mental model<a class="anchor" href="#the-core-mental-model" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>A Mixture-of-Experts layer replaces one FFN with <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>E</mi></mrow><annotation encoding="application/x-tex">E</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0576em">E</span></span></span></span> of them plus a router that sends each token to
+its top-<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi></mrow><annotation encoding="application/x-tex">k</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6944em"></span><span class="mord mathnormal" style="margin-right:0.0315em">k</span></span></span></span> experts. The point is to grow parameters without growing FLOPs per token: 8 experts with
+top-2 routing is roughly 4× the parameters at roughly the same compute. The problem is that the
+router’s output <strong>depends on the activations</strong>, so the number of tokens each expert receives is
+unknown until the forward pass runs. Expert 3 might get 500 tokens this batch and 20 the next.</p>
+<p>That single fact defeats the entire apparatus of Parts K and L. Shapes are data-dependent, so
+symbolic shapes cannot help (Module 10) — there is no guard you can check in advance. Kernel launch
+configurations depend on those shapes, so CUDA Graphs cannot capture the layer (Module 9). And you
+cannot even write it as a loop over experts with <code>x[mask]</code> without a graph break, because the mask’s
+cardinality is a runtime value. A dense transformer is a fixed program applied to varying data; an
+MoE transformer is a <strong>program whose shape is a function of the data</strong>, and no amount of compiler
+sophistication removes that.</p>
+<p>So every production MoE implementation buys staticness back, and the choices differ only in what they
+pay. <strong>Capacity factor</strong> fixes each expert’s buffer at <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>C</mi><mo>⋅</mo><mi>T</mi><mi>k</mi><mi mathvariant="normal">/</mi><mi>E</mi></mrow><annotation encoding="application/x-tex">C \cdot T k / E</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0715em">C</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">⋅</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span><span class="mord mathnormal" style="margin-right:0.0315em">k</span><span class="mord">/</span><span class="mord mathnormal" style="margin-right:0.0576em">E</span></span></span></span> tokens and pads or drops to
+fit — static shapes, at the cost of wasted compute on padding and lost tokens on overflow.
+<strong>Grouped/batched GEMM</strong> keeps the ragged sizes but launches one kernel that handles variable
+per-group <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>M</mi></mrow><annotation encoding="application/x-tex">M</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.109em">M</span></span></span></span>, moving the dynamism into kernel arguments rather than launch configuration — static
+launch, ragged work. <strong>Sort-permute-compute-unpermute</strong> reorders tokens so each expert’s rows are
+contiguous, turning the problem into a segmented GEMM over a sorted array. Each is a different point
+on the same trade, and understanding which one a framework chose tells you most of what you need to
+know about its performance profile.</p>
+<aside class="callout callout-bridge"><p class="callout-label"><span class="callout-mark" aria-hidden="true"></span>Bridge to what you know<span class="callout-title"> · this is the GBDT insight, inverted</span></p><div class="callout-body"><p>The hardware series argues that a decision tree’s depth is <em>control flow</em>, not a data dependency,
+so evaluating every node in parallel removes the chain. MoE routing is the opposite: it is a
+genuine data dependency, and the analogous move — compute every expert for every token — is exactly
+what MoE exists to avoid. You cannot speculate your way out of it, because the speculation is the
+entire cost you were saving.</p></div></aside>
+<h2 id="numbers-worth-memorizing">Numbers worth memorizing<a class="anchor" href="#numbers-worth-memorizing" aria-hidden="true" tabindex="-1">#</a></h2>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Quantity</th><th>Typical</th></tr></thead><tbody><tr><td>Experts <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>E</mi></mrow><annotation encoding="application/x-tex">E</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0576em">E</span></span></span></span></td><td>8–256 (Mixtral 8, DeepSeek-V3 256 + shared)</td></tr><tr><td>Top-<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi></mrow><annotation encoding="application/x-tex">k</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6944em"></span><span class="mord mathnormal" style="margin-right:0.0315em">k</span></span></span></span></td><td>1–8, most often <strong>2</strong></td></tr><tr><td>Active params / total</td><td>~1/8 to ~1/20</td></tr><tr><td>Capacity factor <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>C</mi></mrow><annotation encoding="application/x-tex">C</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0715em">C</span></span></span></span></td><td>1.0–2.0 train, 1.0–1.25 or uncapped at inference</td></tr><tr><td>Expert capacity</td><td><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>C</mi><mo>⋅</mo><mi>T</mi><mo>⋅</mo><mi>k</mi><mi mathvariant="normal">/</mi><mi>E</mi></mrow><annotation encoding="application/x-tex">C \cdot T \cdot k / E</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0715em">C</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">⋅</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">⋅</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal" style="margin-right:0.0315em">k</span><span class="mord">/</span><span class="mord mathnormal" style="margin-right:0.0576em">E</span></span></span></span> tokens</td></tr><tr><td>Tokens dropped at <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>C</mi><mo>=</mo><mn>1.0</mn></mrow><annotation encoding="application/x-tex">C = 1.0</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0715em">C</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">1.0</span></span></span></span></td><td>~2–10% with a good balance loss</td></tr><tr><td>Load-balance loss weight</td><td>~0.01</td></tr></tbody></table></div>
+<p>The imbalance arithmetic, which is the number that drives everything else:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th></th><th>Tokens to the busiest expert</th><th>Padding waste at that <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>C</mi></mrow><annotation encoding="application/x-tex">C</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0715em">C</span></span></span></span></th></tr></thead><tbody><tr><td>Perfect balance</td><td><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>T</mi><mi>k</mi><mi mathvariant="normal">/</mi><mi>E</mi></mrow><annotation encoding="application/x-tex">Tk/E</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span><span class="mord mathnormal" style="margin-right:0.0315em">k</span><span class="mord">/</span><span class="mord mathnormal" style="margin-right:0.0576em">E</span></span></span></span></td><td>0%</td></tr><tr><td>Realistic (<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>∼</mo></mrow><annotation encoding="application/x-tex">\sim</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.3669em"></span><span class="mrel">∼</span></span></span></span>1.5× skew)</td><td><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>1.5</mn><mtext> </mtext><mi>T</mi><mi>k</mi><mi mathvariant="normal">/</mi><mi>E</mi></mrow><annotation encoding="application/x-tex">1.5\,Tk/E</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord">1.5</span><span class="mspace" style="margin-right:0.1667em"></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span><span class="mord mathnormal" style="margin-right:0.0315em">k</span><span class="mord">/</span><span class="mord mathnormal" style="margin-right:0.0576em">E</span></span></span></span></td><td>need <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>C</mi><mo>≥</mo><mn>1.5</mn></mrow><annotation encoding="application/x-tex">C \ge 1.5</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8193em;vertical-align:-0.136em"></span><span class="mord mathnormal" style="margin-right:0.0715em">C</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≥</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">1.5</span></span></span></span>, so ~50% waste</td></tr><tr><td><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>C</mi><mo>=</mo><mn>1.0</mn></mrow><annotation encoding="application/x-tex">C = 1.0</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0715em">C</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">1.0</span></span></span></span>, dropping</td><td>capped at <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>T</mi><mi>k</mi><mi mathvariant="normal">/</mi><mi>E</mi></mrow><annotation encoding="application/x-tex">Tk/E</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span><span class="mord mathnormal" style="margin-right:0.0315em">k</span><span class="mord">/</span><span class="mord mathnormal" style="margin-right:0.0576em">E</span></span></span></span></td><td>0% waste, ~2–10% tokens dropped</td></tr></tbody></table></div>
+<p>Implementation strategies:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Strategy</th><th>Shapes</th><th>CUDA-graphable</th><th>Waste</th><th>Used by</th></tr></thead><tbody><tr><td>Dense (all experts, masked)</td><td>static</td><td>yes</td><td><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>E</mi><mi mathvariant="normal">/</mi><mi>k</mi><mo>×</mo></mrow><annotation encoding="application/x-tex">E/k \times</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal" style="margin-right:0.0576em">E</span><span class="mord">/</span><span class="mord mathnormal" style="margin-right:0.0315em">k</span><span class="mord">×</span></span></span></span> — defeats the point</td><td>toy code</td></tr><tr><td>Capacity + pad/drop</td><td>static</td><td><strong>yes</strong></td><td>padding, or dropped tokens</td><td>classic GShard/Switch</td></tr><tr><td>Grouped/batched GEMM</td><td>ragged</td><td>with fixed argument buffers</td><td>~none</td><td>modern kernels</td></tr><tr><td>Sort + segmented GEMM</td><td>ragged</td><td>with bucketing</td><td>~none, plus sort cost</td><td>MegaBlocks-style</td></tr><tr><td>Loop over experts</td><td>ragged</td><td><strong>no</strong></td><td>none, but launch-bound</td><td>eager reference</td></tr></tbody></table></div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Distributed cost</th><th>Value</th></tr></thead><tbody><tr><td>Expert parallelism communication</td><td>2 all-to-all per MoE layer (dispatch + combine)</td></tr><tr><td>All-to-all latency, intra-node NVLink</td><td>~10–50 µs</td></tr><tr><td>All-to-all latency, inter-node</td><td>~100–500 µs — often the dominant term</td></tr><tr><td>Bytes per all-to-all</td><td><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>T</mi><mo>⋅</mo><mi>k</mi><mo>⋅</mo><msub><mi>d</mi><mtext>model</mtext></msub><mo>⋅</mo></mrow><annotation encoding="application/x-tex">T \cdot k \cdot d_{\text{model}} \cdot</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">⋅</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.6944em"></span><span class="mord mathnormal" style="margin-right:0.0315em">k</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">⋅</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.8444em;vertical-align:-0.15em"></span><span class="mord"><span class="mord mathnormal">d</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361em"><span style="top:-2.55em;margin-left:0em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">model</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em"><span></span></span></span></span></span></span><span class="mord">⋅</span></span></span></span> dtype</td></tr></tbody></table></div>
+<aside class="callout callout-trap"><p class="callout-label"><span class="callout-mark" aria-hidden="true"></span>Common trap<span class="callout-title"> · benchmarking MoE with uniform random routing</span></p><div class="callout-body"><p>Synthetic benchmarks often route tokens uniformly, which produces perfect balance and hides the
+entire problem. Real routers are skewed — some experts specialise and attract far more traffic —
+and the tail expert sets the layer’s latency because everyone waits at the all-to-all. Measure with
+a real router on real text, and report the <em>max</em> expert load, not the mean.</p></div></aside>
+<h2 id="critical-thinking">Critical thinking<a class="anchor" href="#critical-thinking" aria-hidden="true" tabindex="-1">#</a></h2>
+<section class="probe"><h3 class="probe-q">Work through exactly why an MoE layer cannot be captured in a CUDA Graph.</h3><div class="probe-a"><p>Because both the launch configuration and the pointer arguments depend on values computed inside the
+forward pass.</p><p>Take the natural implementation:</p><pre class="astro-code astro-code-themes github-light github-dark-default" style="background-color:#fff;--shiki-dark-bg:#0d1117;color:#24292e;--shiki-dark:#e6edf3;overflow-x:auto" tabindex="0" data-language="python"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E6EDF3">logits </span><span style="color:#D73A49;--shiki-dark:#FF7B72">=</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> router(x)                     </span><span style="color:#6A737D;--shiki-dark:#8B949E"># [T, E]</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E6EDF3">idx </span><span style="color:#D73A49;--shiki-dark:#FF7B72">=</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> logits.topk(k, </span><span style="color:#E36209;--shiki-dark:#FFA657">dim</span><span style="color:#D73A49;--shiki-dark:#FF7B72">=-</span><span style="color:#005CC5;--shiki-dark:#79C0FF">1</span><span style="color:#24292E;--shiki-dark:#E6EDF3">).indices   </span><span style="color:#6A737D;--shiki-dark:#8B949E"># [T, k] — data dependent</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#FF7B72">for</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> e </span><span style="color:#D73A49;--shiki-dark:#FF7B72">in</span><span style="color:#005CC5;--shiki-dark:#79C0FF"> range</span><span style="color:#24292E;--shiki-dark:#E6EDF3">(E):</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E6EDF3">    sel </span><span style="color:#D73A49;--shiki-dark:#FF7B72">=</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> (idx </span><span style="color:#D73A49;--shiki-dark:#FF7B72">==</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> e).any(</span><span style="color:#D73A49;--shiki-dark:#FF7B72">-</span><span style="color:#005CC5;--shiki-dark:#79C0FF">1</span><span style="color:#24292E;--shiki-dark:#E6EDF3">)           </span><span style="color:#6A737D;--shiki-dark:#8B949E"># runtime cardinality</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E6EDF3">    out[sel] </span><span style="color:#D73A49;--shiki-dark:#FF7B72">+=</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> experts[e](x[sel])     </span><span style="color:#6A737D;--shiki-dark:#8B949E"># shape unknown until executed</span></span></code></pre><p>Three separate blockers, and fixing one does not fix the others:</p><ol>
+<li><strong><code>x[sel]</code> has a data-dependent shape.</strong> The number of rows is a runtime value, so the GEMM’s <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>M</mi></mrow><annotation encoding="application/x-tex">M</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.109em">M</span></span></span></span>
+dimension — and therefore the grid dimensions of the launch — cannot be recorded. A graph records
+a <em>fixed</em> launch configuration.</li>
+<li><strong>The index tensors are data.</strong> Even with fixed shapes, <code>sel</code> is computed on device, so any host
+logic depending on it needs a sync — and no host code runs during replay.</li>
+<li><strong>Allocation.</strong> <code>x[sel]</code> allocates a new tensor whose size is unknown, and allocation is forbidden
+during replay (Module 9).</li>
+</ol><p>Capacity-based MoE fixes all three at once, which is why it exists. Fix each expert’s buffer at
+<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>C</mi><mo>⋅</mo><mi>T</mi><mi>k</mi><mi mathvariant="normal">/</mi><mi>E</mi></mrow><annotation encoding="application/x-tex">C \cdot Tk/E</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0715em">C</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">⋅</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span><span class="mord mathnormal" style="margin-right:0.0315em">k</span><span class="mord">/</span><span class="mord mathnormal" style="margin-right:0.0576em">E</span></span></span></span> rows, scatter tokens into it with a fixed-shape scatter, run <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>E</mi></mrow><annotation encoding="application/x-tex">E</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0576em">E</span></span></span></span> GEMMs of identical
+known shape, and gather back. Every shape is now a compile-time constant, every allocation is
+static, and there is no host logic in the loop. The layer becomes capturable and the whole of Part L
+applies again.</p><p>The price is stated plainly by the arithmetic in the table: with realistic routing skew you need
+<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>C</mi><mo>≈</mo><mn>1.5</mn></mrow><annotation encoding="application/x-tex">C \approx 1.5</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0715em">C</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">1.5</span></span></span></span> to avoid dropping tokens, so roughly a third of the expert compute is on padding.
+You bought a static graph with wasted FLOPs — which, at batch 1 where launch overhead dominates
+(Module 9), is very often the right trade even though it looks wasteful.</p></div></section>
+<section class="probe"><h3 class="probe-q">Capacity factor: what exactly is being traded, and how do you choose it?</h3><div class="probe-a"><p>Capacity <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>C</mi></mrow><annotation encoding="application/x-tex">C</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0715em">C</span></span></span></span> sets each expert’s buffer to <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>C</mi><mo>⋅</mo><mi>T</mi><mi>k</mi><mi mathvariant="normal">/</mi><mi>E</mi></mrow><annotation encoding="application/x-tex">C \cdot Tk/E</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0715em">C</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">⋅</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span><span class="mord mathnormal" style="margin-right:0.0315em">k</span><span class="mord">/</span><span class="mord mathnormal" style="margin-right:0.0576em">E</span></span></span></span> tokens, and it trades <strong>wasted compute</strong>
+against <strong>dropped tokens</strong>, mediated entirely by how imbalanced your router is.</p><ul>
+<li><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>C</mi></mrow><annotation encoding="application/x-tex">C</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0715em">C</span></span></span></span> <strong>too low</strong>: the busiest expert overflows and excess tokens are dropped — they skip the FFN
+entirely and pass through on the residual. Training degrades subtly; inference produces
+measurably worse output for exactly the tokens the router thought were most specialised.</li>
+<li><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>C</mi></mrow><annotation encoding="application/x-tex">C</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0715em">C</span></span></span></span> <strong>too high</strong>: every expert’s buffer is sized for the worst case while most are half empty, so
+you pay FLOPs on padding in every expert, every layer, every step.</li>
+</ul><p>The distribution is what decides it. With perfect balance <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>C</mi><mo>=</mo><mn>1.0</mn></mrow><annotation encoding="application/x-tex">C = 1.0</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0715em">C</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">1.0</span></span></span></span> suffices. Real routers skew
+because experts specialise, and a common shape is a busiest expert at 1.3–1.8× the mean — hence
+<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>C</mi><mo>=</mo><mn>1.25</mn></mrow><annotation encoding="application/x-tex">C = 1.25</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0715em">C</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">1.25</span></span></span></span>–<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>2.0</mn></mrow><annotation encoding="application/x-tex">2.0</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">2.0</span></span></span></span> in practice.</p><p>The levers that let you run a lower <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>C</mi></mrow><annotation encoding="application/x-tex">C</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0715em">C</span></span></span></span>:</p><ul>
+<li><strong>Load-balancing loss.</strong> An auxiliary term penalising the dot product of routing probability mass
+and actual token fractions, weighted around 0.01. It flattens the distribution and directly buys
+you a lower capacity factor.</li>
+<li><strong>Noisy / stochastic routing</strong> during training, which prevents early winner-take-all dynamics.</li>
+<li><strong>Expert-choice routing</strong>, which inverts the assignment: instead of each token picking <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi></mrow><annotation encoding="application/x-tex">k</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6944em"></span><span class="mord mathnormal" style="margin-right:0.0315em">k</span></span></span></span> experts,
+each expert picks its top <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>T</mi><mi>k</mi><mi mathvariant="normal">/</mi><mi>E</mi></mrow><annotation encoding="application/x-tex">T k / E</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span><span class="mord mathnormal" style="margin-right:0.0315em">k</span><span class="mord">/</span><span class="mord mathnormal" style="margin-right:0.0576em">E</span></span></span></span> tokens. Load is then <strong>perfectly balanced by construction</strong> and
+<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>C</mi><mo>=</mo><mn>1.0</mn></mrow><annotation encoding="application/x-tex">C = 1.0</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0715em">C</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">1.0</span></span></span></span> is exact — at the cost that some tokens get more experts than others and some get none,
+which is fine for training and awkward for autoregressive inference.</li>
+<li><strong>Shared experts</strong> (DeepSeek’s design), where a always-on expert handles common patterns so the
+routed experts specialise more cleanly.</li>
+</ul><p>At inference the calculus shifts, because dropping a token is a visible quality regression rather
+than a training nuisance. Many serving systems run uncapped with grouped GEMM instead, accepting
+ragged shapes and losing CUDA Graphs for that layer — which is exactly the trade the next probe is
+about.</p></div></section>
+<section class="probe"><h3 class="probe-q">How does grouped GEMM avoid the padding waste, and what does it give up?</h3><div class="probe-a"><p>By moving the dynamism from the <strong>launch configuration</strong> into <strong>kernel arguments</strong>.</p><p>A grouped (or batched-variable) GEMM launches one kernel over a fixed grid sized for the <em>total</em>
+work, and each block reads a small descriptor array — pointers, and per-group <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>M</mi></mrow><annotation encoding="application/x-tex">M</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.109em">M</span></span></span></span>, <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>N</mi></mrow><annotation encoding="application/x-tex">N</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.109em">N</span></span></span></span>, <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>K</mi></mrow><annotation encoding="application/x-tex">K</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0715em">K</span></span></span></span> — to
+discover which group it belongs to and where its data lives. The grid does not depend on the split of
+work between groups, only on the total, which is <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>T</mi><mi>k</mi></mrow><annotation encoding="application/x-tex">Tk</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6944em"></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span><span class="mord mathnormal" style="margin-right:0.0315em">k</span></span></span></span> and therefore known. So no expert needs padding
+and no tokens are dropped: every block does useful work on some expert’s rows.</p><p>MegaBlocks framed this as block-sparse matrix multiplication, which is the clean way to see it — the
+MoE layer is one big block-sparse GEMM whose sparsity pattern is the routing assignment.</p><p>What you give up:</p><ul>
+<li><strong>Load balance within the kernel.</strong> Blocks assigned to a large group finish later, so the kernel’s
+duration is set by the largest group. You removed the <em>padding</em> waste, not the <em>tail</em> — and at
+extreme skew the tail can cost as much as the padding would have.</li>
+<li><strong>CUDA Graphs, unless you are careful.</strong> The descriptor arrays are device tensors computed at
+runtime, so the graph can only be captured if those buffers are at fixed addresses with fixed
+maximum sizes. It is doable — allocate worst-case descriptor buffers and let the grid over-provision
+— but it is engineering rather than a decorator.</li>
+<li><strong>Kernel complexity.</strong> You are now in hand-written CUTLASS or Triton territory (Module 7), not
+something Inductor generates.</li>
+<li><strong>Autotuning difficulty.</strong> The best tile shape depends on group sizes that vary per batch, so a
+single configuration must serve a distribution.</li>
+</ul><p>The honest summary: grouped GEMM is the right answer for throughput-oriented inference where the
+padding waste is the dominant cost, and capacity-based padding remains competitive at small batch
+where launch overhead and graph capture matter more than FLOPs.</p></div></section>
+<section class="probe"><h3 class="probe-q">Why is the all-to-all usually the real bottleneck, not the expert compute?</h3><div class="probe-a"><p>Because expert parallelism puts a <strong>latency-bound collective on the critical path twice per layer</strong>,
+and unlike the compute it does not shrink when you add GPUs.</p><p>With experts sharded across devices, each MoE layer must dispatch every token to whichever device
+holds its chosen experts, then combine the results back. That is two all-to-alls. Intra-node over
+NVLink they cost tens of microseconds; <strong>inter-node they are hundreds</strong>, and a 60-layer model with
+MoE every other layer performs 60 of them per forward pass.</p><p>Three properties make this worse than the raw number suggests:</p><ol>
+<li><strong>It is a synchronisation point.</strong> Every rank waits for the slowest, so the <em>most loaded expert’s
+device</em> sets the pace — routing imbalance converts directly into collective latency, which is why
+the max expert load matters far more than the mean.</li>
+<li><strong>The message sizes are small and irregular.</strong> <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>T</mi><mi>k</mi><msub><mi>d</mi><mtext>model</mtext></msub></mrow><annotation encoding="application/x-tex">T k d_{\text{model}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8444em;vertical-align:-0.15em"></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span><span class="mord mathnormal" style="margin-right:0.0315em">k</span><span class="mord"><span class="mord mathnormal">d</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361em"><span style="top:-2.55em;margin-left:0em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">model</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em"><span></span></span></span></span></span></span></span></span></span> bytes split across <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>E</mi></mrow><annotation encoding="application/x-tex">E</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0576em">E</span></span></span></span>
+destinations means many small transfers, which is the regime where interconnect latency rather
+than bandwidth binds.</li>
+<li><strong>Adding devices adds hops.</strong> Scaling expert parallelism increases the number of participants and
+often crosses more node boundaries, so the collective gets <em>slower</em> as you scale the thing you
+scaled it to make faster.</li>
+</ol><p>The mitigations are all about overlap and locality: <strong>overlap dispatch with the attention compute</strong>
+of the same layer, so the collective hides behind work that does not depend on it; <strong>place
+frequently co-selected experts on the same node</strong> to keep traffic intra-node; use <strong>shared experts</strong>
+that need no routing at all; and reduce <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi></mrow><annotation encoding="application/x-tex">k</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6944em"></span><span class="mord mathnormal" style="margin-right:0.0315em">k</span></span></span></span>, since traffic scales linearly in it.</p><p>The framing worth extracting, and it is the hardware series’ argument arriving in a distributed
+setting: this is a <em>latency</em> problem wearing a bandwidth problem’s clothing. The links are not full;
+you are waiting on round trips and on the slowest participant.</p></div></section>
+<section class="probe"><h3 class="probe-q">You are asked to make an MoE model CUDA-graphable at batch 1. What do you actually do?</h3><div class="probe-a"><p>Batch 1 is the case where you should accept substantial waste, because launch overhead is the
+dominant cost (Module 9) and the FLOPs are nearly free.</p><p>Concretely:</p><ol>
+<li><strong>Fix capacity and pad.</strong> At batch 1 with a short sequence, <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>T</mi></mrow><annotation encoding="application/x-tex">T</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span></span></span></span> is small and <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>T</mi><mi>k</mi><mi mathvariant="normal">/</mi><mi>E</mi></mrow><annotation encoding="application/x-tex">Tk/E</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span><span class="mord mathnormal" style="margin-right:0.0315em">k</span><span class="mord">/</span><span class="mord mathnormal" style="margin-right:0.0576em">E</span></span></span></span> may be under
+one token per expert. Set every expert’s buffer to a fixed small size — often just a handful of
+rows — and accept that most are empty. The absolute waste is tiny because the tensors are tiny.</li>
+<li><strong>Never drop.</strong> At inference, dropping is a quality regression. Size capacity to the worst case
+you will accept and assert on overflow.</li>
+<li><strong>Make routing a fixed-shape scatter.</strong> Compute the top-<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi></mrow><annotation encoding="application/x-tex">k</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6944em"></span><span class="mord mathnormal" style="margin-right:0.0315em">k</span></span></span></span> on device, build a fixed-shape
+assignment matrix, and use <code>index_add_</code>/scatter into preallocated buffers — no boolean indexing,
+no data-dependent allocation.</li>
+<li><strong>Bucket the sequence length</strong> and capture one graph per bucket, sharing pools between them
+(Module 9).</li>
+<li><strong>Verify.</strong> Count <code>cudaGraphLaunch</code> calls per decode step: one per bucket is the target.
+<code>TORCH_LOGS=graph_breaks</code> should be empty for the MoE layer.</li>
+</ol><p>And the sanity check that decides whether any of this was worth it: measure the <em>dense-equivalent</em>
+time. At batch 1 an MoE layer that pads to full capacity is doing close to dense-model compute
+anyway, so if the graphed MoE is not clearly beating a dense model of the same active size, the
+architecture is buying you nothing at this batch size. MoE’s advantage is a throughput advantage; at
+batch 1 you are paying its complexity for a much smaller share of its benefit.</p><p>That is the honest conclusion of this module: MoE is a <em>throughput</em> architecture, and every technique
+here is about recovering enough staticness to stop it being a latency disaster.</p></div></section>
+<h2 id="self-check">Self-check<a class="anchor" href="#self-check" aria-hidden="true" tabindex="-1">#</a></h2>
+<details class="selfcheck"><summary><span class="selfcheck-q">Why does routing defeat both symbolic shapes and CUDA Graphs?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Because the number of tokens per expert depends on the <strong>activations</strong>, so it is a data-dependent
+shape: no guard can be checked in advance (Module 10), the GEMM’s <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>M</mi></mrow><annotation encoding="application/x-tex">M</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.109em">M</span></span></span></span> and therefore the launch grid
+cannot be recorded (Module 9), and <code>x[mask]</code> allocates a runtime-sized tensor, which replay forbids. A
+dense transformer is a fixed program over varying data; an MoE transformer is a program whose <em>shape</em>
+is a function of the data.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Give the capacity formula and what C trades.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Each expert’s buffer holds <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>C</mi><mo>⋅</mo><mi>T</mi><mi>k</mi><mi mathvariant="normal">/</mi><mi>E</mi></mrow><annotation encoding="application/x-tex">C \cdot T k / E</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0715em">C</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">⋅</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span><span class="mord mathnormal" style="margin-right:0.0315em">k</span><span class="mord">/</span><span class="mord mathnormal" style="margin-right:0.0576em">E</span></span></span></span> tokens. Too low and the busiest expert overflows, so
+tokens are dropped and skip the FFN entirely — a visible quality regression at inference. Too high and
+every expert pays FLOPs on padding. Realistic router skew of 1.3–1.8× forces <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>C</mi><mo>≈</mo><mn>1.25</mn></mrow><annotation encoding="application/x-tex">C \approx 1.25</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0715em">C</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">1.25</span></span></span></span>–<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>2.0</mn></mrow><annotation encoding="application/x-tex">2.0</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">2.0</span></span></span></span>,
+so roughly a third of expert compute can be padding. Lower it with a load-balancing loss (~0.01
+weight), noisy routing, expert-choice routing, or shared experts.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">How does grouped GEMM remove padding waste, and what remains?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>It launches one kernel over a grid sized for the <em>total</em> work <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>T</mi><mi>k</mi></mrow><annotation encoding="application/x-tex">Tk</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6944em"></span><span class="mord mathnormal" style="margin-right:0.1389em">T</span><span class="mord mathnormal" style="margin-right:0.0315em">k</span></span></span></span>, with per-group pointers and
+<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>M</mi><mo separator="true">,</mo><mi>N</mi><mo separator="true">,</mo><mi>K</mi></mrow><annotation encoding="application/x-tex">M,N,K</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8778em;vertical-align:-0.1944em"></span><span class="mord mathnormal" style="margin-right:0.109em">M</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.1667em"></span><span class="mord mathnormal" style="margin-right:0.109em">N</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.1667em"></span><span class="mord mathnormal" style="margin-right:0.0715em">K</span></span></span></span> read from device-side descriptor arrays — so the launch configuration no longer depends on
+the split between experts. No padding, no dropping. What remains: the kernel’s duration is set by the
+largest group, so the tail is not removed; CUDA Graph capture needs fixed-address, worst-case
+descriptor buffers; and you are in hand-written CUTLASS/Triton territory with autotuning against a
+distribution of group sizes.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Why is the all-to-all the usual bottleneck, and what makes it worse as you scale?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Two latency-bound collectives per MoE layer sit on the critical path — tens of microseconds
+intra-node, <strong>hundreds inter-node</strong>, times ~60 layers. They synchronise, so the most-loaded expert’s
+device sets the pace, converting routing imbalance directly into latency. Messages are small and
+irregular, so interconnect <em>latency</em> binds rather than bandwidth. And scaling expert parallelism adds
+participants and node crossings, so the collective slows as you scale.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Making MoE graphable at batch 1: the five steps, and the sanity check.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Fix capacity and pad (waste is tiny when tensors are tiny); never drop at inference; make routing a
+fixed-shape scatter into preallocated buffers with no boolean indexing; bucket sequence length and
+capture per bucket with shared pools; verify by counting <code>cudaGraphLaunch</code> per step. The sanity check:
+compare against a <strong>dense model of the same active size</strong> — a fully padded MoE at batch 1 does close
+to dense compute anyway, so if it does not clearly win, the architecture is buying nothing at that
+batch size. MoE is a throughput architecture.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Why can you not apply the decision-tree trick — evaluate everything in parallel — to MoE?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Because that is precisely what MoE exists to avoid. A tree’s depth is control flow with no real data
+dependency, so evaluating all nodes and selecting is a pure area-for-latency win. Routing is a genuine
+data dependency, and computing every expert for every token is the dense model — <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>E</mi><mi mathvariant="normal">/</mi><mi>k</mi></mrow><annotation encoding="application/x-tex">E/k</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal" style="margin-right:0.0576em">E</span><span class="mord">/</span><span class="mord mathnormal" style="margin-right:0.0315em">k</span></span></span></span> times the
+FLOPs. The speculation <em>is</em> the cost you were saving.</p></div></details></div><footer class="mfoot" data-astro-cid-5x65ok44><button class="mark" data-mark="ml-software/11-moe" aria-pressed="false" data-astro-cid-5x65ok44>Mark as reviewed</button><nav class="pager" data-astro-cid-5x65ok44><a class="pager-link" href="/blog/ml-software/10-dynamic-shapes/" data-prev data-astro-cid-5x65ok44><span class="pager-dir" data-astro-cid-5x65ok44>← Previous</span><span class="pager-title" data-astro-cid-5x65ok44>10. Dynamic shapes and recompilation</span></a><a class="pager-link is-next" href="/blog/ml-software/12-topk-and-non-gemm/" data-next data-astro-cid-5x65ok44><span class="pager-dir" data-astro-cid-5x65ok44>Next →</span><span class="pager-title" data-astro-cid-5x65ok44>12. top-k, sort, and the ops that are not GEMM</span></a></nav></footer></article></main></div></div><div class="search-overlay" data-search hidden data-astro-cid-ac66eqjo><div class="search-backdrop" data-search-close data-astro-cid-ac66eqjo></div><div class="search-panel" role="dialog" aria-modal="true" aria-label="Search modules" data-astro-cid-ac66eqjo><div class="search-input-row" data-astro-cid-ac66eqjo><span class="search-icon" aria-hidden="true" data-astro-cid-ac66eqjo>⌕</span><input type="text" class="search-input" placeholder="Search all modules…" autocomplete="off" spellcheck="false" data-search-input data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>esc</kbd></div><ul class="search-results" data-search-results data-astro-cid-ac66eqjo></ul><p class="search-empty" data-search-empty hidden data-astro-cid-ac66eqjo>No matches.</p><p class="search-hint" data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>↑</kbd><kbd data-astro-cid-ac66eqjo>↓</kbd> move · <kbd data-astro-cid-ac66eqjo>↵</kbd> open</p></div></div><script>(function(){const indexUrl = "/blog/search.json";
+
+  (() => {
+    const overlay = document.querySelector('[data-search]');
+    if (!overlay) return;
+    const input = overlay.querySelector('[data-search-input]');
+    const list = overlay.querySelector('[data-search-results]');
+    const empty = overlay.querySelector('[data-search-empty]');
+
+    let index = null;
+    let loading = null;
+    let active = 0;
+
+    const load = () => {
+      if (index) return Promise.resolve(index);
+      if (!loading) {
+        loading = fetch(indexUrl)
+          .then((r) => r.json())
+          .then((d) => (index = d))
+          .catch(() => (index = []));
+      }
+      return loading;
+    };
+
+    function open() {
+      overlay.hidden = false;
+      document.documentElement.style.overflow = 'hidden';
+      load().then(() => input.focus());
+      input.focus();
+      input.select();
+    }
+
+    function close() {
+      overlay.hidden = true;
+      document.documentElement.style.overflow = '';
+    }
+
+    function escapeHtml(s) {
+      return s.replace(
+        /[&<>"]/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]
+      );
+    }
+
+    // Excerpt around the first matched term, with the term marked.
+    function excerpt(text, terms) {
+      const lower = text.toLowerCase();
+      let at = -1;
+      for (const t of terms) {
+        const i = lower.indexOf(t);
+        if (i !== -1 && (at === -1 || i < at)) at = i;
+      }
+      if (at === -1) at = 0;
+      const start = Math.max(0, at - 60);
+      let slice = text.slice(start, start + 190);
+      if (start > 0) slice = '…' + slice;
+      if (start + 190 < text.length) slice += '…';
+      let html = escapeHtml(slice);
+      for (const t of terms) {
+        html = html.replace(
+          new RegExp(`(${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'),
+          '<mark>$1</mark>'
+        );
+      }
+      return html;
+    }
+
+    function score(rec, terms) {
+      let s = 0;
+      const hay = (rec.m + ' ' + rec.h + ' ' + (rec.s || '') + ' ' + (rec.k || '')).toLowerCase();
+      const body = rec.t.toLowerCase();
+      for (const t of terms) {
+        if (hay.includes(t)) s += 12;
+        const i = body.indexOf(t);
+        if (i !== -1) s += 4 + Math.max(0, 3 - Math.floor(i / 400));
+        else if (!hay.includes(t)) return 0; // every term must appear
+      }
+      return s;
+    }
+
+    function render(results, terms) {
+      active = 0;
+      list.innerHTML = results
+        .map(
+          (r, i) => `
+          <li>
+            <a href="${r.u}" class="search-hit${i === 0 ? ' is-active' : ''}" data-hit>
+              <span class="search-hit-crumb"><span class="search-hit-series">${escapeHtml(r.s||"")}</span><span class="search-hit-n">${r.n}</span>${escapeHtml(r.m)} <span class="search-hit-sep">›</span> ${escapeHtml(r.h)}</span>
+              <span class="search-hit-text">${excerpt(r.t, terms)}</span>
+            </a>
+          </li>`
+        )
+        .join('');
+      empty.hidden = results.length > 0;
+    }
+
+    function run() {
+      const q = input.value.trim().toLowerCase();
+      if (!q || !index) {
+        list.innerHTML = '';
+        empty.hidden = true;
+        return;
+      }
+      const terms = q.split(/\s+/).filter(Boolean);
+      const results = index
+        .map((r) => ({ r, s: score(r, terms) }))
+        .filter((x) => x.s > 0)
+        .sort((a, b) => b.s - a.s || a.r.n - b.r.n)
+        .slice(0, 12)
+        .map((x) => x.r);
+      render(results, terms);
+    }
+
+    function move(delta) {
+      const hits = list.querySelectorAll('[data-hit]');
+      if (!hits.length) return;
+      hits[active]?.classList.remove('is-active');
+      active = (active + delta + hits.length) % hits.length;
+      hits[active].classList.add('is-active');
+      hits[active].scrollIntoView({ block: 'nearest' });
+    }
+
+    input.addEventListener('input', () => {
+      load().then(run);
+      run();
+    });
+
+    overlay.querySelector('[data-search-close]').addEventListener('click', close);
+
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        move(1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        move(-1);
+      } else if (e.key === 'Enter') {
+        const hit = list.querySelectorAll('[data-hit]')[active];
+        if (hit) {
+          e.preventDefault();
+          window.location.href = hit.getAttribute('href');
+        }
+      }
+    });
+
+    document.querySelectorAll('[data-search-open]').forEach((b) =>
+      b.addEventListener('click', open)
+    );
+
+    window.__openSearch = open;
+  })();
+})();</script><script>(function(){const base = "/blog";
+
+      (() => {
+        const root = document.documentElement;
+
+        /* ---- theme ---------------------------------------------------- */
+        document.querySelector('[data-theme-toggle]')?.addEventListener('click', () => {
+          const light = root.classList.toggle('light');
+          try {
+            localStorage.setItem('refresher:theme', light ? 'light' : 'dark');
+          } catch (e) {}
+        });
+
+        /* ---- progress (localStorage) ---------------------------------- */
+        const KEY = 'refresher:progress';
+        const readSet = () => {
+          try {
+            return new Set(JSON.parse(localStorage.getItem(KEY) || '[]'));
+          } catch (e) {
+            return new Set();
+          }
+        };
+        const writeSet = (s) => {
+          try {
+            localStorage.setItem(KEY, JSON.stringify([...s]));
+          } catch (e) {}
+        };
+
+        function paintProgress() {
+          const done = readSet();
+          const ticks = document.querySelectorAll('[data-tick]');
+          // A module can own more than one tick (rail + contents card), so
+          // count distinct module ids rather than elements.
+          const ids = new Set();
+          ticks.forEach((t) => {
+            const id = t.getAttribute('data-tick');
+            ids.add(id);
+            if (done.has(id)) t.setAttribute('data-read', '');
+            else t.removeAttribute('data-read');
+          });
+          const n = [...ids].filter((id) => done.has(id)).length;
+          const total = ids.size || 1;
+          const fill = document.querySelector('[data-progress-fill]');
+          if (fill) fill.style.width = `${(n / total) * 100}%`;
+          const count = document.querySelector('[data-progress-count]');
+          if (count) count.textContent = String(n);
+          document.querySelectorAll('[data-mark]').forEach((btn) => {
+            const id = btn.getAttribute('data-mark');
+            const on = done.has(id);
+            btn.setAttribute('aria-pressed', String(on));
+            btn.textContent = on ? '✓ Reviewed' : 'Mark as reviewed';
+          });
+        }
+
+        document.querySelectorAll('[data-mark]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-mark');
+            const s = readSet();
+            s.has(id) ? s.delete(id) : s.add(id);
+            writeSet(s);
+            paintProgress();
+          });
+        });
+
+        paintProgress();
+
+        /* ---- scrollspy over h2s, mirrored into the rail --------------- */
+        const article = document.querySelector('[data-article]');
+        const heads = article ? [...article.querySelectorAll('h2[id]')] : [];
+        const subLinks = new Map(
+          [...document.querySelectorAll('[data-toc]')].map((a) => [
+            a.getAttribute('data-toc'),
+            a,
+          ])
+        );
+
+        if (heads.length && subLinks.size) {
+          let currentId = null;
+          const spy = () => {
+            let found = heads[0].id;
+            for (const h of heads) {
+              if (h.getBoundingClientRect().top <= 96) found = h.id;
+              else break;
+            }
+            if (found === currentId) return;
+            subLinks.get(currentId)?.classList.remove('is-current');
+            currentId = found;
+            const el = subLinks.get(currentId);
+            if (el) {
+              el.classList.add('is-current');
+              el.scrollIntoView({ block: 'nearest' });
+            }
+          };
+          spy();
+          addEventListener('scroll', spy, { passive: true });
+        }
+
+        /* ---- keyboard ------------------------------------------------- */
+        const stops = article
+          ? [...article.querySelectorAll('h2[id], h3[id]')]
+          : [];
+
+        function jump(delta) {
+          if (!stops.length) return;
+          // The heading we are "in": the last one scrolled past the threshold.
+          let cur = -1;
+          for (let i = 0; i < stops.length; i++) {
+            if (stops[i].getBoundingClientRect().top <= 100) cur = i;
+            else break;
+          }
+          const target = cur + delta;
+          if (target < 0) return scrollTo({ top: 0, behavior: 'smooth' });
+          if (target >= stops.length) return;
+          stops[target].scrollIntoView({ block: 'start' });
+        }
+
+        addEventListener('keydown', (e) => {
+          const tag = (e.target.tagName || '').toLowerCase();
+          if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+          if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+          if (e.key === '/') {
+            e.preventDefault();
+            window.__openSearch?.();
+          } else if (e.key === 'j') {
+            e.preventDefault();
+            jump(1);
+          } else if (e.key === 'k') {
+            e.preventDefault();
+            jump(-1);
+          } else if (e.key === '[' || e.key === ']') {
+            const sel = e.key === '[' ? '[data-prev]' : '[data-next]';
+            const a = document.querySelector(sel);
+            if (a) {
+              e.preventDefault();
+              window.location.href = a.getAttribute('href');
+            }
+          }
+        });
+
+        /* ---- narrow-screen rail --------------------------------------- */
+        const rail = document.querySelector('[data-rail]');
+        document.querySelector('[data-rail-toggle]')?.addEventListener('click', () => {
+          rail.classList.toggle('is-open');
+        });
+        rail?.addEventListener('click', (e) => {
+          if (e.target.closest('a')) rail.classList.remove('is-open');
+        });
+      })();
+    })();</script></body></html>

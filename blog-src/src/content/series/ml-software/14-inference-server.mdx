@@ -1,0 +1,300 @@
+---
+n: 14
+title: 'The inference server'
+blurb: 'Continuous batching wants shapes that change every step; CUDA Graphs want shapes that never change. Paged KV, bucketing and piecewise compilation are how vLLM and SGLang reconcile them.'
+part: 'N'
+minutes: 17
+draft: false
+tags: ['vLLM', 'SGLang', 'continuous batching', 'paged attention', 'KV cache', 'piecewise compilation', 'chunked prefill', 'serving']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+An inference server is where every tension in this series arrives at once, and the reason serving
+frameworks reimplement so much of PyTorch's runtime is that the two halves of their job are in direct
+opposition. **Continuous batching** wants maximum flexibility: requests arrive and finish at
+arbitrary times, so the running batch should change every single step, admitting a new sequence the
+moment a slot frees. **CUDA Graphs** want the opposite: a fixed set of kernels with fixed shapes at
+fixed addresses (Module 9). Naively you can have throughput or you can have low per-step overhead,
+and at batch 1 to 8 — where launch cost is a large fraction of a decode step — you cannot afford to
+give up the second.
+
+The reconciliation has three parts, and they are the architecture of every modern server.
+**PagedAttention** removes the KV cache from the shape problem: instead of one contiguous buffer per
+sequence sized to its maximum length, the cache is fixed-size blocks (typically 16 tokens) indexed
+through a block table. The attention kernel's *arguments* become a block-table pointer and a length,
+both of fixed shape, so the kernel signature stops changing as sequences grow. This is virtual memory
+applied to the KV cache, and it solves the same contiguity problem `expandable_segments` solves for
+the allocator (Module 8) — you do not need contiguous storage, you need contiguous *addressing*.
+
+**Bucketing** handles the remaining dimension. Batch size still varies, so the server captures a graph
+per batch-size bucket — 1, 2, 4, 8, ... up to a cap — and pads the running batch up to the next
+bucket. Waste is bounded by the bucket ratio and memory is contained by sharing pools between graphs
+that never run concurrently. **Piecewise compilation** handles what is left: split the model so the
+shape-invariant parts (the MLPs, the projections) are captured while the attention kernel, which
+takes variable-length arguments, is invoked outside the graph — vLLM's approach, and the practical
+answer to Module 9's constraint.
+
+<Callout type="bridge" title="paging is the recurring answer">
+  Module 8: fragmentation is a contiguity problem, solved by virtual addressing. Module 14: KV cache
+  growth is a contiguity problem, solved by block tables. Same idea, one level up — and in both cases
+  the win is that the *interface* stops depending on the size.
+</Callout>
+
+## Numbers worth memorizing
+
+| Quantity                                   | Value                                        |
+| ------------------------------------------ | -------------------------------------------- |
+| KV block size                              | 16 tokens (vLLM default)                      |
+| KV bytes per token                         | $2 \times L \times n_{kv} \times d_{head} \times$ dtype |
+| Llama-3-8B, fp16                           | ~128 KB per token → 8 K context ≈ 1 GB        |
+| Pre-paging memory waste                    | 60–80% (sized to max length)                  |
+| **Paged waste**                            | **< 4%** — only the last partial block        |
+| Captured batch buckets                     | 1, 2, 4, 8, 16, 24, 32, ... typically ≤ 256   |
+| Graph capture time                         | ~10–60 s at startup for the full set          |
+| Memory per captured graph                  | small if pools are shared, large if not       |
+
+| Mechanism              | Solves                          | Cost                            |
+| ---------------------- | ------------------------------- | ------------------------------- |
+| Continuous batching    | idle slots while requests finish | shapes change every step        |
+| PagedAttention         | KV contiguity and waste          | indirection in the kernel        |
+| Prefix caching         | repeated system prompts          | block reference counting         |
+| Batch bucketing        | graph capture under varying batch | padding to the next bucket      |
+| Piecewise compilation  | variable-length attention        | some launches stay outside       |
+| Chunked prefill        | long prefills stalling decode    | scheduler complexity             |
+
+The scheduling tension in one line:
+
+| | Prefill | Decode |
+| --- | --- | --- |
+| Shape | long sequence, batch 1–few | 1 token, batch many |
+| Bound by | compute (GEMM) | memory bandwidth + launch |
+| Wants | large chunks | many concurrent sequences |
+| Blocks the other | a 4 K prefill stalls every decode | many decodes starve prefill |
+
+<Callout type="trap" title="reporting throughput without latency">
+  Continuous batching improves tokens/second by increasing concurrency, which *increases* per-request
+  latency. A server tuned purely for throughput can be unusable interactively. Report both, and report
+  time-to-first-token separately from inter-token latency — they are governed by prefill and decode
+  respectively and respond to different knobs.
+</Callout>
+
+## Critical thinking
+
+<Probe q="Why is a contiguous KV cache so wasteful, and what exactly does paging fix?">
+
+Because you must allocate for the maximum possible length while the actual length is unknown, and the
+difference is dead memory that cannot be used by anything else.
+
+Pre-paging, each sequence gets a contiguous buffer sized to `max_model_len` — say 8 K tokens at
+~128 KB each, so 1 GB per sequence for Llama-3-8B. A request generating 200 tokens uses 2.5% of it.
+The rest is reserved, unusable by other sequences because it must stay contiguous for this one, and
+your achievable concurrency collapses: memory that could hold dozens of real conversations holds a
+handful of hypothetical maximum-length ones.
+
+PagedAttention replaces the contiguous buffer with fixed-size blocks (16 tokens) allocated on demand
+from a global pool, plus a **block table** per sequence mapping logical positions to physical blocks.
+Waste falls to the last partial block — under 4%.
+
+What that unlocks beyond memory efficiency, and this is the part that matters more:
+
+- **The kernel signature stops changing.** Attention takes a block-table pointer and a length rather
+  than a variably-shaped tensor, so its arguments are fixed-shape even as the sequence grows —
+  which is what makes CUDA Graph capture possible at all.
+- **Copy-on-write sharing.** Blocks are reference counted, so beam search and parallel samples share
+  the prompt's blocks instead of copying them, and a shared system prompt is stored once across every
+  request that uses it (prefix caching).
+- **Preemption becomes cheap.** A sequence can be evicted and its blocks reclaimed, then recomputed or
+  swapped back, which gives the scheduler a real admission-control mechanism.
+
+The one-line framing: paging converts a *capacity* problem into an *indirection* problem, and GPUs
+tolerate one level of indirection far better than they tolerate 70% waste.
+
+</Probe>
+
+<Probe q="Continuous batching changes the batch every step. How can anything be captured?">
+
+By separating what actually varies from what merely appears to.
+
+Per decode step, three things could vary: the **number of sequences**, each sequence's **KV length**,
+and **which** sequences are present. Handle them differently:
+
+- **KV length** is removed by paging. The attention kernel reads a block table and a length tensor,
+  both of fixed shape, so growth changes values rather than shapes.
+- **Identity** never mattered — the kernels do not care which requests occupy which rows.
+- **Batch size** is the only genuinely varying dimension, and it is handled by **bucketing**: capture
+  graphs at 1, 2, 4, 8, ... and pad the running batch up to the next bucket. Padding rows compute
+  garbage that is discarded, bounded by the bucket ratio and typically a few percent of real work.
+
+So the decode step becomes: schedule, pad the batch to a bucket, copy the block tables and lengths
+into the captured input buffers, `replay()`. One driver call for the whole model.
+
+Prefill is handled separately because it is a different regime — compute bound with long sequences —
+and is usually run eagerly or with a separate compiled path, since its shapes vary too widely to
+bucket usefully.
+
+The piece to appreciate is that this is not a workaround so much as a **reformulation**: the workload
+looked dynamic because the data structures made it look dynamic. Replace them with structures whose
+*interfaces* are fixed-shape, and the dynamism moves into tensor values, where CUDA Graphs are
+perfectly happy with it. That move — dynamism in values rather than in shapes — is the single most
+useful idea in this module.
+
+</Probe>
+
+<Probe q="What is piecewise compilation and what problem forced it?">
+
+It is compiling and capturing the model in pieces, with the shape-dependent operations left outside
+the captured regions — and it was forced by attention refusing to fit the same mould as everything
+else.
+
+The MLPs, projections and normalisations depend on batch size but not on sequence length, so once the
+batch is bucketed their shapes are fixed and they capture cleanly. Attention is different: even with
+paging, the kernel's *work* depends on the sequence lengths in the batch, and the best implementations
+(FlashAttention, FlashInfer) are hand-written kernels with their own launch heuristics and sometimes
+their own host-side dispatch. Forcing them inside a capture means either giving up the good kernel or
+capturing a worst-case configuration.
+
+So the model is split: capture the dense arithmetic, call attention through a stable interface between
+the captured regions. vLLM's implementation compiles the model with Inductor while marking the
+attention op as an opaque custom op, then captures graphs around it.
+
+The costs are real and worth stating. You get several graph replays per step instead of one, each
+paying the fixed ~5–10 µs (Module 9). There is host work between pieces, which is exactly what
+capture was removing. And the split points must be chosen so the boundary tensors have stable
+addresses.
+
+It is still clearly right, because the alternative is worse in both directions: no capture at all
+costs milliseconds per step, and capturing a worst-case attention configuration wastes more than the
+launches saved. This is Module 13's partitioning rule applied inside a single forward pass —
+**compile what is shape-stable, leave the rest at a well-defined boundary.**
+
+</Probe>
+
+<Probe q="Why do prefill and decode fight, and what does chunked prefill actually do?">
+
+They fight because they are different workloads competing for one device, and running either
+exclusively starves the other.
+
+**Prefill** processes a whole prompt at once: a large GEMM over thousands of tokens, compute bound,
+using the machine efficiently. **Decode** produces one token per sequence: tiny GEMMs, memory-bandwidth
+bound, launch sensitive, and efficient only through concurrency across sequences.
+
+Run a 4 K-token prefill and every decoding sequence stalls for its duration — hundreds of milliseconds
+of inter-token latency appearing as a visible stutter to users mid-generation. Prioritise decode and
+new requests wait, so time-to-first-token climbs and the queue grows.
+
+**Chunked prefill** splits a long prefill into pieces of a few hundred tokens and schedules each chunk
+*alongside* decode work in the same batch. The step now contains a chunk of prefill plus many decode
+rows, so:
+
+- No decode sequence waits longer than one chunk, bounding inter-token latency.
+- The prefill chunk provides the arithmetic intensity that decode lacks, so a memory-bound step gains
+  useful compute — the two workloads are genuinely complementary rather than merely coexisting.
+- The batch composition becomes more uniform, which helps bucketing and capture.
+
+The cost is scheduler complexity and a modest increase in total prefill time from splitting a
+well-shaped GEMM. Everyone accepts it, because latency predictability is the product.
+
+The general statement, and it is the hardware series' argument arriving intact: this is a **queueing**
+problem, and the fix is not making either workload faster but changing the service discipline so a
+long job cannot block short ones. Head-of-line blocking, solved the way it always is.
+
+</Probe>
+
+<Probe q="Why do serving frameworks reimplement so much of PyTorch's runtime?">
+
+Because they can prove things PyTorch cannot, and every proof buys back an optimisation the general
+runtime had to give up.
+
+PyTorch's allocator is dynamic because the next allocation is unknown (Module 8). A server **knows**
+the model, the maximum context and the memory budget, so it preallocates the entire KV cache as one
+arena at startup and manages it with a block table — no allocator on the hot path at all.
+
+PyTorch's dispatcher is general because any op may appear (Module 2). A server runs one model
+architecture, so the sequence of kernels is fixed and can be captured wholesale.
+
+PyTorch's scheduler is the Python interpreter. A server has a real request scheduler with admission
+control, preemption and priorities, because it knows what a request *is* — a concept PyTorch does not
+have.
+
+So vLLM and SGLang are not competing with PyTorch; they are **specialising** it, in exactly the way
+Module 13 describes. They use PyTorch for the model definition and the kernels, and replace the parts
+of the runtime whose generality is no longer needed.
+
+The pattern generalises well beyond serving, and it is the note to end the series on: **generality
+costs performance, and the way to recover it is to find the constraints your deployment actually
+satisfies and specialise against them.** Eager mode gave up compile-time knowledge to gain
+expressiveness (Module 1); `torch.compile` recovers it where a graph can be captured; a serving
+framework recovers more because it knows the model and the workload; and a hand-written kernel
+recovers the rest because it knows the algorithm. Every layer in this series is the same trade made
+at a different scope.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="State the central conflict of an inference server and the three-part resolution.">
+
+Continuous batching wants shapes changing every step; CUDA Graphs want shapes that never change.
+Resolved by **PagedAttention** (fixed-size KV blocks with a block table, so the attention kernel's
+arguments stop depending on sequence length), **batch bucketing** (capture at 1, 2, 4, 8, ... and pad
+up, sharing pools between mutually-exclusive graphs), and **piecewise compilation** (capture the
+shape-invariant MLPs and projections, call attention outside).
+
+</SelfCheck>
+
+<SelfCheck q="Quantify the KV waste paging removes, and name what it unlocks beyond memory.">
+
+Contiguous per-sequence buffers sized to `max_model_len` waste 60–80%; a 200-token generation may use
+2.5% of a 1 GB reservation. Paged blocks of 16 tokens cut waste to under 4%. Beyond memory: the
+attention kernel's signature stops changing so capture becomes possible; reference-counted blocks give
+copy-on-write sharing for beam search and prefix caching; and cheap preemption gives the scheduler
+real admission control.
+
+</SelfCheck>
+
+<SelfCheck q="Three things vary per decode step. How is each handled?">
+
+KV length — removed by paging, since the kernel takes a fixed-shape block table and length tensor.
+Sequence identity — never mattered, as kernels do not care which request occupies which row. Batch
+size — the only genuinely varying dimension, handled by bucketing and padding up, at a few percent
+waste. The general move: put the dynamism in tensor *values* rather than in shapes, where CUDA Graphs
+are perfectly content with it.
+
+</SelfCheck>
+
+<SelfCheck q="What forced piecewise compilation, and what does it cost?">
+
+Attention: even with paging, its work depends on the sequence lengths in the batch, and the best
+implementations are hand-written kernels with their own launch heuristics and host-side dispatch.
+Forcing them into a capture means giving up the good kernel or capturing a worst case. Cost: several
+replays per step each paying ~5–10 µs, host work between pieces, and split points constrained to
+tensors with stable addresses. Still right, since no capture costs milliseconds per step.
+
+</SelfCheck>
+
+<SelfCheck q="Why do prefill and decode conflict, and what does chunked prefill fix?">
+
+Prefill is a compute-bound GEMM over thousands of tokens; decode is memory-bound, launch-sensitive,
+one token per sequence. A 4 K prefill stalls every decoding sequence for hundreds of milliseconds;
+prioritising decode inflates time-to-first-token. Chunked prefill splits the prefill into a few hundred
+tokens per chunk and schedules chunks alongside decode, bounding inter-token latency and lending
+arithmetic intensity to an otherwise memory-bound step. It is head-of-line blocking, fixed by changing
+the service discipline.
+
+</SelfCheck>
+
+<SelfCheck q="Why do serving frameworks reimplement PyTorch's runtime, and what is the general principle?">
+
+Because they can prove things PyTorch cannot: a known model, known maximum context and known memory
+budget let them preallocate the KV cache as one arena with no allocator on the hot path, capture a
+fixed kernel sequence wholesale, and run a real request scheduler with admission control and
+preemption. The principle: **generality costs performance, and you recover it by finding the
+constraints your deployment actually satisfies and specialising against them** — the same trade eager,
+`torch.compile`, serving frameworks and hand-written kernels each make at a different scope.
+
+</SelfCheck>

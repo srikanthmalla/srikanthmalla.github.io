@@ -1,0 +1,255 @@
+---
+n: 4
+title: 'TorchDynamo: capturing Python at runtime'
+blurb: 'Two earlier attempts failed by being silently wrong or by demanding a Python subset. Dynamo takes a third route: capture bytecode, guard the assumptions, and bail out when it cannot.'
+part: 'K'
+minutes: 16
+draft: false
+tags: ['TorchDynamo', 'graph break', 'guards', 'FX graph', 'jit.trace', 'jit.script', 'frame evaluation', 'bytecode']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+PyTorch tried to capture graphs twice before and both attempts failed in instructive ways.
+`torch.jit.trace` runs your function once with example inputs and records the ops that executed. It
+is easy to use and **silently wrong**: Python control flow is evaluated during tracing, so an `if`
+bakes in whichever branch the example took, a Python `len()` becomes a constant, and a loop is
+unrolled to the length it happened to have. The model runs, produces plausible numbers, and is
+incorrect for any input that would have taken the other branch. `torch.jit.script` went the other
+way and *compiled* Python — but only a subset, TorchScript, with its own type system and its own
+error messages. It was correct, and it demanded you rewrite your model in a language nobody wanted
+to learn for a benefit they could not see.
+
+Dynamo takes a third route: it hooks CPython's **frame evaluation API** (PEP 523), so before a
+Python function executes, Dynamo gets its bytecode. It symbolically interprets that bytecode,
+tracking which values are tensors and which are ordinary Python, and builds an FX graph of the
+tensor operations. When it reaches something it cannot represent — a data-dependent branch, a call
+into an opaque C extension, a `print` — it does not fail and does not guess. It **breaks the
+graph**: compiles what it has, emits a call back into the Python interpreter for the awkward part,
+and resumes capturing afterwards. The user's code is unmodified and always correct, because the
+fallback is simply running the original Python.
+
+The second half of the design is **guards**. A compiled graph is only valid under the assumptions
+made while tracing — this tensor was `float16` on `cuda:0` with shape `(4, 512)`, this Python flag
+was `True`, this attribute had that value. Dynamo records those as guards and checks them on entry;
+if they hold, it runs the compiled code, and if not, it compiles a new variant. That is what makes
+capture safe in a language as dynamic as Python: **you are not required to prove your program is
+static, only to pay when it turns out not to be.** Everything difficult in Part M is a consequence of
+what those guards have to check.
+
+<Callout type="bridge" title="you have met this design before">
+  Guards plus deoptimisation is exactly how a tracing JIT for a dynamic language works — V8's hidden
+  classes, LuaJIT's trace exits, PyPy's guards. Dynamo is a tracing JIT that happens to emit tensor
+  graphs instead of machine code, and its failure modes are the classic ones: guard churn and
+  bailout storms.
+</Callout>
+
+## Numbers worth memorizing
+
+| Capture mechanism   | Correctness              | Ergonomics                   | Verdict            |
+| ------------------- | ------------------------ | ---------------------------- | ------------------ |
+| `torch.jit.trace`   | **silently wrong** on control flow | trivial to use      | dangerous          |
+| `torch.jit.script`  | correct                  | a Python subset, own errors  | rejected by users  |
+| `torch.fx.symbolic_trace` | fails on data-dependent flow | proxy-based        | fine for clean models |
+| **TorchDynamo**     | correct — falls back to Python | transparent            | the answer         |
+
+| Quantity                              | Value                                             |
+| ------------------------------------- | ------------------------------------------------- |
+| Hook                                  | CPython frame evaluation API (PEP 523), 3.8+       |
+| Output                                | an FX graph of ATen/torch ops + guards             |
+| Guard check cost                      | ~1–5 µs per call, on the fast path                 |
+| `cache_size_limit`                    | 8 by default — then it gives up and runs eager     |
+| Cost of one graph break               | 2 extra graphs + a Python round trip; kills CUDA Graphs across the boundary |
+
+Common graph-break causes, in roughly descending frequency:
+
+| Cause                                      | Fix                                    |
+| ------------------------------------------ | -------------------------------------- |
+| Data-dependent branch (`if x.sum() > 0`)   | restructure, or accept the break        |
+| `.item()`, `.tolist()`, `int(tensor)`      | keep it on device                       |
+| `print`, logging, `pdb`                    | remove from the hot path                |
+| Unsupported builtin or C extension          | often fixed in a newer PyTorch          |
+| Tensor → Python conversion for control      | `torch.where`, masking                  |
+| `try`/`except` around tensor ops            | hoist out                               |
+| Calling into a non-traceable library        | wrap as a custom op                     |
+
+The essential debugging incantations:
+
+```bash
+TORCH_LOGS=graph_breaks,recompiles python train.py
+```
+
+```python
+torch._dynamo.explain(model)(example_input)   # every break, with reasons
+torch.compile(model, fullgraph=True)          # turn breaks into hard errors
+```
+
+<Callout type="trap" title="fullgraph=False hides the problem">
+  The default silently tolerates breaks, so a model shattered into forty graphs still "compiles" and
+  still runs — at close to eager speed. Develop with `fullgraph=True` to see the truth, then relax it
+  if the remaining breaks are genuinely acceptable.
+</Callout>
+
+## Critical thinking
+
+<Probe q="Why is torch.jit.trace dangerous rather than merely limited?">
+
+Because it fails **silently and plausibly**. A limitation you hit is an error message; a limitation
+that produces wrong numbers is a bug that ships.
+
+```python
+def forward(self, x):
+    if x.sum() > 0:        # evaluated once, during tracing
+        return self.a(x)
+    return self.b(x)       # if the example was positive, this branch is gone forever
+```
+
+The traced module contains only `self.a`. It runs, returns tensors of the right shape and dtype, and
+is wrong for half its inputs. Nothing warns you. The same applies to `for i in range(x.shape[0])`,
+which unrolls to the example's batch size and then produces garbage or a shape error later, and to
+any Python `int` derived from a tensor, which is frozen as a constant.
+
+Contrast the two safe designs. `script` refuses to compile what it cannot represent — correct, but
+it moved the burden to the user. Dynamo represents what it can and **falls back to the interpreter**
+for the rest, so the failure mode is a performance loss rather than a correctness loss.
+
+That ordering is the design principle worth extracting: when a capture system meets something it
+cannot express, its options are *be wrong*, *refuse*, or *deoptimise*. Only the third gives you both
+correctness and adoption, and it is why every successful JIT for a dynamic language has chosen it.
+
+</Probe>
+
+<Probe q="Walk through exactly what happens at a graph break, and why one break can cost far more than it looks.">
+
+Take a break in the middle of a function. Dynamo compiles the ops it captured before the break into
+graph A, emits a **resume function** whose bytecode continues from the break point, runs the
+offending operation in the ordinary Python interpreter, then re-enters compilation for graph B.
+
+The visible cost is modest: two compiled graphs instead of one, plus a Python round trip.
+
+The costs that are not visible are the ones that matter:
+
+- **No fusion across the boundary.** The last op of A and the first of B cannot be fused, so an
+  intermediate that would have stayed in registers is now materialised to HBM and read back — the
+  Module 3 traffic argument, in reverse.
+- **CUDA Graphs are dead across it.** A replayable graph cannot contain a Python callback, so
+  `mode="reduce-overhead"` degrades to capturing each fragment separately, or to nothing. For a
+  launch-bound model this alone can erase the entire benefit (Module 9).
+- **Guards multiply.** Each fragment carries its own guard set, checked on every call.
+- **Breaks in loops compound.** One break inside a per-layer loop is 32 breaks in a 32-layer model,
+  so 33 graphs, none of which can fuse with its neighbours.
+
+Which is why `TORCH_LOGS=graph_breaks` is the first thing to run when compilation underdelivers, and
+why `fullgraph=True` during development is worth the friction. A model reported as "compiled" with
+forty breaks has most of eager's overhead and all of compilation's cost.
+
+</Probe>
+
+<Probe q="What is in a guard, and why is guard design the hard part?">
+
+A guard is a cheap predicate over the inputs and the environment that must hold for the compiled code
+to be valid. Typical contents: tensor dtype, device, layout, requires-grad, rank and shape (or a
+symbolic relation on shape, Module 10); the *identity* or value of Python arguments; the type of
+`self` and values of attributes it read; global state such as the grad mode and autocast state.
+
+The design tension is a direct trade:
+
+- **Too strict** and you recompile constantly. Guarding on an exact batch size recompiles for every
+  batch size; hit `cache_size_limit` (8) and Dynamo stops trying and runs eager forever — often
+  the real reason a model "stopped being fast".
+- **Too loose** and you run a compiled graph under assumptions that no longer hold, which is
+  miscompilation: silently wrong numbers.
+
+So guards must be simultaneously *sound* (never admit an invalid input), *precise* (not so
+conservative as to recompile needlessly), and *cheap* (a few microseconds, since they run on every
+call and the whole point was to remove microseconds).
+
+The clever move is **symbolic shapes**: rather than guarding `batch == 4`, guard `batch >= 2` or
+record that two dimensions are equal, so one compiled artifact serves many shapes. That is Module
+10's subject and it is where most remaining pain in `torch.compile` lives — because deciding *which*
+facts to specialise on and which to leave symbolic is undecidable in general, and the heuristics are
+what you fight.
+
+</Probe>
+
+<Probe q="Why capture bytecode rather than the Python source, or the ops as they execute?">
+
+All three have been tried; bytecode is the only one that is both correct and transparent.
+
+**Source-level** (AutoGraph in TF2, and `jit.script`'s parser) means parsing Python, rewriting
+control flow, and handling every syntactic form the language allows — including code you did not
+write, in libraries you do not control. You end up debugging generated source, and you must
+reimplement Python's semantics correctly, which nobody has ever quite done.
+
+**Op-level tracing** (`jit.trace`, `fx.symbolic_trace`) sees only what executed, so control flow is
+invisible by construction. That is the silent-wrongness failure above; you cannot fix it by trying
+harder, because the information was never observed.
+
+**Bytecode** sits at exactly the right level. It is a small, stable, well-specified instruction set —
+far simpler than Python's surface syntax. Control flow is *explicit* as jump instructions, so Dynamo
+can see a branch rather than merely following one. It works regardless of how the source was
+written, including decorated, generated or third-party code. And because PEP 523 lets you replace
+the evaluation of a frame, Dynamo can hand back **modified bytecode** that calls the compiled graph,
+so the fallback path is the interpreter itself rather than a reimplementation of it.
+
+The cost is that Dynamo must model the CPython interpreter's stack machine, and is coupled to
+bytecode details that change between Python versions — which is exactly why each new CPython release
+needs Dynamo work. That is a maintenance burden accepted deliberately in exchange for being able to
+capture arbitrary Python correctly.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="Why did trace and script both fail, and what third option does Dynamo take?">
+
+`jit.trace` records only what executed, so Python control flow is baked in — **silently wrong** for
+inputs taking another branch. `jit.script` compiled a Python *subset* with its own type system,
+correct but demanding a rewrite users would not do. Dynamo interprets **bytecode**, captures what it
+can, and falls back to the real interpreter for the rest — so failures cost performance, never
+correctness.
+
+</SelfCheck>
+
+<SelfCheck q="List the hidden costs of a single graph break.">
+
+No fusion across the boundary, so an intermediate that would have stayed in registers round-trips to
+HBM; CUDA Graphs cannot span it, which can erase the entire benefit for a launch-bound model;
+duplicated guard sets checked per fragment; and a break inside a per-layer loop becomes one per
+layer — 32 breaks and 33 unfusable graphs in a 32-layer model.
+
+</SelfCheck>
+
+<SelfCheck q="What does a guard contain, and what are the three properties it must satisfy at once?">
+
+Dtype, device, layout, requires-grad, rank and shape (or symbolic relations); the identity or value
+of Python arguments and read attributes; and global state like grad and autocast mode. Guards must be
+**sound** (never admit an invalid input), **precise** (not recompiling needlessly), and **cheap** (a
+few microseconds, since they run on every call). Too strict means constant recompilation until
+`cache_size_limit` is hit and it silently reverts to eager; too loose means miscompilation.
+
+</SelfCheck>
+
+<SelfCheck q="Why bytecode rather than source or executed ops?">
+
+Source-level rewriting requires reimplementing Python's semantics and leaves you debugging generated
+code. Op-level tracing never observes control flow at all, which is why it is silently wrong.
+Bytecode is small, stable and explicit about control flow as jump instructions, works on code you did
+not write, and via PEP 523 lets Dynamo hand back modified bytecode so the fallback is the real
+interpreter. The price is coupling to CPython bytecode details, which is why each Python release
+needs Dynamo work.
+
+</SelfCheck>
+
+<SelfCheck q="Which flag should you develop with, and why is the default misleading?">
+
+`fullgraph=True`, which turns graph breaks into hard errors. The default tolerates breaks silently,
+so a model shattered into forty graphs still reports as compiled while running at close to eager
+speed and paying compilation cost on top. Pair it with
+`TORCH_LOGS=graph_breaks,recompiles` and `torch._dynamo.explain`.
+
+</SelfCheck>

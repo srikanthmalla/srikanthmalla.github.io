@@ -1,0 +1,545 @@
+<!DOCTYPE html><html lang="en" data-astro-cid-z4jru4n3><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>13. Partitioning the stack — ML Software &amp; Compilers</title><meta name="description" content="What to compile, what to leave eager, what to hand-write. A decision procedure that starts from which overhead binds, not from which tool is newest."><link rel="icon" href="data:,"><script>
+      (() => {
+        try {
+          const t = localStorage.getItem('refresher:theme');
+          if (t === 'light') document.documentElement.classList.add('light');
+        } catch (e) {}
+      })();
+    </script><link rel="stylesheet" href="/blog/_astro/BaseLayout.B9q2yynj.css"><style>.wrap[data-astro-cid-5x65ok44]{max-width:68ch;margin-inline:auto;padding:3rem 1.25rem 6rem}@media (width>=1024px){.wrap[data-astro-cid-5x65ok44]{max-width:calc(68ch + 6rem);padding-inline:3rem}}.mhead[data-astro-cid-5x65ok44]{border-block-end:1px solid var(--rule);margin-block-end:.5rem;padding-block-end:1.75rem}.mhead-kicker[data-astro-cid-5x65ok44]{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint);margin:0 0 .85rem;font-size:.6875rem;font-weight:500}.mhead-n[data-astro-cid-5x65ok44]{color:var(--accent);font-weight:640}.mhead-dot[data-astro-cid-5x65ok44]{opacity:.5;padding-inline:.35rem}.mhead-title[data-astro-cid-5x65ok44]{font-family:var(--font-sans);letter-spacing:-.027em;color:var(--ink-strong);text-wrap:balance;margin:0;font-size:clamp(1.75rem,1.3rem + 1.9vw,2.375rem);font-weight:660;line-height:1.12}.mhead-blurb[data-astro-cid-5x65ok44]{color:var(--ink-muted);max-width:58ch;margin:.85rem 0 0;font-size:1.0625rem;line-height:1.6}.mfoot[data-astro-cid-5x65ok44]{border-block-start:1px solid var(--rule);margin-block-start:4rem;padding-block-start:1.75rem}.mark[data-astro-cid-5x65ok44]{font-family:var(--font-sans);border:1px solid var(--rule);background:var(--bg-raised);color:var(--ink-muted);cursor:pointer;border-radius:5px;padding:.4rem .85rem;font-size:.75rem;font-weight:550}.mark[data-astro-cid-5x65ok44]:hover{color:var(--ink-strong);border-color:var(--ink-faint)}.mark[data-astro-cid-5x65ok44][aria-pressed=true]{color:var(--bridge);border-color:color-mix(in oklab, var(--bridge) 45%, var(--rule))}.pager[data-astro-cid-5x65ok44]{grid-template-columns:1fr 1fr;gap:1rem;margin-block-start:2rem;display:grid}.pager-link[data-astro-cid-5x65ok44]{border:1px solid var(--rule);font-family:var(--font-sans);border-radius:6px;flex-direction:column;gap:.25rem;padding:.75rem .9rem;text-decoration:none;display:flex}.pager-link[data-astro-cid-5x65ok44]:hover{border-color:var(--ink-faint);background:var(--bg-raised)}.pager-link[data-astro-cid-5x65ok44].is-next{text-align:end}.pager-dir[data-astro-cid-5x65ok44]{text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);font-size:.6875rem}.pager-title[data-astro-cid-5x65ok44]{color:var(--ink-strong);font-size:.8125rem;font-weight:550;line-height:1.35}
+</style><style>.callout{border:1px solid var(--rule);border-inline-start-width:2px;border-radius:5px;margin-block:1.75rem;padding:.9rem 1.1rem 1rem;font-size:.9375rem;line-height:1.65}.callout-probe{border-inline-start-color:var(--probe);background:var(--probe-bg)}.callout-trap{border-inline-start-color:var(--trap);background:var(--trap-bg)}.callout-bridge{border-inline-start-color:var(--bridge);background:var(--bridge-bg)}.callout-label{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;align-items:center;gap:.45rem;margin:0 0 .5rem;font-size:.6875rem;font-weight:620;display:flex}.callout-probe .callout-label{color:var(--probe)}.callout-trap .callout-label{color:var(--trap)}.callout-bridge .callout-label{color:var(--bridge)}.callout-mark{background:currentColor;border-radius:50%;flex:none;width:5px;height:5px}.callout-title{text-transform:none;letter-spacing:0;color:var(--ink-muted);font-weight:500}.callout-body>:first-child{margin-block-start:0}.callout-body>:last-child{margin-block-end:0}.callout-body>*+*{margin-block-start:.75em}.probe{margin-block:1.75rem}.prose .probe-q{font-family:var(--font-sans);letter-spacing:-.01em;color:var(--ink-strong);margin:0 0 .6rem;padding-inline-start:1.15rem;font-size:1rem;font-weight:600;line-height:1.45;position:relative}.prose .probe-q:before{content:"›";color:var(--accent);font-weight:700;position:absolute;inset-inline-start:0}.probe-a{border-inline-start:1px solid var(--rule);margin-inline-start:.1rem;padding-inline-start:1.15rem}.probe-a>*+*{margin-block-start:1.15em}.probe-a>:first-child{margin-block-start:0}.probe-a>:last-child{margin-block-end:0}.selfcheck{border-block-start:1px solid var(--rule-soft)}.selfcheck:last-of-type{border-block-end:1px solid var(--rule-soft)}.prose>.selfcheck+.selfcheck{margin-block-start:0}.selfcheck>summary{cursor:pointer;color:var(--ink);align-items:baseline;gap:1rem;padding:.7rem .2rem;list-style:none;display:flex}.selfcheck>summary::-webkit-details-marker{display:none}.selfcheck>summary:hover{color:var(--ink-strong)}.selfcheck-q{flex:1}.selfcheck-q code{white-space:nowrap}.selfcheck-cue{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);flex:none;padding-block-start:.15rem;font-size:.6875rem;font-weight:600}.selfcheck>summary:hover .selfcheck-cue{color:var(--accent)}.selfcheck-cue-hide,.selfcheck[open] .selfcheck-cue-show{display:none}.selfcheck[open] .selfcheck-cue-hide{display:inline}.selfcheck-a{color:var(--ink-muted);border-inline-start:2px solid var(--rule);margin-block-end:.9rem;margin-inline-start:.2rem;padding:.15rem .2rem 1.05rem;padding-inline-start:1rem;font-size:.9375rem}.selfcheck-a>:first-child{margin-block-start:0}.selfcheck-a>:last-child{margin-block-end:0}.selfcheck-a>*+*{margin-block-start:.7em}.selfcheck-a strong{color:var(--ink)}
+</style></head><body data-astro-cid-z4jru4n3><a href="#content" class="skip" data-astro-cid-z4jru4n3>Skip to content</a><div class="shell" data-astro-cid-z4jru4n3><aside class="rail" data-rail data-astro-cid-z4jru4n3><nav class="rail-nav" aria-label="ML Software &amp; Compilers contents" data-astro-cid-wv7whodv><div class="rail-head" data-astro-cid-wv7whodv><a href="/blog/" class="rail-up" data-astro-cid-wv7whodv>All series</a><a href="/blog/ml-software/" class="rail-home" data-astro-cid-wv7whodv><span class="rail-home-title" data-astro-cid-wv7whodv>ML Software &amp; Compilers</span><span class="rail-home-sub" data-astro-cid-wv7whodv>How PyTorch becomes kernels</span></a><p class="rail-progress" data-astro-cid-wv7whodv><span class="rail-progress-bar" data-astro-cid-wv7whodv><span data-progress-fill data-astro-cid-wv7whodv></span></span><span class="rail-progress-text" data-astro-cid-wv7whodv><span data-progress-count data-astro-cid-wv7whodv>0</span>/14 reviewed</span></p></div><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part J</span>The fault line</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-software/01-why-eager-won/" class="rail-link" title="TensorFlow 1 made the right performance bet and lost anyway. The interesting question is why JAX later made the same bet and won." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>1</span><span class="rail-title" data-astro-cid-wv7whodv>Why eager won</span><span class="rail-tick" data-tick="ml-software/01-why-eager-won" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/02-eager-internals/" class="rail-link" title="Python, the dispatcher, the autograd tape and the allocator all run before your kernel does. Roughly 8 µs of CPU work to launch 2 µs of GPU work." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>2</span><span class="rail-title" data-astro-cid-wv7whodv>What eager mode actually does per op</span><span class="rail-tick" data-tick="ml-software/02-eager-internals" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/03-what-graph-mode-buys/" class="rail-link" title="Three overheads, three mechanisms, three different ceilings. Knowing which one binds tells you whether compiling will help before you try it." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>3</span><span class="rail-title" data-astro-cid-wv7whodv>What graph mode actually buys</span><span class="rail-tick" data-tick="ml-software/03-what-graph-mode-buys" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part K</span>Capture</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-software/04-torchdynamo/" class="rail-link" title="Two earlier attempts failed by being silently wrong or by demanding a Python subset. Dynamo takes a third route: capture bytecode, guard the assumptions, and bail out when it cannot." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>4</span><span class="rail-title" data-astro-cid-wv7whodv>TorchDynamo: capturing Python at runtime</span><span class="rail-tick" data-tick="ml-software/04-torchdynamo" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/05-ir-ladder/" class="rail-link" title="ATen to Prims, functionalization, and AOTAutograd. Then the other lowering universe — MLIR dialects, torch-mlir, StableHLO — and why the CUDA path never goes there." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>5</span><span class="rail-title" data-astro-cid-wv7whodv>The IR ladder, and the MLIR fork in the road</span><span class="rail-tick" data-tick="ml-software/05-ir-ladder" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/06-inductor/" class="rail-link" title="The scheduler is the compiler. Fusion is a graph-partitioning problem under register and occupancy constraints, and the interesting failures are all in where it draws the lines." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>6</span><span class="rail-title" data-astro-cid-wv7whodv>Inductor: deciding what to fuse</span><span class="rail-tick" data-tick="ml-software/06-inductor" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/07-triton/" class="rail-link" title="CUDA makes you write per-thread code and manage shared memory. Triton makes you write per-block code and gives the compiler the rest — which is exactly what makes it a codegen target." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>7</span><span class="rail-title" data-astro-cid-wv7whodv>Triton: the block programming model</span><span class="rail-tick" data-tick="ml-software/07-triton" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part L</span>Runtime</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-software/08-caching-allocator/" class="rail-link" title="cudaMalloc synchronises the device, so PyTorch calls it as rarely as possible. The design that follows — pools, splitting, stream ownership — explains almost every confusing OOM you will ever see." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>8</span><span class="rail-title" data-astro-cid-wv7whodv>The caching allocator</span><span class="rail-tick" data-tick="ml-software/08-caching-allocator" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/09-cuda-graphs/" class="rail-link" title="Record the launches once, replay them as one submission. The constraints — static addresses, static shapes, no CPU in the loop — are what the rest of the stack has to bend around." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>9</span><span class="rail-title" data-astro-cid-wv7whodv>CUDA Graphs</span><span class="rail-tick" data-tick="ml-software/09-cuda-graphs" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part M</span>Where it breaks</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-software/10-dynamic-shapes/" class="rail-link" title="Specializing on a shape makes the fastest kernel and the least reusable one. Symbolic shapes are the compromise, and 0/1 specialization is the trap inside it." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>10</span><span class="rail-title" data-astro-cid-wv7whodv>Dynamic shapes and recompilation</span><span class="rail-tick" data-tick="ml-software/10-dynamic-shapes" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/11-moe/" class="rail-link" title="Routing makes every expert's batch size a function of the data. Capacity factors, grouped GEMM and sort-permute are all ways of buying back a static shape — and each one costs something real." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>11</span><span class="rail-title" data-astro-cid-wv7whodv>MoE: dynamism the compiler cannot remove</span><span class="rail-tick" data-tick="ml-software/11-moe" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/12-topk-and-non-gemm/" class="rail-link" title="Selection has low arithmetic intensity, irregular access and a serial dependency. Vocabularies grew to 256k and it became a visible fraction of every decode step." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>12</span><span class="rail-title" data-astro-cid-wv7whodv>top-k, sort, and the ops that are not GEMM</span><span class="rail-tick" data-tick="ml-software/12-topk-and-non-gemm" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part N</span>Synthesis</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-software/13-partitioning-the-stack/" class="rail-link is-active" aria-current="page" title="What to compile, what to leave eager, what to hand-write. A decision procedure that starts from which overhead binds, not from which tool is newest." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>13</span><span class="rail-title" data-astro-cid-wv7whodv>Partitioning the stack</span><span class="rail-tick" data-tick="ml-software/13-partitioning-the-stack" aria-hidden="true" data-astro-cid-wv7whodv></span></a><ul class="rail-sub" data-rail-sub data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="#the-core-mental-model" class="rail-sub-link" data-toc="the-core-mental-model" data-astro-cid-wv7whodv>The core mental model</a></li><li data-astro-cid-wv7whodv><a href="#numbers-worth-memorizing" class="rail-sub-link" data-toc="numbers-worth-memorizing" data-astro-cid-wv7whodv>Numbers worth memorizing</a></li><li data-astro-cid-wv7whodv><a href="#critical-thinking" class="rail-sub-link" data-toc="critical-thinking" data-astro-cid-wv7whodv>Critical thinking</a></li><li data-astro-cid-wv7whodv><a href="#self-check" class="rail-sub-link" data-toc="self-check" data-astro-cid-wv7whodv>Self-check</a></li></ul></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/14-inference-server/" class="rail-link" title="Continuous batching wants shapes that change every step; CUDA Graphs want shapes that never change. Paged KV, bucketing and piecewise compilation are how vLLM and SGLang reconcile them." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>14</span><span class="rail-title" data-astro-cid-wv7whodv>The inference server</span><span class="rail-tick" data-tick="ml-software/14-inference-server" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-other" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv>Other series</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>ML Hardware &amp; Low-Latency Systems</span></a></li><li data-astro-cid-wv7whodv><a href="/blog/diffusion/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>Diffusion</span></a></li></ul></section><div class="rail-foot" data-astro-cid-wv7whodv><p data-astro-cid-wv7whodv><kbd data-astro-cid-wv7whodv>j</kbd> <kbd data-astro-cid-wv7whodv>k</kbd> section · <kbd data-astro-cid-wv7whodv>/</kbd> search · <kbd data-astro-cid-wv7whodv>[</kbd><kbd data-astro-cid-wv7whodv>]</kbd> module</p></div></nav></aside><div class="col" data-astro-cid-z4jru4n3><header class="topbar" data-astro-cid-z4jru4n3><button class="icon-btn only-narrow" data-rail-toggle aria-label="Toggle contents" data-astro-cid-z4jru4n3><svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M1.5 3.5h12M1.5 7.5h12M1.5 11.5h12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg></button><p class="crumb" data-astro-cid-z4jru4n3>Part N · Synthesis › Partitioning the stack</p><div class="topbar-actions" data-astro-cid-z4jru4n3><button class="search-btn" data-search-open aria-label="Search" data-astro-cid-z4jru4n3><span aria-hidden="true" data-astro-cid-z4jru4n3>⌕</span><span class="search-btn-label" data-astro-cid-z4jru4n3>Search</span><kbd data-astro-cid-z4jru4n3>/</kbd></button><button class="icon-btn" data-theme-toggle aria-label="Toggle theme" data-astro-cid-z4jru4n3><svg class="i-sun" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><circle cx="7.5" cy="7.5" r="3" stroke="currentColor" stroke-width="1.2" data-astro-cid-z4jru4n3></circle><path d="M7.5 .8v1.7M7.5 12.5v1.7M14.2 7.5h-1.7M2.5 7.5H.8M12.24 2.76l-1.2 1.2M3.96 11.04l-1.2 1.2M12.24 12.24l-1.2-1.2M3.96 3.96l-1.2-1.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg><svg class="i-moon" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M13 9.3A5.8 5.8 0 0 1 5.7 2 5.9 5.9 0 1 0 13 9.3Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" data-astro-cid-z4jru4n3></path></svg></button><a class="site-link" href="/" data-astro-cid-z4jru4n3>srikanthmalla.com</a></div></header><main id="content" data-astro-cid-z4jru4n3><article class="wrap" data-article data-astro-cid-5x65ok44><header class="mhead" data-astro-cid-5x65ok44><p class="mhead-kicker" data-astro-cid-5x65ok44><span class="mhead-n" data-astro-cid-5x65ok44>Module 13</span><span class="mhead-dot" data-astro-cid-5x65ok44>·</span>Part N — Synthesis<span class="mhead-dot" data-astro-cid-5x65ok44>·</span>14 min</p><h1 class="mhead-title" data-astro-cid-5x65ok44>Partitioning the stack</h1><p class="mhead-blurb" data-astro-cid-5x65ok44>What to compile, what to leave eager, what to hand-write. A decision procedure that starts from which overhead binds, not from which tool is newest.</p></header><div class="prose" data-astro-cid-5x65ok44><h2 id="the-core-mental-model">The core mental model<a class="anchor" href="#the-core-mental-model" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>Every technique in this series removes a specific overhead, and none of them removes arithmetic. So
+the decision procedure runs in one direction only: <strong>measure which ceiling binds, then apply the
+mechanism that attacks it.</strong> Reversing that — picking a tool and hoping — is how teams spend weeks on
+<code>max-autotune</code> for a model that was bound by an all-to-all.</p>
+<p>The ceilings, in the order you should test them, are: is the CPU on the critical path (Module 2’s
+inequality), is there fusible memory traffic (Module 3), is there launch overhead worth collapsing
+(Module 9), is a collective or a host round trip dominating (Module 11), and is a single non-GEMM op
+eating the step (Module 12). Each has a cheap diagnostic and a distinct fix, and in most real models
+exactly one of them accounts for the majority of recoverable time.</p>
+<p>The second half of the decision is <strong>granularity</strong>. <code>torch.compile</code> on the whole model is the default
+suggestion and often the wrong unit. Compiling a <em>region</em> — one transformer block, the MLP, the
+sampling path — gives most of the fusion benefit with a fraction of the compile time, far fewer
+recompilations, and a debuggable boundary. It also isolates the parts that resist capture: leave the
+MoE routing or the KV-cache management eager, compile the dense arithmetic around it, and you avoid
+the graph-break cascade of Module 4 rather than fighting it. The general shape is the hardware
+series’ partitioning rule arriving in software: <strong>compile what is stable, shaped, and on the critical
+path; leave everything else alone.</strong></p>
+<aside class="callout callout-bridge"><p class="callout-label"><span class="callout-mark" aria-hidden="true"></span>Bridge to what you know<span class="callout-title"> · the same three-part rule</span></p><div class="callout-body"><p>The hardware series puts a function in silicon if it is on the critical path, stable over months,
+and has bounded data-independent execution time. Compilation wants the same three: on the critical
+path, structurally stable so it is not recompiled, and shape-predictable. Fail the third and you get
+Module 10.</p></div></aside>
+<h2 id="numbers-worth-memorizing">Numbers worth memorizing<a class="anchor" href="#numbers-worth-memorizing" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>The diagnostic ladder, cheapest first:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Question</th><th>Measurement</th><th>If yes</th></tr></thead><tbody><tr><td>Am I launch bound?</td><td>sum self-CPU vs self-CUDA; or just raise batch size</td><td>compile, then CUDA Graphs</td></tr><tr><td>Is there fusible traffic?</td><td>kernel count and op mix; elementwise share</td><td><code>torch.compile</code></td></tr><tr><td>Am I recompiling?</td><td><code>TORCH_LOGS=recompiles</code></td><td>bucket shapes, <code>mark_dynamic</code></td></tr><tr><td>Am I breaking graphs?</td><td><code>TORCH_LOGS=graph_breaks</code>, <code>fullgraph=True</code></td><td>restructure or accept</td></tr><tr><td>Is one op dominating?</td><td>profiler top-10 by self-CUDA</td><td>hand-write it (Module 7)</td></tr><tr><td>Is a collective dominating?</td><td>timeline gaps aligned to NCCL kernels</td><td>overlap, or change parallelism</td></tr><tr><td>Am I fragmenting?</td><td><code>reserved − allocated</code></td><td><code>expandable_segments</code>, bucket</td></tr></tbody></table></div>
+<p>Granularity options:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Unit</th><th>Compile time</th><th>Recompile risk</th><th>Typical use</th></tr></thead><tbody><tr><td>Whole model</td><td>high</td><td>high</td><td>stable shapes, offline batch</td></tr><tr><td>Per transformer block</td><td>moderate</td><td>moderate</td><td><strong>the usual sweet spot</strong></td></tr><tr><td>Single hot region</td><td>low</td><td>low</td><td>when one module dominates</td></tr><tr><td>Custom Triton op only</td><td>minimal</td><td>none</td><td>when the algorithm is the issue</td></tr></tbody></table></div>
+<pre class="astro-code astro-code-themes github-light github-dark-default" style="background-color:#fff;--shiki-dark-bg:#0d1117;color:#24292e;--shiki-dark:#e6edf3;overflow-x:auto" tabindex="0" data-language="python"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#8B949E"># Region compilation: most of the benefit, far less of the cost.</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#FF7B72">for</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> blk </span><span style="color:#D73A49;--shiki-dark:#FF7B72">in</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> model.blocks:</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E6EDF3">    blk.mlp </span><span style="color:#D73A49;--shiki-dark:#FF7B72">=</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> torch.compile(blk.mlp)</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#8B949E"># Or exclude what resists capture.</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#D2A8FF">@torch.compiler.disable</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#FF7B72">def</span><span style="color:#6F42C1;--shiki-dark:#D2A8FF"> route_and_dispatch</span><span style="color:#24292E;--shiki-dark:#E6EDF3">(x): </span><span style="color:#005CC5;--shiki-dark:#79C0FF">...</span></span></code></pre>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Cost to budget for</th><th>Value</th></tr></thead><tbody><tr><td>Cold compile, whole model</td><td>30 s – 5 min</td></tr><tr><td><code>max-autotune</code></td><td>3–20× that</td></tr><tr><td>Warm start with caches</td><td>seconds</td></tr><tr><td>Engineer time to fix breaks</td><td>usually the dominant cost</td></tr></tbody></table></div>
+<aside class="callout callout-trap"><p class="callout-label"><span class="callout-mark" aria-hidden="true"></span>Common trap<span class="callout-title"> · optimizing before the model is stable</span></p><div class="callout-body"><p>Compilation cost is paid on every architecture change, and a compiled model is harder to debug. The
+right sequence is eager while the model is moving, compiled once it is not — the same reasoning
+that made eager win in Module 1, applied to your own project rather than to a framework.</p></div></aside>
+<h2 id="critical-thinking">Critical thinking<a class="anchor" href="#critical-thinking" aria-hidden="true" tabindex="-1">#</a></h2>
+<section class="probe"><h3 class="probe-q">Give the decision procedure, in order, with the cheapest measurement first.</h3><div class="probe-a"><p>The ordering matters because each step is cheaper than the next and can eliminate the rest.</p><ol>
+<li><strong>Raise the batch size and see if step time moves.</strong> One line, no tooling. If it barely changes,
+you are launch bound and the answer is <code>torch.compile</code> plus <code>mode=&quot;reduce-overhead&quot;</code>. This single
+experiment resolves a large fraction of cases.</li>
+<li><strong>Compare summed self-CPU against self-CUDA</strong> in the profiler. Confirms the above and tells you how
+much headroom exists.</li>
+<li><strong>Look at the op mix.</strong> If the top kernels by time are <code>cublas</code> GEMMs, there is little to fuse and
+compilation will return ~1.0× — stop, and go look at parallelism or numerics instead. If
+normalisation, activation and elementwise dominate, fusion is worth 1.3–2×.</li>
+<li><strong>Check the top ten kernels by self-CUDA time.</strong> If one non-GEMM op is 10%+ of the step, that is a
+hand-written kernel (Module 12), and no amount of compiler configuration substitutes.</li>
+<li><strong>Look at the timeline for gaps.</strong> Gaps aligned with NCCL kernels are collectives; gaps with no
+kernel at all are host stalls — a <code>.item()</code>, a sync, a dataloader.</li>
+<li><strong>Only now, compile.</strong> And measure the three costs: steady-state gain, compile time, and
+recompilation rate under realistic input variety.</li>
+</ol><p>The discipline worth naming: steps 1–5 cost under an hour and tell you the expected value of step 6.
+Teams routinely invert this, spend a week on compilation, and discover afterwards that the model was
+bound by an all-to-all the compiler never touches.</p></div></section>
+<section class="probe"><h3 class="probe-q">Why is compiling a region often better than compiling the model?</h3><div class="probe-a"><p>Because the costs of compilation scale with the compiled unit while the benefits mostly do not.</p><p><strong>Compile time scales with graph size</strong>, and it is paid again on every code change and every new
+shape. A whole-model compile of several minutes turns a two-minute experiment into a seven-minute
+one, which changes how you work.</p><p><strong>Recompilation risk compounds.</strong> A whole-model graph guards on every input property anything in it
+touched, so a change anywhere invalidates everything. Per-block graphs are guarded independently, so
+a varying shape in one place recompiles one block.</p><p><strong>Graph breaks cascade.</strong> A break in the middle of a whole-model compile splits it into two large
+graphs at an arbitrary boundary. With per-block compilation the break is contained, and the blocks
+around it stay whole.</p><p><strong>Debuggability.</strong> A stack trace through one compiled block is tractable; through a whole compiled
+model it is not.</p><p>Meanwhile the benefit you lose is small. Nearly all fusion opportunities are <em>local</em> — elementwise
+chains, normalisation, attention epilogues — and live inside a block. Cross-block fusion is rare,
+because a block boundary is usually a residual add and a normalisation that were going to be a fusion
+boundary anyway.</p><p>The exception, and it is a real one: <strong>CUDA Graphs prefer one large capture.</strong> Many small captures pay
+the fixed replay cost repeatedly (Module 9). So for latency-critical decode, whole-model capture is
+worth the compile-time pain — which is exactly what serving frameworks do, and why Module 14 exists.</p></div></section>
+<section class="probe"><h3 class="probe-q">When should you write a kernel instead of configuring the compiler?</h3><div class="probe-a"><p>When the problem is the <strong>algorithm</strong>, not the schedule. The compiler chooses how to execute the graph
+it was given; it does not choose a different graph.</p><p>Write the kernel when:</p><ul>
+<li><strong>A better algorithm exists that is not a fusion of yours.</strong> FlashAttention versus materialised
+attention; radix select versus sort; online softmax versus two passes. No scheduler discovers these
+by fusing the naive form (Modules 7 and 12).</li>
+<li><strong>One op is a large share of the step and is not a GEMM.</strong> The profiler’s top-ten list makes this
+obvious, and by construction the compiler has little to offer there.</li>
+<li><strong>You need numerical control</strong> the decomposition does not preserve — a specific accumulation order
+or precision.</li>
+<li><strong>The op does not exist in ATen.</strong> A custom quantisation format or sparsity pattern. Register it as
+a custom op with a <code>FakeTensor</code> rule and Dynamo traces through it cleanly.</li>
+</ul><p>Do <em>not</em> write kernels for ordinary elementwise fusion, for anything Inductor already handles, or
+before reading the generated Triton to confirm the compiler actually did the wrong thing.</p><p>The healthy structure is a gradient rather than a cliff: eager for correctness, <code>torch.compile</code> for
+the bulk, hand-written Triton for the residue, library calls for the parts specialists already
+solved. Because Inductor emits Triton, moving between the middle two is reading and editing rather
+than rewriting — a materially better position than a compiler whose output you cannot inspect.</p></div></section>
+<section class="probe"><h3 class="probe-q">How do you decide whether the compile time is worth it?</h3><div class="probe-a"><p>Amortisation, computed explicitly rather than assumed.</p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><mtext>worth it</mtext><mtext>  </mtext><mo>⟺</mo><mtext>  </mtext><mo stretchy="false">(</mo><msub><mi>t</mi><mtext>eager</mtext></msub><mo>−</mo><msub><mi>t</mi><mtext>compiled</mtext></msub><mo stretchy="false">)</mo><mo>×</mo><msub><mi>N</mi><mtext>runs</mtext></msub><mo>&gt;</mo><msub><mi>t</mi><mtext>compile</mtext></msub><mo>×</mo><msub><mi>N</mi><mtext>compiles</mtext></msub></mrow><annotation encoding="application/x-tex">\text{worth it} \iff (t_{\text{eager}} - t_{\text{compiled}}) \times N_{\text{runs}} &gt; t_{\text{compile}} \times N_{\text{compiles}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.7184em;vertical-align:-0.024em"></span><span class="mord text"><span class="mord">worth it</span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">⟺</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:1.0361em;vertical-align:-0.2861em"></span><span class="mopen">(</span><span class="mord"><span class="mord mathnormal">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.1514em"><span style="top:-2.55em;margin-left:0em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">eager</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.2861em"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:1.0361em;vertical-align:-0.2861em"></span><span class="mord"><span class="mord mathnormal">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361em"><span style="top:-2.55em;margin-left:0em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">compiled</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.2861em"><span></span></span></span></span></span></span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.8333em;vertical-align:-0.15em"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.109em">N</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.1514em"><span style="top:-2.55em;margin-left:-0.109em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">runs</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">&gt;</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.9012em;vertical-align:-0.2861em"></span><span class="mord"><span class="mord mathnormal">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361em"><span style="top:-2.55em;margin-left:0em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">compile</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.2861em"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.9694em;vertical-align:-0.2861em"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.109em">N</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361em"><span style="top:-2.55em;margin-left:-0.109em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">compiles</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.2861em"><span></span></span></span></span></span></span></span></span></span></span><p>The term people get wrong is <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>N</mi><mtext>compiles</mtext></msub></mrow><annotation encoding="application/x-tex">N_{\text{compiles}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.9694em;vertical-align:-0.2861em"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.109em">N</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361em"><span style="top:-2.55em;margin-left:-0.109em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">compiles</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.2861em"><span></span></span></span></span></span></span></span></span></span>. It is not one. It is once per process start unless
+caches persist, once per shape bucket, once per code change, and once per recompilation trigger. A
+model that recompiles on eight shape buckets across a fleet restarting daily has a very different
+figure from the single compile people imagine.</p><p>Which yields the practical regimes:</p><ul>
+<li><strong>Serving.</strong> <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>N</mi><mtext>runs</mtext></msub></mrow><annotation encoding="application/x-tex">N_{\text{runs}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8333em;vertical-align:-0.15em"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.109em">N</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.1514em"><span style="top:-2.55em;margin-left:-0.109em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">runs</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em"><span></span></span></span></span></span></span></span></span></span> is effectively unbounded, so almost any gain justifies almost any
+compile time — provided you persist <code>TORCHINDUCTOR_CACHE_DIR</code> and the Triton cache so restarts do
+not recompile, and provided shapes are bucketed so the count stays small.</li>
+<li><strong>Training.</strong> A long run amortises easily; compile once, save minutes per hour. Do check that
+recompilation is not triggering mid-run.</li>
+<li><strong>Development.</strong> Usually not worth it. Compile time is charged to your iteration loop, which is the
+thing Module 1 argued matters most.</li>
+<li><strong>Batch inference, one pass.</strong> Compute it honestly — a two-minute compile to save 20% of a
+three-minute job is a loss.</li>
+</ul><p>The general point is that compilation is an investment with a payback period, and the discipline is
+simply to compute it. Most disappointment with <code>torch.compile</code> comes from applying it where the
+payback period exceeded the workload’s lifetime.</p></div></section>
+<h2 id="self-check">Self-check<a class="anchor" href="#self-check" aria-hidden="true" tabindex="-1">#</a></h2>
+<details class="selfcheck"><summary><span class="selfcheck-q">Give the diagnostic ladder in order, cheapest first.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Raise the batch size and see if step time moves (launch bound?); compare summed self-CPU against
+self-CUDA; inspect the op mix (<code>cublas</code>-dominated means little to fuse); check the top ten kernels by
+self-CUDA for a single dominant non-GEMM op; look at timeline gaps for collectives or host stalls; and
+only then compile, measuring steady-state gain, compile time, and recompilation rate under realistic
+input variety. Steps 1–5 cost under an hour and give you the expected value of step 6.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Why compile per block rather than per model, and what is the exception?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Compile time scales with graph size and is repaid on every change; whole-model guards invalidate
+everything when anything varies; a graph break splits a large graph at an arbitrary boundary; and
+debugging is worse. Meanwhile nearly all fusion is local to a block, since block boundaries are
+residual adds and norms that were fusion boundaries anyway. <strong>The exception is CUDA Graphs</strong>, which
+prefer one large capture because many small captures repay the fixed replay cost — so latency-critical
+decode justifies whole-model capture.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">When is a hand-written kernel the right answer?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>When the problem is the algorithm rather than the schedule: a better algorithm that is not a fusion of
+yours (FlashAttention, radix select, online softmax); one non-GEMM op taking a large share of the
+step; a need for specific accumulation order or precision; or an op with no ATen decomposition,
+registered as a custom op with a <code>FakeTensor</code> rule. Not for ordinary elementwise fusion, and not
+before reading the generated Triton.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Write the amortization condition and say which term people get wrong.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="false">(</mo><msub><mi>t</mi><mtext>eager</mtext></msub><mo>−</mo><msub><mi>t</mi><mtext>compiled</mtext></msub><mo stretchy="false">)</mo><mo>×</mo><msub><mi>N</mi><mtext>runs</mtext></msub><mo>&gt;</mo><msub><mi>t</mi><mtext>compile</mtext></msub><mo>×</mo><msub><mi>N</mi><mtext>compiles</mtext></msub></mrow><annotation encoding="application/x-tex">(t_{\text{eager}} - t_{\text{compiled}}) \times N_{\text{runs}} &gt; t_{\text{compile}} \times
+N_{\text{compiles}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.0361em;vertical-align:-0.2861em"></span><span class="mopen">(</span><span class="mord"><span class="mord mathnormal">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.1514em"><span style="top:-2.55em;margin-left:0em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">eager</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.2861em"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:1.0361em;vertical-align:-0.2861em"></span><span class="mord"><span class="mord mathnormal">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361em"><span style="top:-2.55em;margin-left:0em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">compiled</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.2861em"><span></span></span></span></span></span></span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.8333em;vertical-align:-0.15em"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.109em">N</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.1514em"><span style="top:-2.55em;margin-left:-0.109em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">runs</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">&gt;</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.9012em;vertical-align:-0.2861em"></span><span class="mord"><span class="mord mathnormal">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361em"><span style="top:-2.55em;margin-left:0em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">compile</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.2861em"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.9694em;vertical-align:-0.2861em"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.109em">N</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361em"><span style="top:-2.55em;margin-left:-0.109em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">compiles</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.2861em"><span></span></span></span></span></span></span></span></span></span>. The mistaken term is <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>N</mi><mtext>compiles</mtext></msub></mrow><annotation encoding="application/x-tex">N_{\text{compiles}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.9694em;vertical-align:-0.2861em"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.109em">N</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361em"><span style="top:-2.55em;margin-left:-0.109em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">compiles</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.2861em"><span></span></span></span></span></span></span></span></span></span>, which is not one: it is once per
+process start without persisted caches, once per shape bucket, once per code change, and once per
+recompilation trigger. Serving amortises almost anything given persisted caches and bucketed shapes;
+development usually does not, since compile time is charged to the iteration loop.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">State the partitioning rule and its parallel in the hardware series.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Compile what is on the critical path, structurally stable, and shape-predictable; leave everything else
+eager. That is the same three-part test as putting a function in silicon — critical path, stable over
+months, bounded data-independent execution time — and failing the third condition produces Module 10’s
+recompilation and Module 11’s MoE problem in exactly the same way.</p></div></details></div><footer class="mfoot" data-astro-cid-5x65ok44><button class="mark" data-mark="ml-software/13-partitioning-the-stack" aria-pressed="false" data-astro-cid-5x65ok44>Mark as reviewed</button><nav class="pager" data-astro-cid-5x65ok44><a class="pager-link" href="/blog/ml-software/12-topk-and-non-gemm/" data-prev data-astro-cid-5x65ok44><span class="pager-dir" data-astro-cid-5x65ok44>← Previous</span><span class="pager-title" data-astro-cid-5x65ok44>12. top-k, sort, and the ops that are not GEMM</span></a><a class="pager-link is-next" href="/blog/ml-software/14-inference-server/" data-next data-astro-cid-5x65ok44><span class="pager-dir" data-astro-cid-5x65ok44>Next →</span><span class="pager-title" data-astro-cid-5x65ok44>14. The inference server</span></a></nav></footer></article></main></div></div><div class="search-overlay" data-search hidden data-astro-cid-ac66eqjo><div class="search-backdrop" data-search-close data-astro-cid-ac66eqjo></div><div class="search-panel" role="dialog" aria-modal="true" aria-label="Search modules" data-astro-cid-ac66eqjo><div class="search-input-row" data-astro-cid-ac66eqjo><span class="search-icon" aria-hidden="true" data-astro-cid-ac66eqjo>⌕</span><input type="text" class="search-input" placeholder="Search all modules…" autocomplete="off" spellcheck="false" data-search-input data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>esc</kbd></div><ul class="search-results" data-search-results data-astro-cid-ac66eqjo></ul><p class="search-empty" data-search-empty hidden data-astro-cid-ac66eqjo>No matches.</p><p class="search-hint" data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>↑</kbd><kbd data-astro-cid-ac66eqjo>↓</kbd> move · <kbd data-astro-cid-ac66eqjo>↵</kbd> open</p></div></div><script>(function(){const indexUrl = "/blog/search.json";
+
+  (() => {
+    const overlay = document.querySelector('[data-search]');
+    if (!overlay) return;
+    const input = overlay.querySelector('[data-search-input]');
+    const list = overlay.querySelector('[data-search-results]');
+    const empty = overlay.querySelector('[data-search-empty]');
+
+    let index = null;
+    let loading = null;
+    let active = 0;
+
+    const load = () => {
+      if (index) return Promise.resolve(index);
+      if (!loading) {
+        loading = fetch(indexUrl)
+          .then((r) => r.json())
+          .then((d) => (index = d))
+          .catch(() => (index = []));
+      }
+      return loading;
+    };
+
+    function open() {
+      overlay.hidden = false;
+      document.documentElement.style.overflow = 'hidden';
+      load().then(() => input.focus());
+      input.focus();
+      input.select();
+    }
+
+    function close() {
+      overlay.hidden = true;
+      document.documentElement.style.overflow = '';
+    }
+
+    function escapeHtml(s) {
+      return s.replace(
+        /[&<>"]/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]
+      );
+    }
+
+    // Excerpt around the first matched term, with the term marked.
+    function excerpt(text, terms) {
+      const lower = text.toLowerCase();
+      let at = -1;
+      for (const t of terms) {
+        const i = lower.indexOf(t);
+        if (i !== -1 && (at === -1 || i < at)) at = i;
+      }
+      if (at === -1) at = 0;
+      const start = Math.max(0, at - 60);
+      let slice = text.slice(start, start + 190);
+      if (start > 0) slice = '…' + slice;
+      if (start + 190 < text.length) slice += '…';
+      let html = escapeHtml(slice);
+      for (const t of terms) {
+        html = html.replace(
+          new RegExp(`(${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'),
+          '<mark>$1</mark>'
+        );
+      }
+      return html;
+    }
+
+    function score(rec, terms) {
+      let s = 0;
+      const hay = (rec.m + ' ' + rec.h + ' ' + (rec.s || '') + ' ' + (rec.k || '')).toLowerCase();
+      const body = rec.t.toLowerCase();
+      for (const t of terms) {
+        if (hay.includes(t)) s += 12;
+        const i = body.indexOf(t);
+        if (i !== -1) s += 4 + Math.max(0, 3 - Math.floor(i / 400));
+        else if (!hay.includes(t)) return 0; // every term must appear
+      }
+      return s;
+    }
+
+    function render(results, terms) {
+      active = 0;
+      list.innerHTML = results
+        .map(
+          (r, i) => `
+          <li>
+            <a href="${r.u}" class="search-hit${i === 0 ? ' is-active' : ''}" data-hit>
+              <span class="search-hit-crumb"><span class="search-hit-series">${escapeHtml(r.s||"")}</span><span class="search-hit-n">${r.n}</span>${escapeHtml(r.m)} <span class="search-hit-sep">›</span> ${escapeHtml(r.h)}</span>
+              <span class="search-hit-text">${excerpt(r.t, terms)}</span>
+            </a>
+          </li>`
+        )
+        .join('');
+      empty.hidden = results.length > 0;
+    }
+
+    function run() {
+      const q = input.value.trim().toLowerCase();
+      if (!q || !index) {
+        list.innerHTML = '';
+        empty.hidden = true;
+        return;
+      }
+      const terms = q.split(/\s+/).filter(Boolean);
+      const results = index
+        .map((r) => ({ r, s: score(r, terms) }))
+        .filter((x) => x.s > 0)
+        .sort((a, b) => b.s - a.s || a.r.n - b.r.n)
+        .slice(0, 12)
+        .map((x) => x.r);
+      render(results, terms);
+    }
+
+    function move(delta) {
+      const hits = list.querySelectorAll('[data-hit]');
+      if (!hits.length) return;
+      hits[active]?.classList.remove('is-active');
+      active = (active + delta + hits.length) % hits.length;
+      hits[active].classList.add('is-active');
+      hits[active].scrollIntoView({ block: 'nearest' });
+    }
+
+    input.addEventListener('input', () => {
+      load().then(run);
+      run();
+    });
+
+    overlay.querySelector('[data-search-close]').addEventListener('click', close);
+
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        move(1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        move(-1);
+      } else if (e.key === 'Enter') {
+        const hit = list.querySelectorAll('[data-hit]')[active];
+        if (hit) {
+          e.preventDefault();
+          window.location.href = hit.getAttribute('href');
+        }
+      }
+    });
+
+    document.querySelectorAll('[data-search-open]').forEach((b) =>
+      b.addEventListener('click', open)
+    );
+
+    window.__openSearch = open;
+  })();
+})();</script><script>(function(){const base = "/blog";
+
+      (() => {
+        const root = document.documentElement;
+
+        /* ---- theme ---------------------------------------------------- */
+        document.querySelector('[data-theme-toggle]')?.addEventListener('click', () => {
+          const light = root.classList.toggle('light');
+          try {
+            localStorage.setItem('refresher:theme', light ? 'light' : 'dark');
+          } catch (e) {}
+        });
+
+        /* ---- progress (localStorage) ---------------------------------- */
+        const KEY = 'refresher:progress';
+        const readSet = () => {
+          try {
+            return new Set(JSON.parse(localStorage.getItem(KEY) || '[]'));
+          } catch (e) {
+            return new Set();
+          }
+        };
+        const writeSet = (s) => {
+          try {
+            localStorage.setItem(KEY, JSON.stringify([...s]));
+          } catch (e) {}
+        };
+
+        function paintProgress() {
+          const done = readSet();
+          const ticks = document.querySelectorAll('[data-tick]');
+          // A module can own more than one tick (rail + contents card), so
+          // count distinct module ids rather than elements.
+          const ids = new Set();
+          ticks.forEach((t) => {
+            const id = t.getAttribute('data-tick');
+            ids.add(id);
+            if (done.has(id)) t.setAttribute('data-read', '');
+            else t.removeAttribute('data-read');
+          });
+          const n = [...ids].filter((id) => done.has(id)).length;
+          const total = ids.size || 1;
+          const fill = document.querySelector('[data-progress-fill]');
+          if (fill) fill.style.width = `${(n / total) * 100}%`;
+          const count = document.querySelector('[data-progress-count]');
+          if (count) count.textContent = String(n);
+          document.querySelectorAll('[data-mark]').forEach((btn) => {
+            const id = btn.getAttribute('data-mark');
+            const on = done.has(id);
+            btn.setAttribute('aria-pressed', String(on));
+            btn.textContent = on ? '✓ Reviewed' : 'Mark as reviewed';
+          });
+        }
+
+        document.querySelectorAll('[data-mark]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-mark');
+            const s = readSet();
+            s.has(id) ? s.delete(id) : s.add(id);
+            writeSet(s);
+            paintProgress();
+          });
+        });
+
+        paintProgress();
+
+        /* ---- scrollspy over h2s, mirrored into the rail --------------- */
+        const article = document.querySelector('[data-article]');
+        const heads = article ? [...article.querySelectorAll('h2[id]')] : [];
+        const subLinks = new Map(
+          [...document.querySelectorAll('[data-toc]')].map((a) => [
+            a.getAttribute('data-toc'),
+            a,
+          ])
+        );
+
+        if (heads.length && subLinks.size) {
+          let currentId = null;
+          const spy = () => {
+            let found = heads[0].id;
+            for (const h of heads) {
+              if (h.getBoundingClientRect().top <= 96) found = h.id;
+              else break;
+            }
+            if (found === currentId) return;
+            subLinks.get(currentId)?.classList.remove('is-current');
+            currentId = found;
+            const el = subLinks.get(currentId);
+            if (el) {
+              el.classList.add('is-current');
+              el.scrollIntoView({ block: 'nearest' });
+            }
+          };
+          spy();
+          addEventListener('scroll', spy, { passive: true });
+        }
+
+        /* ---- keyboard ------------------------------------------------- */
+        const stops = article
+          ? [...article.querySelectorAll('h2[id], h3[id]')]
+          : [];
+
+        function jump(delta) {
+          if (!stops.length) return;
+          // The heading we are "in": the last one scrolled past the threshold.
+          let cur = -1;
+          for (let i = 0; i < stops.length; i++) {
+            if (stops[i].getBoundingClientRect().top <= 100) cur = i;
+            else break;
+          }
+          const target = cur + delta;
+          if (target < 0) return scrollTo({ top: 0, behavior: 'smooth' });
+          if (target >= stops.length) return;
+          stops[target].scrollIntoView({ block: 'start' });
+        }
+
+        addEventListener('keydown', (e) => {
+          const tag = (e.target.tagName || '').toLowerCase();
+          if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+          if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+          if (e.key === '/') {
+            e.preventDefault();
+            window.__openSearch?.();
+          } else if (e.key === 'j') {
+            e.preventDefault();
+            jump(1);
+          } else if (e.key === 'k') {
+            e.preventDefault();
+            jump(-1);
+          } else if (e.key === '[' || e.key === ']') {
+            const sel = e.key === '[' ? '[data-prev]' : '[data-next]';
+            const a = document.querySelector(sel);
+            if (a) {
+              e.preventDefault();
+              window.location.href = a.getAttribute('href');
+            }
+          }
+        });
+
+        /* ---- narrow-screen rail --------------------------------------- */
+        const rail = document.querySelector('[data-rail]');
+        document.querySelector('[data-rail-toggle]')?.addEventListener('click', () => {
+          rail.classList.toggle('is-open');
+        });
+        rail?.addEventListener('click', (e) => {
+          if (e.target.closest('a')) rail.classList.remove('is-open');
+        });
+      })();
+    })();</script></body></html>

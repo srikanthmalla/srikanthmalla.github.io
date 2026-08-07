@@ -1,0 +1,531 @@
+<!DOCTYPE html><html lang="en" data-astro-cid-z4jru4n3><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>6. Inductor: deciding what to fuse — ML Software &amp; Compilers</title><meta name="description" content="The scheduler is the compiler. Fusion is a graph-partitioning problem under register and occupancy constraints, and the interesting failures are all in where it draws the lines."><link rel="icon" href="data:,"><script>
+      (() => {
+        try {
+          const t = localStorage.getItem('refresher:theme');
+          if (t === 'light') document.documentElement.classList.add('light');
+        } catch (e) {}
+      })();
+    </script><link rel="stylesheet" href="/blog/_astro/BaseLayout.B9q2yynj.css"><style>.wrap[data-astro-cid-5x65ok44]{max-width:68ch;margin-inline:auto;padding:3rem 1.25rem 6rem}@media (width>=1024px){.wrap[data-astro-cid-5x65ok44]{max-width:calc(68ch + 6rem);padding-inline:3rem}}.mhead[data-astro-cid-5x65ok44]{border-block-end:1px solid var(--rule);margin-block-end:.5rem;padding-block-end:1.75rem}.mhead-kicker[data-astro-cid-5x65ok44]{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint);margin:0 0 .85rem;font-size:.6875rem;font-weight:500}.mhead-n[data-astro-cid-5x65ok44]{color:var(--accent);font-weight:640}.mhead-dot[data-astro-cid-5x65ok44]{opacity:.5;padding-inline:.35rem}.mhead-title[data-astro-cid-5x65ok44]{font-family:var(--font-sans);letter-spacing:-.027em;color:var(--ink-strong);text-wrap:balance;margin:0;font-size:clamp(1.75rem,1.3rem + 1.9vw,2.375rem);font-weight:660;line-height:1.12}.mhead-blurb[data-astro-cid-5x65ok44]{color:var(--ink-muted);max-width:58ch;margin:.85rem 0 0;font-size:1.0625rem;line-height:1.6}.mfoot[data-astro-cid-5x65ok44]{border-block-start:1px solid var(--rule);margin-block-start:4rem;padding-block-start:1.75rem}.mark[data-astro-cid-5x65ok44]{font-family:var(--font-sans);border:1px solid var(--rule);background:var(--bg-raised);color:var(--ink-muted);cursor:pointer;border-radius:5px;padding:.4rem .85rem;font-size:.75rem;font-weight:550}.mark[data-astro-cid-5x65ok44]:hover{color:var(--ink-strong);border-color:var(--ink-faint)}.mark[data-astro-cid-5x65ok44][aria-pressed=true]{color:var(--bridge);border-color:color-mix(in oklab, var(--bridge) 45%, var(--rule))}.pager[data-astro-cid-5x65ok44]{grid-template-columns:1fr 1fr;gap:1rem;margin-block-start:2rem;display:grid}.pager-link[data-astro-cid-5x65ok44]{border:1px solid var(--rule);font-family:var(--font-sans);border-radius:6px;flex-direction:column;gap:.25rem;padding:.75rem .9rem;text-decoration:none;display:flex}.pager-link[data-astro-cid-5x65ok44]:hover{border-color:var(--ink-faint);background:var(--bg-raised)}.pager-link[data-astro-cid-5x65ok44].is-next{text-align:end}.pager-dir[data-astro-cid-5x65ok44]{text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);font-size:.6875rem}.pager-title[data-astro-cid-5x65ok44]{color:var(--ink-strong);font-size:.8125rem;font-weight:550;line-height:1.35}
+</style><style>.callout{border:1px solid var(--rule);border-inline-start-width:2px;border-radius:5px;margin-block:1.75rem;padding:.9rem 1.1rem 1rem;font-size:.9375rem;line-height:1.65}.callout-probe{border-inline-start-color:var(--probe);background:var(--probe-bg)}.callout-trap{border-inline-start-color:var(--trap);background:var(--trap-bg)}.callout-bridge{border-inline-start-color:var(--bridge);background:var(--bridge-bg)}.callout-label{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;align-items:center;gap:.45rem;margin:0 0 .5rem;font-size:.6875rem;font-weight:620;display:flex}.callout-probe .callout-label{color:var(--probe)}.callout-trap .callout-label{color:var(--trap)}.callout-bridge .callout-label{color:var(--bridge)}.callout-mark{background:currentColor;border-radius:50%;flex:none;width:5px;height:5px}.callout-title{text-transform:none;letter-spacing:0;color:var(--ink-muted);font-weight:500}.callout-body>:first-child{margin-block-start:0}.callout-body>:last-child{margin-block-end:0}.callout-body>*+*{margin-block-start:.75em}.probe{margin-block:1.75rem}.prose .probe-q{font-family:var(--font-sans);letter-spacing:-.01em;color:var(--ink-strong);margin:0 0 .6rem;padding-inline-start:1.15rem;font-size:1rem;font-weight:600;line-height:1.45;position:relative}.prose .probe-q:before{content:"›";color:var(--accent);font-weight:700;position:absolute;inset-inline-start:0}.probe-a{border-inline-start:1px solid var(--rule);margin-inline-start:.1rem;padding-inline-start:1.15rem}.probe-a>*+*{margin-block-start:1.15em}.probe-a>:first-child{margin-block-start:0}.probe-a>:last-child{margin-block-end:0}.selfcheck{border-block-start:1px solid var(--rule-soft)}.selfcheck:last-of-type{border-block-end:1px solid var(--rule-soft)}.prose>.selfcheck+.selfcheck{margin-block-start:0}.selfcheck>summary{cursor:pointer;color:var(--ink);align-items:baseline;gap:1rem;padding:.7rem .2rem;list-style:none;display:flex}.selfcheck>summary::-webkit-details-marker{display:none}.selfcheck>summary:hover{color:var(--ink-strong)}.selfcheck-q{flex:1}.selfcheck-q code{white-space:nowrap}.selfcheck-cue{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);flex:none;padding-block-start:.15rem;font-size:.6875rem;font-weight:600}.selfcheck>summary:hover .selfcheck-cue{color:var(--accent)}.selfcheck-cue-hide,.selfcheck[open] .selfcheck-cue-show{display:none}.selfcheck[open] .selfcheck-cue-hide{display:inline}.selfcheck-a{color:var(--ink-muted);border-inline-start:2px solid var(--rule);margin-block-end:.9rem;margin-inline-start:.2rem;padding:.15rem .2rem 1.05rem;padding-inline-start:1rem;font-size:.9375rem}.selfcheck-a>:first-child{margin-block-start:0}.selfcheck-a>:last-child{margin-block-end:0}.selfcheck-a>*+*{margin-block-start:.7em}.selfcheck-a strong{color:var(--ink)}
+</style></head><body data-astro-cid-z4jru4n3><a href="#content" class="skip" data-astro-cid-z4jru4n3>Skip to content</a><div class="shell" data-astro-cid-z4jru4n3><aside class="rail" data-rail data-astro-cid-z4jru4n3><nav class="rail-nav" aria-label="ML Software &amp; Compilers contents" data-astro-cid-wv7whodv><div class="rail-head" data-astro-cid-wv7whodv><a href="/blog/" class="rail-up" data-astro-cid-wv7whodv>All series</a><a href="/blog/ml-software/" class="rail-home" data-astro-cid-wv7whodv><span class="rail-home-title" data-astro-cid-wv7whodv>ML Software &amp; Compilers</span><span class="rail-home-sub" data-astro-cid-wv7whodv>How PyTorch becomes kernels</span></a><p class="rail-progress" data-astro-cid-wv7whodv><span class="rail-progress-bar" data-astro-cid-wv7whodv><span data-progress-fill data-astro-cid-wv7whodv></span></span><span class="rail-progress-text" data-astro-cid-wv7whodv><span data-progress-count data-astro-cid-wv7whodv>0</span>/14 reviewed</span></p></div><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part J</span>The fault line</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-software/01-why-eager-won/" class="rail-link" title="TensorFlow 1 made the right performance bet and lost anyway. The interesting question is why JAX later made the same bet and won." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>1</span><span class="rail-title" data-astro-cid-wv7whodv>Why eager won</span><span class="rail-tick" data-tick="ml-software/01-why-eager-won" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/02-eager-internals/" class="rail-link" title="Python, the dispatcher, the autograd tape and the allocator all run before your kernel does. Roughly 8 µs of CPU work to launch 2 µs of GPU work." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>2</span><span class="rail-title" data-astro-cid-wv7whodv>What eager mode actually does per op</span><span class="rail-tick" data-tick="ml-software/02-eager-internals" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/03-what-graph-mode-buys/" class="rail-link" title="Three overheads, three mechanisms, three different ceilings. Knowing which one binds tells you whether compiling will help before you try it." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>3</span><span class="rail-title" data-astro-cid-wv7whodv>What graph mode actually buys</span><span class="rail-tick" data-tick="ml-software/03-what-graph-mode-buys" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part K</span>Capture</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-software/04-torchdynamo/" class="rail-link" title="Two earlier attempts failed by being silently wrong or by demanding a Python subset. Dynamo takes a third route: capture bytecode, guard the assumptions, and bail out when it cannot." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>4</span><span class="rail-title" data-astro-cid-wv7whodv>TorchDynamo: capturing Python at runtime</span><span class="rail-tick" data-tick="ml-software/04-torchdynamo" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/05-ir-ladder/" class="rail-link" title="ATen to Prims, functionalization, and AOTAutograd. Then the other lowering universe — MLIR dialects, torch-mlir, StableHLO — and why the CUDA path never goes there." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>5</span><span class="rail-title" data-astro-cid-wv7whodv>The IR ladder, and the MLIR fork in the road</span><span class="rail-tick" data-tick="ml-software/05-ir-ladder" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/06-inductor/" class="rail-link is-active" aria-current="page" title="The scheduler is the compiler. Fusion is a graph-partitioning problem under register and occupancy constraints, and the interesting failures are all in where it draws the lines." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>6</span><span class="rail-title" data-astro-cid-wv7whodv>Inductor: deciding what to fuse</span><span class="rail-tick" data-tick="ml-software/06-inductor" aria-hidden="true" data-astro-cid-wv7whodv></span></a><ul class="rail-sub" data-rail-sub data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="#the-core-mental-model" class="rail-sub-link" data-toc="the-core-mental-model" data-astro-cid-wv7whodv>The core mental model</a></li><li data-astro-cid-wv7whodv><a href="#numbers-worth-memorizing" class="rail-sub-link" data-toc="numbers-worth-memorizing" data-astro-cid-wv7whodv>Numbers worth memorizing</a></li><li data-astro-cid-wv7whodv><a href="#critical-thinking" class="rail-sub-link" data-toc="critical-thinking" data-astro-cid-wv7whodv>Critical thinking</a></li><li data-astro-cid-wv7whodv><a href="#self-check" class="rail-sub-link" data-toc="self-check" data-astro-cid-wv7whodv>Self-check</a></li></ul></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/07-triton/" class="rail-link" title="CUDA makes you write per-thread code and manage shared memory. Triton makes you write per-block code and gives the compiler the rest — which is exactly what makes it a codegen target." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>7</span><span class="rail-title" data-astro-cid-wv7whodv>Triton: the block programming model</span><span class="rail-tick" data-tick="ml-software/07-triton" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part L</span>Runtime</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-software/08-caching-allocator/" class="rail-link" title="cudaMalloc synchronises the device, so PyTorch calls it as rarely as possible. The design that follows — pools, splitting, stream ownership — explains almost every confusing OOM you will ever see." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>8</span><span class="rail-title" data-astro-cid-wv7whodv>The caching allocator</span><span class="rail-tick" data-tick="ml-software/08-caching-allocator" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/09-cuda-graphs/" class="rail-link" title="Record the launches once, replay them as one submission. The constraints — static addresses, static shapes, no CPU in the loop — are what the rest of the stack has to bend around." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>9</span><span class="rail-title" data-astro-cid-wv7whodv>CUDA Graphs</span><span class="rail-tick" data-tick="ml-software/09-cuda-graphs" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part M</span>Where it breaks</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-software/10-dynamic-shapes/" class="rail-link" title="Specializing on a shape makes the fastest kernel and the least reusable one. Symbolic shapes are the compromise, and 0/1 specialization is the trap inside it." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>10</span><span class="rail-title" data-astro-cid-wv7whodv>Dynamic shapes and recompilation</span><span class="rail-tick" data-tick="ml-software/10-dynamic-shapes" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/11-moe/" class="rail-link" title="Routing makes every expert's batch size a function of the data. Capacity factors, grouped GEMM and sort-permute are all ways of buying back a static shape — and each one costs something real." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>11</span><span class="rail-title" data-astro-cid-wv7whodv>MoE: dynamism the compiler cannot remove</span><span class="rail-tick" data-tick="ml-software/11-moe" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/12-topk-and-non-gemm/" class="rail-link" title="Selection has low arithmetic intensity, irregular access and a serial dependency. Vocabularies grew to 256k and it became a visible fraction of every decode step." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>12</span><span class="rail-title" data-astro-cid-wv7whodv>top-k, sort, and the ops that are not GEMM</span><span class="rail-tick" data-tick="ml-software/12-topk-and-non-gemm" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part N</span>Synthesis</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-software/13-partitioning-the-stack/" class="rail-link" title="What to compile, what to leave eager, what to hand-write. A decision procedure that starts from which overhead binds, not from which tool is newest." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>13</span><span class="rail-title" data-astro-cid-wv7whodv>Partitioning the stack</span><span class="rail-tick" data-tick="ml-software/13-partitioning-the-stack" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/14-inference-server/" class="rail-link" title="Continuous batching wants shapes that change every step; CUDA Graphs want shapes that never change. Paged KV, bucketing and piecewise compilation are how vLLM and SGLang reconcile them." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>14</span><span class="rail-title" data-astro-cid-wv7whodv>The inference server</span><span class="rail-tick" data-tick="ml-software/14-inference-server" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-other" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv>Other series</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>ML Hardware &amp; Low-Latency Systems</span></a></li><li data-astro-cid-wv7whodv><a href="/blog/diffusion/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>Diffusion</span></a></li></ul></section><div class="rail-foot" data-astro-cid-wv7whodv><p data-astro-cid-wv7whodv><kbd data-astro-cid-wv7whodv>j</kbd> <kbd data-astro-cid-wv7whodv>k</kbd> section · <kbd data-astro-cid-wv7whodv>/</kbd> search · <kbd data-astro-cid-wv7whodv>[</kbd><kbd data-astro-cid-wv7whodv>]</kbd> module</p></div></nav></aside><div class="col" data-astro-cid-z4jru4n3><header class="topbar" data-astro-cid-z4jru4n3><button class="icon-btn only-narrow" data-rail-toggle aria-label="Toggle contents" data-astro-cid-z4jru4n3><svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M1.5 3.5h12M1.5 7.5h12M1.5 11.5h12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg></button><p class="crumb" data-astro-cid-z4jru4n3>Part K · Capture › Inductor: deciding what to fuse</p><div class="topbar-actions" data-astro-cid-z4jru4n3><button class="search-btn" data-search-open aria-label="Search" data-astro-cid-z4jru4n3><span aria-hidden="true" data-astro-cid-z4jru4n3>⌕</span><span class="search-btn-label" data-astro-cid-z4jru4n3>Search</span><kbd data-astro-cid-z4jru4n3>/</kbd></button><button class="icon-btn" data-theme-toggle aria-label="Toggle theme" data-astro-cid-z4jru4n3><svg class="i-sun" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><circle cx="7.5" cy="7.5" r="3" stroke="currentColor" stroke-width="1.2" data-astro-cid-z4jru4n3></circle><path d="M7.5 .8v1.7M7.5 12.5v1.7M14.2 7.5h-1.7M2.5 7.5H.8M12.24 2.76l-1.2 1.2M3.96 11.04l-1.2 1.2M12.24 12.24l-1.2-1.2M3.96 3.96l-1.2-1.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg><svg class="i-moon" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M13 9.3A5.8 5.8 0 0 1 5.7 2 5.9 5.9 0 1 0 13 9.3Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" data-astro-cid-z4jru4n3></path></svg></button><a class="site-link" href="/" data-astro-cid-z4jru4n3>srikanthmalla.com</a></div></header><main id="content" data-astro-cid-z4jru4n3><article class="wrap" data-article data-astro-cid-5x65ok44><header class="mhead" data-astro-cid-5x65ok44><p class="mhead-kicker" data-astro-cid-5x65ok44><span class="mhead-n" data-astro-cid-5x65ok44>Module 6</span><span class="mhead-dot" data-astro-cid-5x65ok44>·</span>Part K — Capture<span class="mhead-dot" data-astro-cid-5x65ok44>·</span>14 min</p><h1 class="mhead-title" data-astro-cid-5x65ok44>Inductor: deciding what to fuse</h1><p class="mhead-blurb" data-astro-cid-5x65ok44>The scheduler is the compiler. Fusion is a graph-partitioning problem under register and occupancy constraints, and the interesting failures are all in where it draws the lines.</p></header><div class="prose" data-astro-cid-5x65ok44><h2 id="the-core-mental-model">The core mental model<a class="anchor" href="#the-core-mental-model" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>Inductor’s job is to turn a functionalized, decomposed graph into kernels, and almost all of its
+value is in one decision repeated thousands of times: <strong>which operations go in the same kernel</strong>.
+Everything else — index arithmetic, loop generation, emitting Triton — is mechanical once that is
+settled.</p>
+<p>It works by lowering each operator into a <strong>define-by-index representation</strong>: a buffer plus a
+function from output index to the expression computing it, in terms of loads from other buffers.
+<code>relu(x*a+b)</code> becomes, for output index <code>i</code>, <code>max(x[i]*a[i]+b[i], 0)</code>. In that form fusion is
+substitution — inline the producer’s expression into the consumer’s load — and the question becomes
+when substitution is <em>profitable</em>, not whether it is possible. The scheduler then partitions the
+graph into fusion groups under constraints: the operations must share a compatible iteration space,
+the fused body must not exceed register budgets, and reductions impose ordering that limits what can
+join them.</p>
+<p>Two categories sit outside this machinery and it matters that they do. <strong>Reductions</strong> cannot be
+freely fused with elementwise consumers because a reduction’s output is not available until its whole
+input is consumed, so Inductor generates persistent or two-pass reduction kernels and fuses
+elementwise work into the epilogue rather than across the reduction. And <strong>matmuls</strong> are usually not
+generated at all: Inductor calls cuBLAS/cuTLASS, or with <code>max-autotune</code> benchmarks a Triton template
+against the library and picks the winner. What it <em>does</em> do is fuse the epilogue — bias, activation,
+scaling — into the matmul kernel, which is where a large part of its transformer win comes from,
+because those epilogues are pure memory traffic in eager mode.</p>
+<aside class="callout callout-bridge"><p class="callout-label"><span class="callout-mark" aria-hidden="true"></span>Bridge to what you know<span class="callout-title"> · this is the tiling tension, one level up</span></p><div class="callout-body"><p>The hardware series’ tile-size trade — reuse against occupancy against resource fit — is exactly
+what Inductor’s scheduler negotiates. A bigger fusion group is more reuse and fewer round trips,
+paid for in registers and therefore occupancy. The compiler is solving the same problem you solve
+by hand when tuning a kernel.</p></div></aside>
+<h2 id="numbers-worth-memorizing">Numbers worth memorizing<a class="anchor" href="#numbers-worth-memorizing" aria-hidden="true" tabindex="-1">#</a></h2>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Decision</th><th>What Inductor does</th></tr></thead><tbody><tr><td>Elementwise chain</td><td>fuse aggressively — the main win</td></tr><tr><td>Elementwise into reduction</td><td>fuse as prologue (loads) or epilogue (post-reduce)</td></tr><tr><td>Reduction into reduction</td><td>only if the iteration spaces match</td></tr><tr><td>Matmul</td><td>call cuBLAS/cuTLASS, or autotune a Triton template</td></tr><tr><td>Matmul epilogue</td><td>fuse bias/activation/scale into the GEMM kernel</td></tr><tr><td>Convolution</td><td>cuDNN, usually left alone</td></tr><tr><td>Attention</td><td>pattern-match to SDPA → FlashAttention</td></tr><tr><td>Layout</td><td>may insert transposes/<code>contiguous</code> to enable fusion</td></tr></tbody></table></div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Knob</th><th>Effect</th></tr></thead><tbody><tr><td><code>mode=&quot;default&quot;</code></td><td>heuristic fusion, no benchmarking — compiles fast</td></tr><tr><td><code>mode=&quot;reduce-overhead&quot;</code></td><td>adds CUDA Graphs (Module 9)</td></tr><tr><td><code>mode=&quot;max-autotune&quot;</code></td><td>benchmarks Triton GEMM templates vs library; <strong>much</strong> slower to compile</td></tr><tr><td><code>coordinate_descent_tuning</code></td><td>searches block sizes per kernel</td></tr><tr><td><code>TORCHINDUCTOR_CACHE_DIR</code></td><td>persists compiled kernels across processes</td></tr></tbody></table></div>
+<p>Useful things to inspect, in order of how often they answer the question:</p>
+<pre class="astro-code astro-code-themes github-light github-dark-default" style="background-color:#fff;--shiki-dark-bg:#0d1117;color:#24292e;--shiki-dark:#e6edf3;overflow-x:auto" tabindex="0" data-language="bash"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E6EDF3">TORCH_COMPILE_DEBUG</span><span style="color:#D73A49;--shiki-dark:#FF7B72">=</span><span style="color:#032F62;--shiki-dark:#A5D6FF">1</span><span style="color:#6F42C1;--shiki-dark:#FFA657"> python</span><span style="color:#032F62;--shiki-dark:#A5D6FF"> run.py</span><span style="color:#6A737D;--shiki-dark:#8B949E">     # dumps generated Triton + the graph</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E6EDF3">TORCH_LOGS</span><span style="color:#D73A49;--shiki-dark:#FF7B72">=</span><span style="color:#032F62;--shiki-dark:#A5D6FF">output_code</span><span style="color:#6F42C1;--shiki-dark:#FFA657"> python</span><span style="color:#032F62;--shiki-dark:#A5D6FF"> run.py</span><span style="color:#6A737D;--shiki-dark:#8B949E">    # just the kernels</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E6EDF3">TORCH_LOGS</span><span style="color:#D73A49;--shiki-dark:#FF7B72">=</span><span style="color:#032F62;--shiki-dark:#A5D6FF">+inductor</span><span style="color:#6F42C1;--shiki-dark:#FFA657"> python</span><span style="color:#032F62;--shiki-dark:#A5D6FF"> run.py</span><span style="color:#6A737D;--shiki-dark:#8B949E">      # scheduling decisions</span></span></code></pre>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Quantity</th><th>Value</th></tr></thead><tbody><tr><td>Kernel-count reduction, typical</td><td>3–10× fewer kernels after fusion</td></tr><tr><td>Fusion group size, typical</td><td>3–15 ops</td></tr><tr><td>Register pressure ceiling</td><td>255 registers/thread before spilling</td></tr><tr><td><code>max-autotune</code> compile-time multiplier</td><td>3–20×</td></tr></tbody></table></div>
+<aside class="callout callout-trap"><p class="callout-label"><span class="callout-mark" aria-hidden="true"></span>Common trap<span class="callout-title"> · assuming fusion is always a win</span></p><div class="callout-body"><p>A fused kernel that spills registers or halves occupancy can be slower than two unfused kernels,
+because achieved bandwidth falls further than the traffic saved. Inductor’s heuristics are good but
+not omniscient — when a compiled model is slower than eager, an over-eager fusion group is a prime
+suspect, and the generated Triton will show it.</p></div></aside>
+<h2 id="critical-thinking">Critical thinking<a class="anchor" href="#critical-thinking" aria-hidden="true" tabindex="-1">#</a></h2>
+<section class="probe"><h3 class="probe-q">Why is fusion a scheduling problem rather than a peephole rewrite?</h3><div class="probe-a"><p>Because the decisions interact, and greedy local choices are provably not optimal.</p><p>Consider a producer feeding <strong>two</strong> consumers. Fusing it into both means computing it twice — fine if
+it is cheap, wasteful if it is expensive. Fusing into neither means materialising it once. Fusing
+into one and not the other is sometimes best. That choice depends on the producer’s cost, the sizes,
+and what <em>else</em> is already in each consumer’s group — so it cannot be made by looking at any single
+edge.</p><p>Then the constraints couple the choices further. <strong>Iteration space</strong>: two ops fuse only if their
+output indices can be expressed in one loop nest, so a fusion may require a layout change, which
+itself costs. <strong>Registers</strong>: each op added to a group increases live values, and crossing the
+threshold spills, which is catastrophic and non-local — adding op <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi></mrow><annotation encoding="application/x-tex">k</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6944em"></span><span class="mord mathnormal" style="margin-right:0.0315em">k</span></span></span></span> can make ops <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>1..</mn><mi>k</mi><mo lspace="0em" rspace="0em">−</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">1..k{-}1</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.7778em;vertical-align:-0.0833em"></span><span class="mord">1..</span><span class="mord mathnormal" style="margin-right:0.0315em">k</span><span class="mord"><span class="mord">−</span></span><span class="mord">1</span></span></span></span> slower.
+<strong>Reductions</strong>: fusing across one changes the loop structure entirely. <strong>Memory</strong>: materialising
+fewer intermediates lowers peak memory, which may be the binding constraint rather than speed.</p><p>So it is a partitioning problem over a DAG with non-linear costs, which is NP-hard in general.
+Inductor uses heuristics — fuse elementwise greedily, respect iteration-space compatibility, cap
+group size, estimate register pressure — and they are good on typical models and beatable on unusual
+ones.</p><p>The transferable point: when a compiler underperforms, the question is rarely “did it miss an
+optimisation” and usually “did its cost model mis-rank two legal choices”. Reading the generated code
+tells you which.</p></div></section>
+<section class="probe"><h3 class="probe-q">Why not generate the matmul too? Inductor generates everything else.</h3><div class="probe-a"><p>Because cuBLAS and cuTLASS represent an enormous amount of specialised effort that a general-purpose
+scheduler will not match, and matmul is the one op where the gap is decisive.</p><p>A production GEMM kernel encodes: tile sizes tuned per architecture and per shape; the three-level
+blocking from the hardware series; <code>ldmatrix</code>/<code>mma</code> tensor-core instruction selection; swizzled
+shared memory to avoid bank conflicts; software-pipelined <code>cp.async</code> stages; split-K for skinny
+problems; and a heuristic table mapping shapes to kernels built from exhaustive benchmarking. Every
+one of those is a decision Inductor’s general machinery would have to rediscover for each shape.</p><p>So Inductor does two more useful things instead. It <strong>fuses the epilogue</strong> — bias, activation,
+scaling, residual add — into the GEMM, which library calls alone cannot do and which is pure memory
+traffic in eager mode. And under <code>max-autotune</code> it <strong>benchmarks</strong> a Triton GEMM template against the
+library call and picks the winner per shape, which sometimes wins on unusual sizes the library’s
+heuristics handle poorly, especially skinny or oddly-aligned shapes.</p><p>The general principle is the pattern-matching one from Module 5: decompose to expose structure, then
+recognise the cases a human already solved better and defer to them. A compiler that insists on
+generating everything loses to a compiler that knows when to call a library — and knowing which is
+the actual engineering.</p></div></section>
+<section class="probe"><h3 class="probe-q">Your compiled model is slower than eager. Walk the diagnosis.</h3><div class="probe-a"><p>Rare but real, and the causes are enumerable.</p><ol>
+<li><strong>Are you measuring steady state?</strong> Warm up past compilation, <code>torch.cuda.synchronize()</code> before
+timing. This explains most reports.</li>
+<li><strong>Is it recompiling?</strong> <code>TORCH_LOGS=recompiles</code>. Continuous recompilation is strictly worse than
+eager (Module 10).</li>
+<li><strong>Graph breaks in a loop?</strong> <code>TORCH_LOGS=graph_breaks</code>. Many small graphs pay compilation costs and
+keep eager’s overhead (Module 4).</li>
+<li><strong>Read the generated Triton.</strong> <code>TORCH_LOGS=output_code</code>. Look for a very large fused kernel — and
+check for register spilling, which Triton reports and which is usually the culprit when one kernel
+is unexpectedly slow.</li>
+<li><strong>Did layout changes cost more than fusion saved?</strong> Inductor may insert <code>contiguous()</code> to make a
+fusion legal; if the copy is bigger than the traffic saved, that fusion was a mistake.</li>
+<li><strong>Did a decomposition lose a good kernel?</strong> If a pattern match failed, a fused library op may have
+been replaced by a slower generated equivalent — attention is the classic case.</li>
+</ol><p>Then the escape hatches, in increasing order of effort: try <code>mode=&quot;max-autotune&quot;</code>; mark the offending
+submodule with <code>torch.compiler.disable</code> and leave it eager; or write the kernel yourself in Triton
+and register it as a custom op.</p><p>The last of these is the point worth making about the whole design: because the output is Triton
+rather than an opaque binary, you can read it, understand the decision, and override it. That is a
+qualitatively better position than a black-box compiler.</p></div></section>
+<section class="probe"><h3 class="probe-q">What does Inductor do about memory that eager cannot?</h3><div class="probe-a"><p>It knows every buffer’s lifetime before anything runs, which turns allocation into planning.</p><p>Eager mode asks the caching allocator for each intermediate as it appears and returns it when the
+refcount drops (Module 8). The allocator is fast and good, but it is reacting to a stream of requests
+with no knowledge of the future. Inductor has the whole graph, so it can:</p><ul>
+<li><strong>Reuse buffers.</strong> Once an intermediate’s last consumer has run, its storage is available for a
+later tensor of compatible size — computed statically, so no allocator round trip at all.</li>
+<li><strong>Not materialise fused intermediates.</strong> The largest saving is the tensors that never exist because
+they stayed in registers inside a fusion group.</li>
+<li><strong>Order operations to lower peak memory.</strong> Among schedules that respect dataflow, some hold fewer
+tensors live simultaneously, and the peak is what determines whether you OOM.</li>
+<li><strong>Choose recompute over storage</strong>, in concert with AOTAutograd’s partitioner (Module 5).</li>
+</ul><p>This is precisely the XLA-style compile-time planning that PyTorch’s dynamic allocator gave up in
+exchange for eager flexibility — and <code>torch.compile</code> recovers a large part of it <em>within</em> each graph,
+while the allocator still handles everything between graphs.</p><p>Which is the honest description of the whole system: it is not that dynamic allocation was wrong, it
+is that a graph is the scope in which planning is possible, and PyTorch spent years not having one.</p></div></section>
+<h2 id="self-check">Self-check<a class="anchor" href="#self-check" aria-hidden="true" tabindex="-1">#</a></h2>
+<details class="selfcheck"><summary><span class="selfcheck-q">What is define-by-index lowering, and why does it make fusion easy to express?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Each operator becomes a buffer plus a function from output index to the expression computing it, in
+terms of loads from other buffers — <code>relu(x*a+b)</code> is <code>max(x[i]*a[i]+b[i], 0)</code> at index <code>i</code>. Fusion is
+then just substituting the producer’s expression into the consumer’s load, so the question shifts
+from <em>whether</em> fusion is possible to <em>when</em> it is profitable.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Why is fusion NP-hard in general, and name three coupling constraints.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Because it is a partitioning problem over a DAG with non-linear costs, and greedy local choices are
+not optimal — a producer with two consumers may be best fused into one, both, or neither, depending
+on cost and what is already in each group. Constraints: iteration-space compatibility (which may force
+a layout change); register pressure (adding one op can spill and slow the whole group); and reductions,
+which change the loop structure and limit what can join them. Peak memory is a fourth.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Why does Inductor call cuBLAS for matmul but still add value there?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Because production GEMM kernels encode per-architecture tile tuning, three-level blocking, tensor-core
+instruction selection, swizzled shared memory, pipelined <code>cp.async</code>, split-K and exhaustively
+benchmarked shape heuristics — none of which a general scheduler will rediscover. Inductor adds value
+by <strong>fusing the epilogue</strong> (bias, activation, scale, residual) into the GEMM, which the library call
+alone cannot do, and by benchmarking a Triton template against the library under <code>max-autotune</code>.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Compiled is slower than eager. Give the first four checks.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Measuring steady state with warm-up and <code>synchronize()</code>; recompilation via <code>TORCH_LOGS=recompiles</code>;
+graph breaks in a loop via <code>TORCH_LOGS=graph_breaks</code>; then read the generated Triton with
+<code>TORCH_LOGS=output_code</code> looking for an over-large fusion group and register spilling. After that:
+layout copies costing more than the fusion saved, and a failed pattern match replacing a good library
+kernel.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">What can Inductor do about memory that the eager allocator cannot, and why?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Because it knows every buffer’s lifetime in advance it can statically reuse storage with no allocator
+round trip, avoid materialising fused intermediates entirely, order operations among dataflow-legal
+schedules to lower the peak, and trade storage for recomputation with AOTAutograd’s partitioner. This
+recovers XLA-style compile-time planning <em>within</em> a graph, while the caching allocator still handles
+everything between graphs.</p></div></details></div><footer class="mfoot" data-astro-cid-5x65ok44><button class="mark" data-mark="ml-software/06-inductor" aria-pressed="false" data-astro-cid-5x65ok44>Mark as reviewed</button><nav class="pager" data-astro-cid-5x65ok44><a class="pager-link" href="/blog/ml-software/05-ir-ladder/" data-prev data-astro-cid-5x65ok44><span class="pager-dir" data-astro-cid-5x65ok44>← Previous</span><span class="pager-title" data-astro-cid-5x65ok44>5. The IR ladder, and the MLIR fork in the road</span></a><a class="pager-link is-next" href="/blog/ml-software/07-triton/" data-next data-astro-cid-5x65ok44><span class="pager-dir" data-astro-cid-5x65ok44>Next →</span><span class="pager-title" data-astro-cid-5x65ok44>7. Triton: the block programming model</span></a></nav></footer></article></main></div></div><div class="search-overlay" data-search hidden data-astro-cid-ac66eqjo><div class="search-backdrop" data-search-close data-astro-cid-ac66eqjo></div><div class="search-panel" role="dialog" aria-modal="true" aria-label="Search modules" data-astro-cid-ac66eqjo><div class="search-input-row" data-astro-cid-ac66eqjo><span class="search-icon" aria-hidden="true" data-astro-cid-ac66eqjo>⌕</span><input type="text" class="search-input" placeholder="Search all modules…" autocomplete="off" spellcheck="false" data-search-input data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>esc</kbd></div><ul class="search-results" data-search-results data-astro-cid-ac66eqjo></ul><p class="search-empty" data-search-empty hidden data-astro-cid-ac66eqjo>No matches.</p><p class="search-hint" data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>↑</kbd><kbd data-astro-cid-ac66eqjo>↓</kbd> move · <kbd data-astro-cid-ac66eqjo>↵</kbd> open</p></div></div><script>(function(){const indexUrl = "/blog/search.json";
+
+  (() => {
+    const overlay = document.querySelector('[data-search]');
+    if (!overlay) return;
+    const input = overlay.querySelector('[data-search-input]');
+    const list = overlay.querySelector('[data-search-results]');
+    const empty = overlay.querySelector('[data-search-empty]');
+
+    let index = null;
+    let loading = null;
+    let active = 0;
+
+    const load = () => {
+      if (index) return Promise.resolve(index);
+      if (!loading) {
+        loading = fetch(indexUrl)
+          .then((r) => r.json())
+          .then((d) => (index = d))
+          .catch(() => (index = []));
+      }
+      return loading;
+    };
+
+    function open() {
+      overlay.hidden = false;
+      document.documentElement.style.overflow = 'hidden';
+      load().then(() => input.focus());
+      input.focus();
+      input.select();
+    }
+
+    function close() {
+      overlay.hidden = true;
+      document.documentElement.style.overflow = '';
+    }
+
+    function escapeHtml(s) {
+      return s.replace(
+        /[&<>"]/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]
+      );
+    }
+
+    // Excerpt around the first matched term, with the term marked.
+    function excerpt(text, terms) {
+      const lower = text.toLowerCase();
+      let at = -1;
+      for (const t of terms) {
+        const i = lower.indexOf(t);
+        if (i !== -1 && (at === -1 || i < at)) at = i;
+      }
+      if (at === -1) at = 0;
+      const start = Math.max(0, at - 60);
+      let slice = text.slice(start, start + 190);
+      if (start > 0) slice = '…' + slice;
+      if (start + 190 < text.length) slice += '…';
+      let html = escapeHtml(slice);
+      for (const t of terms) {
+        html = html.replace(
+          new RegExp(`(${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'),
+          '<mark>$1</mark>'
+        );
+      }
+      return html;
+    }
+
+    function score(rec, terms) {
+      let s = 0;
+      const hay = (rec.m + ' ' + rec.h + ' ' + (rec.s || '') + ' ' + (rec.k || '')).toLowerCase();
+      const body = rec.t.toLowerCase();
+      for (const t of terms) {
+        if (hay.includes(t)) s += 12;
+        const i = body.indexOf(t);
+        if (i !== -1) s += 4 + Math.max(0, 3 - Math.floor(i / 400));
+        else if (!hay.includes(t)) return 0; // every term must appear
+      }
+      return s;
+    }
+
+    function render(results, terms) {
+      active = 0;
+      list.innerHTML = results
+        .map(
+          (r, i) => `
+          <li>
+            <a href="${r.u}" class="search-hit${i === 0 ? ' is-active' : ''}" data-hit>
+              <span class="search-hit-crumb"><span class="search-hit-series">${escapeHtml(r.s||"")}</span><span class="search-hit-n">${r.n}</span>${escapeHtml(r.m)} <span class="search-hit-sep">›</span> ${escapeHtml(r.h)}</span>
+              <span class="search-hit-text">${excerpt(r.t, terms)}</span>
+            </a>
+          </li>`
+        )
+        .join('');
+      empty.hidden = results.length > 0;
+    }
+
+    function run() {
+      const q = input.value.trim().toLowerCase();
+      if (!q || !index) {
+        list.innerHTML = '';
+        empty.hidden = true;
+        return;
+      }
+      const terms = q.split(/\s+/).filter(Boolean);
+      const results = index
+        .map((r) => ({ r, s: score(r, terms) }))
+        .filter((x) => x.s > 0)
+        .sort((a, b) => b.s - a.s || a.r.n - b.r.n)
+        .slice(0, 12)
+        .map((x) => x.r);
+      render(results, terms);
+    }
+
+    function move(delta) {
+      const hits = list.querySelectorAll('[data-hit]');
+      if (!hits.length) return;
+      hits[active]?.classList.remove('is-active');
+      active = (active + delta + hits.length) % hits.length;
+      hits[active].classList.add('is-active');
+      hits[active].scrollIntoView({ block: 'nearest' });
+    }
+
+    input.addEventListener('input', () => {
+      load().then(run);
+      run();
+    });
+
+    overlay.querySelector('[data-search-close]').addEventListener('click', close);
+
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        move(1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        move(-1);
+      } else if (e.key === 'Enter') {
+        const hit = list.querySelectorAll('[data-hit]')[active];
+        if (hit) {
+          e.preventDefault();
+          window.location.href = hit.getAttribute('href');
+        }
+      }
+    });
+
+    document.querySelectorAll('[data-search-open]').forEach((b) =>
+      b.addEventListener('click', open)
+    );
+
+    window.__openSearch = open;
+  })();
+})();</script><script>(function(){const base = "/blog";
+
+      (() => {
+        const root = document.documentElement;
+
+        /* ---- theme ---------------------------------------------------- */
+        document.querySelector('[data-theme-toggle]')?.addEventListener('click', () => {
+          const light = root.classList.toggle('light');
+          try {
+            localStorage.setItem('refresher:theme', light ? 'light' : 'dark');
+          } catch (e) {}
+        });
+
+        /* ---- progress (localStorage) ---------------------------------- */
+        const KEY = 'refresher:progress';
+        const readSet = () => {
+          try {
+            return new Set(JSON.parse(localStorage.getItem(KEY) || '[]'));
+          } catch (e) {
+            return new Set();
+          }
+        };
+        const writeSet = (s) => {
+          try {
+            localStorage.setItem(KEY, JSON.stringify([...s]));
+          } catch (e) {}
+        };
+
+        function paintProgress() {
+          const done = readSet();
+          const ticks = document.querySelectorAll('[data-tick]');
+          // A module can own more than one tick (rail + contents card), so
+          // count distinct module ids rather than elements.
+          const ids = new Set();
+          ticks.forEach((t) => {
+            const id = t.getAttribute('data-tick');
+            ids.add(id);
+            if (done.has(id)) t.setAttribute('data-read', '');
+            else t.removeAttribute('data-read');
+          });
+          const n = [...ids].filter((id) => done.has(id)).length;
+          const total = ids.size || 1;
+          const fill = document.querySelector('[data-progress-fill]');
+          if (fill) fill.style.width = `${(n / total) * 100}%`;
+          const count = document.querySelector('[data-progress-count]');
+          if (count) count.textContent = String(n);
+          document.querySelectorAll('[data-mark]').forEach((btn) => {
+            const id = btn.getAttribute('data-mark');
+            const on = done.has(id);
+            btn.setAttribute('aria-pressed', String(on));
+            btn.textContent = on ? '✓ Reviewed' : 'Mark as reviewed';
+          });
+        }
+
+        document.querySelectorAll('[data-mark]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-mark');
+            const s = readSet();
+            s.has(id) ? s.delete(id) : s.add(id);
+            writeSet(s);
+            paintProgress();
+          });
+        });
+
+        paintProgress();
+
+        /* ---- scrollspy over h2s, mirrored into the rail --------------- */
+        const article = document.querySelector('[data-article]');
+        const heads = article ? [...article.querySelectorAll('h2[id]')] : [];
+        const subLinks = new Map(
+          [...document.querySelectorAll('[data-toc]')].map((a) => [
+            a.getAttribute('data-toc'),
+            a,
+          ])
+        );
+
+        if (heads.length && subLinks.size) {
+          let currentId = null;
+          const spy = () => {
+            let found = heads[0].id;
+            for (const h of heads) {
+              if (h.getBoundingClientRect().top <= 96) found = h.id;
+              else break;
+            }
+            if (found === currentId) return;
+            subLinks.get(currentId)?.classList.remove('is-current');
+            currentId = found;
+            const el = subLinks.get(currentId);
+            if (el) {
+              el.classList.add('is-current');
+              el.scrollIntoView({ block: 'nearest' });
+            }
+          };
+          spy();
+          addEventListener('scroll', spy, { passive: true });
+        }
+
+        /* ---- keyboard ------------------------------------------------- */
+        const stops = article
+          ? [...article.querySelectorAll('h2[id], h3[id]')]
+          : [];
+
+        function jump(delta) {
+          if (!stops.length) return;
+          // The heading we are "in": the last one scrolled past the threshold.
+          let cur = -1;
+          for (let i = 0; i < stops.length; i++) {
+            if (stops[i].getBoundingClientRect().top <= 100) cur = i;
+            else break;
+          }
+          const target = cur + delta;
+          if (target < 0) return scrollTo({ top: 0, behavior: 'smooth' });
+          if (target >= stops.length) return;
+          stops[target].scrollIntoView({ block: 'start' });
+        }
+
+        addEventListener('keydown', (e) => {
+          const tag = (e.target.tagName || '').toLowerCase();
+          if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+          if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+          if (e.key === '/') {
+            e.preventDefault();
+            window.__openSearch?.();
+          } else if (e.key === 'j') {
+            e.preventDefault();
+            jump(1);
+          } else if (e.key === 'k') {
+            e.preventDefault();
+            jump(-1);
+          } else if (e.key === '[' || e.key === ']') {
+            const sel = e.key === '[' ? '[data-prev]' : '[data-next]';
+            const a = document.querySelector(sel);
+            if (a) {
+              e.preventDefault();
+              window.location.href = a.getAttribute('href');
+            }
+          }
+        });
+
+        /* ---- narrow-screen rail --------------------------------------- */
+        const rail = document.querySelector('[data-rail]');
+        document.querySelector('[data-rail-toggle]')?.addEventListener('click', () => {
+          rail.classList.toggle('is-open');
+        });
+        rail?.addEventListener('click', (e) => {
+          if (e.target.closest('a')) rail.classList.remove('is-open');
+        });
+      })();
+    })();</script></body></html>

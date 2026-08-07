@@ -1,0 +1,255 @@
+---
+n: 13
+title: 'Partitioning the stack'
+blurb: 'What to compile, what to leave eager, what to hand-write. A decision procedure that starts from which overhead binds, not from which tool is newest.'
+part: 'N'
+minutes: 14
+draft: false
+tags: ['torch.compile', 'decision framework', 'profiling', 'custom ops', 'compile time', 'regionally compiled', 'measurement']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+Every technique in this series removes a specific overhead, and none of them removes arithmetic. So
+the decision procedure runs in one direction only: **measure which ceiling binds, then apply the
+mechanism that attacks it.** Reversing that — picking a tool and hoping — is how teams spend weeks on
+`max-autotune` for a model that was bound by an all-to-all.
+
+The ceilings, in the order you should test them, are: is the CPU on the critical path (Module 2's
+inequality), is there fusible memory traffic (Module 3), is there launch overhead worth collapsing
+(Module 9), is a collective or a host round trip dominating (Module 11), and is a single non-GEMM op
+eating the step (Module 12). Each has a cheap diagnostic and a distinct fix, and in most real models
+exactly one of them accounts for the majority of recoverable time.
+
+The second half of the decision is **granularity**. `torch.compile` on the whole model is the default
+suggestion and often the wrong unit. Compiling a *region* — one transformer block, the MLP, the
+sampling path — gives most of the fusion benefit with a fraction of the compile time, far fewer
+recompilations, and a debuggable boundary. It also isolates the parts that resist capture: leave the
+MoE routing or the KV-cache management eager, compile the dense arithmetic around it, and you avoid
+the graph-break cascade of Module 4 rather than fighting it. The general shape is the hardware
+series' partitioning rule arriving in software: **compile what is stable, shaped, and on the critical
+path; leave everything else alone.**
+
+<Callout type="bridge" title="the same three-part rule">
+  The hardware series puts a function in silicon if it is on the critical path, stable over months,
+  and has bounded data-independent execution time. Compilation wants the same three: on the critical
+  path, structurally stable so it is not recompiled, and shape-predictable. Fail the third and you get
+  Module 10.
+</Callout>
+
+## Numbers worth memorizing
+
+The diagnostic ladder, cheapest first:
+
+| Question                          | Measurement                                    | If yes                        |
+| --------------------------------- | ---------------------------------------------- | ----------------------------- |
+| Am I launch bound?                | sum self-CPU vs self-CUDA; or just raise batch size | compile, then CUDA Graphs |
+| Is there fusible traffic?         | kernel count and op mix; elementwise share      | `torch.compile`               |
+| Am I recompiling?                 | `TORCH_LOGS=recompiles`                         | bucket shapes, `mark_dynamic` |
+| Am I breaking graphs?             | `TORCH_LOGS=graph_breaks`, `fullgraph=True`     | restructure or accept         |
+| Is one op dominating?             | profiler top-10 by self-CUDA                    | hand-write it (Module 7)      |
+| Is a collective dominating?       | timeline gaps aligned to NCCL kernels           | overlap, or change parallelism |
+| Am I fragmenting?                 | `reserved − allocated`                          | `expandable_segments`, bucket |
+
+Granularity options:
+
+| Unit                          | Compile time | Recompile risk | Typical use                    |
+| ----------------------------- | ------------ | -------------- | ------------------------------ |
+| Whole model                   | high         | high           | stable shapes, offline batch    |
+| Per transformer block         | moderate     | moderate       | **the usual sweet spot**        |
+| Single hot region             | low          | low            | when one module dominates       |
+| Custom Triton op only         | minimal      | none           | when the algorithm is the issue |
+
+```python
+# Region compilation: most of the benefit, far less of the cost.
+for blk in model.blocks:
+    blk.mlp = torch.compile(blk.mlp)
+
+# Or exclude what resists capture.
+@torch.compiler.disable
+def route_and_dispatch(x): ...
+```
+
+| Cost to budget for            | Value                                    |
+| ----------------------------- | ---------------------------------------- |
+| Cold compile, whole model     | 30 s – 5 min                              |
+| `max-autotune`                | 3–20× that                                |
+| Warm start with caches        | seconds                                   |
+| Engineer time to fix breaks   | usually the dominant cost                 |
+
+<Callout type="trap" title="optimizing before the model is stable">
+  Compilation cost is paid on every architecture change, and a compiled model is harder to debug. The
+  right sequence is eager while the model is moving, compiled once it is not — the same reasoning
+  that made eager win in Module 1, applied to your own project rather than to a framework.
+</Callout>
+
+## Critical thinking
+
+<Probe q="Give the decision procedure, in order, with the cheapest measurement first.">
+
+The ordering matters because each step is cheaper than the next and can eliminate the rest.
+
+1. **Raise the batch size and see if step time moves.** One line, no tooling. If it barely changes,
+   you are launch bound and the answer is `torch.compile` plus `mode="reduce-overhead"`. This single
+   experiment resolves a large fraction of cases.
+2. **Compare summed self-CPU against self-CUDA** in the profiler. Confirms the above and tells you how
+   much headroom exists.
+3. **Look at the op mix.** If the top kernels by time are `cublas` GEMMs, there is little to fuse and
+   compilation will return ~1.0× — stop, and go look at parallelism or numerics instead. If
+   normalisation, activation and elementwise dominate, fusion is worth 1.3–2×.
+4. **Check the top ten kernels by self-CUDA time.** If one non-GEMM op is 10%+ of the step, that is a
+   hand-written kernel (Module 12), and no amount of compiler configuration substitutes.
+5. **Look at the timeline for gaps.** Gaps aligned with NCCL kernels are collectives; gaps with no
+   kernel at all are host stalls — a `.item()`, a sync, a dataloader.
+6. **Only now, compile.** And measure the three costs: steady-state gain, compile time, and
+   recompilation rate under realistic input variety.
+
+The discipline worth naming: steps 1–5 cost under an hour and tell you the expected value of step 6.
+Teams routinely invert this, spend a week on compilation, and discover afterwards that the model was
+bound by an all-to-all the compiler never touches.
+
+</Probe>
+
+<Probe q="Why is compiling a region often better than compiling the model?">
+
+Because the costs of compilation scale with the compiled unit while the benefits mostly do not.
+
+**Compile time scales with graph size**, and it is paid again on every code change and every new
+shape. A whole-model compile of several minutes turns a two-minute experiment into a seven-minute
+one, which changes how you work.
+
+**Recompilation risk compounds.** A whole-model graph guards on every input property anything in it
+touched, so a change anywhere invalidates everything. Per-block graphs are guarded independently, so
+a varying shape in one place recompiles one block.
+
+**Graph breaks cascade.** A break in the middle of a whole-model compile splits it into two large
+graphs at an arbitrary boundary. With per-block compilation the break is contained, and the blocks
+around it stay whole.
+
+**Debuggability.** A stack trace through one compiled block is tractable; through a whole compiled
+model it is not.
+
+Meanwhile the benefit you lose is small. Nearly all fusion opportunities are *local* — elementwise
+chains, normalisation, attention epilogues — and live inside a block. Cross-block fusion is rare,
+because a block boundary is usually a residual add and a normalisation that were going to be a fusion
+boundary anyway.
+
+The exception, and it is a real one: **CUDA Graphs prefer one large capture.** Many small captures pay
+the fixed replay cost repeatedly (Module 9). So for latency-critical decode, whole-model capture is
+worth the compile-time pain — which is exactly what serving frameworks do, and why Module 14 exists.
+
+</Probe>
+
+<Probe q="When should you write a kernel instead of configuring the compiler?">
+
+When the problem is the **algorithm**, not the schedule. The compiler chooses how to execute the graph
+it was given; it does not choose a different graph.
+
+Write the kernel when:
+
+- **A better algorithm exists that is not a fusion of yours.** FlashAttention versus materialised
+  attention; radix select versus sort; online softmax versus two passes. No scheduler discovers these
+  by fusing the naive form (Modules 7 and 12).
+- **One op is a large share of the step and is not a GEMM.** The profiler's top-ten list makes this
+  obvious, and by construction the compiler has little to offer there.
+- **You need numerical control** the decomposition does not preserve — a specific accumulation order
+  or precision.
+- **The op does not exist in ATen.** A custom quantisation format or sparsity pattern. Register it as
+  a custom op with a `FakeTensor` rule and Dynamo traces through it cleanly.
+
+Do *not* write kernels for ordinary elementwise fusion, for anything Inductor already handles, or
+before reading the generated Triton to confirm the compiler actually did the wrong thing.
+
+The healthy structure is a gradient rather than a cliff: eager for correctness, `torch.compile` for
+the bulk, hand-written Triton for the residue, library calls for the parts specialists already
+solved. Because Inductor emits Triton, moving between the middle two is reading and editing rather
+than rewriting — a materially better position than a compiler whose output you cannot inspect.
+
+</Probe>
+
+<Probe q="How do you decide whether the compile time is worth it?">
+
+Amortisation, computed explicitly rather than assumed.
+
+$$
+\text{worth it} \iff (t_{\text{eager}} - t_{\text{compiled}}) \times N_{\text{runs}} > t_{\text{compile}} \times N_{\text{compiles}}
+$$
+
+The term people get wrong is $N_{\text{compiles}}$. It is not one. It is once per process start unless
+caches persist, once per shape bucket, once per code change, and once per recompilation trigger. A
+model that recompiles on eight shape buckets across a fleet restarting daily has a very different
+figure from the single compile people imagine.
+
+Which yields the practical regimes:
+
+- **Serving.** $N_{\text{runs}}$ is effectively unbounded, so almost any gain justifies almost any
+  compile time — provided you persist `TORCHINDUCTOR_CACHE_DIR` and the Triton cache so restarts do
+  not recompile, and provided shapes are bucketed so the count stays small.
+- **Training.** A long run amortises easily; compile once, save minutes per hour. Do check that
+  recompilation is not triggering mid-run.
+- **Development.** Usually not worth it. Compile time is charged to your iteration loop, which is the
+  thing Module 1 argued matters most.
+- **Batch inference, one pass.** Compute it honestly — a two-minute compile to save 20% of a
+  three-minute job is a loss.
+
+The general point is that compilation is an investment with a payback period, and the discipline is
+simply to compute it. Most disappointment with `torch.compile` comes from applying it where the
+payback period exceeded the workload's lifetime.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="Give the diagnostic ladder in order, cheapest first.">
+
+Raise the batch size and see if step time moves (launch bound?); compare summed self-CPU against
+self-CUDA; inspect the op mix (`cublas`-dominated means little to fuse); check the top ten kernels by
+self-CUDA for a single dominant non-GEMM op; look at timeline gaps for collectives or host stalls; and
+only then compile, measuring steady-state gain, compile time, and recompilation rate under realistic
+input variety. Steps 1–5 cost under an hour and give you the expected value of step 6.
+
+</SelfCheck>
+
+<SelfCheck q="Why compile per block rather than per model, and what is the exception?">
+
+Compile time scales with graph size and is repaid on every change; whole-model guards invalidate
+everything when anything varies; a graph break splits a large graph at an arbitrary boundary; and
+debugging is worse. Meanwhile nearly all fusion is local to a block, since block boundaries are
+residual adds and norms that were fusion boundaries anyway. **The exception is CUDA Graphs**, which
+prefer one large capture because many small captures repay the fixed replay cost — so latency-critical
+decode justifies whole-model capture.
+
+</SelfCheck>
+
+<SelfCheck q="When is a hand-written kernel the right answer?">
+
+When the problem is the algorithm rather than the schedule: a better algorithm that is not a fusion of
+yours (FlashAttention, radix select, online softmax); one non-GEMM op taking a large share of the
+step; a need for specific accumulation order or precision; or an op with no ATen decomposition,
+registered as a custom op with a `FakeTensor` rule. Not for ordinary elementwise fusion, and not
+before reading the generated Triton.
+
+</SelfCheck>
+
+<SelfCheck q="Write the amortization condition and say which term people get wrong.">
+
+$(t_{\text{eager}} - t_{\text{compiled}}) \times N_{\text{runs}} > t_{\text{compile}} \times
+N_{\text{compiles}}$. The mistaken term is $N_{\text{compiles}}$, which is not one: it is once per
+process start without persisted caches, once per shape bucket, once per code change, and once per
+recompilation trigger. Serving amortises almost anything given persisted caches and bucketed shapes;
+development usually does not, since compile time is charged to the iteration loop.
+
+</SelfCheck>
+
+<SelfCheck q="State the partitioning rule and its parallel in the hardware series.">
+
+Compile what is on the critical path, structurally stable, and shape-predictable; leave everything else
+eager. That is the same three-part test as putting a function in silicon — critical path, stable over
+months, bounded data-independent execution time — and failing the third condition produces Module 10's
+recompilation and Module 11's MoE problem in exactly the same way.
+
+</SelfCheck>

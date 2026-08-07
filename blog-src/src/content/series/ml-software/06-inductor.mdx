@@ -1,0 +1,246 @@
+---
+n: 6
+title: 'Inductor: deciding what to fuse'
+blurb: 'The scheduler is the compiler. Fusion is a graph-partitioning problem under register and occupancy constraints, and the interesting failures are all in where it draws the lines.'
+part: 'K'
+minutes: 14
+draft: false
+tags: ['Inductor', 'fusion', 'scheduler', 'loop ordering', 'memory planning', 'autotune', 'pattern matching', 'codegen']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+Inductor's job is to turn a functionalized, decomposed graph into kernels, and almost all of its
+value is in one decision repeated thousands of times: **which operations go in the same kernel**.
+Everything else — index arithmetic, loop generation, emitting Triton — is mechanical once that is
+settled.
+
+It works by lowering each operator into a **define-by-index representation**: a buffer plus a
+function from output index to the expression computing it, in terms of loads from other buffers.
+`relu(x*a+b)` becomes, for output index `i`, `max(x[i]*a[i]+b[i], 0)`. In that form fusion is
+substitution — inline the producer's expression into the consumer's load — and the question becomes
+when substitution is *profitable*, not whether it is possible. The scheduler then partitions the
+graph into fusion groups under constraints: the operations must share a compatible iteration space,
+the fused body must not exceed register budgets, and reductions impose ordering that limits what can
+join them.
+
+Two categories sit outside this machinery and it matters that they do. **Reductions** cannot be
+freely fused with elementwise consumers because a reduction's output is not available until its whole
+input is consumed, so Inductor generates persistent or two-pass reduction kernels and fuses
+elementwise work into the epilogue rather than across the reduction. And **matmuls** are usually not
+generated at all: Inductor calls cuBLAS/cuTLASS, or with `max-autotune` benchmarks a Triton template
+against the library and picks the winner. What it *does* do is fuse the epilogue — bias, activation,
+scaling — into the matmul kernel, which is where a large part of its transformer win comes from,
+because those epilogues are pure memory traffic in eager mode.
+
+<Callout type="bridge" title="this is the tiling tension, one level up">
+  The hardware series' tile-size trade — reuse against occupancy against resource fit — is exactly
+  what Inductor's scheduler negotiates. A bigger fusion group is more reuse and fewer round trips,
+  paid for in registers and therefore occupancy. The compiler is solving the same problem you solve
+  by hand when tuning a kernel.
+</Callout>
+
+## Numbers worth memorizing
+
+| Decision                        | What Inductor does                                       |
+| ------------------------------- | -------------------------------------------------------- |
+| Elementwise chain               | fuse aggressively — the main win                          |
+| Elementwise into reduction      | fuse as prologue (loads) or epilogue (post-reduce)        |
+| Reduction into reduction        | only if the iteration spaces match                        |
+| Matmul                          | call cuBLAS/cuTLASS, or autotune a Triton template        |
+| Matmul epilogue                 | fuse bias/activation/scale into the GEMM kernel            |
+| Convolution                     | cuDNN, usually left alone                                  |
+| Attention                       | pattern-match to SDPA → FlashAttention                     |
+| Layout                          | may insert transposes/`contiguous` to enable fusion        |
+
+| Knob                          | Effect                                                     |
+| ----------------------------- | ---------------------------------------------------------- |
+| `mode="default"`              | heuristic fusion, no benchmarking — compiles fast           |
+| `mode="reduce-overhead"`      | adds CUDA Graphs (Module 9)                                 |
+| `mode="max-autotune"`         | benchmarks Triton GEMM templates vs library; **much** slower to compile |
+| `coordinate_descent_tuning`   | searches block sizes per kernel                             |
+| `TORCHINDUCTOR_CACHE_DIR`     | persists compiled kernels across processes                  |
+
+Useful things to inspect, in order of how often they answer the question:
+
+```bash
+TORCH_COMPILE_DEBUG=1 python run.py     # dumps generated Triton + the graph
+TORCH_LOGS=output_code python run.py    # just the kernels
+TORCH_LOGS=+inductor python run.py      # scheduling decisions
+```
+
+| Quantity                              | Value                                    |
+| ------------------------------------- | ---------------------------------------- |
+| Kernel-count reduction, typical       | 3–10× fewer kernels after fusion          |
+| Fusion group size, typical            | 3–15 ops                                  |
+| Register pressure ceiling             | 255 registers/thread before spilling      |
+| `max-autotune` compile-time multiplier | 3–20×                                    |
+
+<Callout type="trap" title="assuming fusion is always a win">
+  A fused kernel that spills registers or halves occupancy can be slower than two unfused kernels,
+  because achieved bandwidth falls further than the traffic saved. Inductor's heuristics are good but
+  not omniscient — when a compiled model is slower than eager, an over-eager fusion group is a prime
+  suspect, and the generated Triton will show it.
+</Callout>
+
+## Critical thinking
+
+<Probe q="Why is fusion a scheduling problem rather than a peephole rewrite?">
+
+Because the decisions interact, and greedy local choices are provably not optimal.
+
+Consider a producer feeding **two** consumers. Fusing it into both means computing it twice — fine if
+it is cheap, wasteful if it is expensive. Fusing into neither means materialising it once. Fusing
+into one and not the other is sometimes best. That choice depends on the producer's cost, the sizes,
+and what *else* is already in each consumer's group — so it cannot be made by looking at any single
+edge.
+
+Then the constraints couple the choices further. **Iteration space**: two ops fuse only if their
+output indices can be expressed in one loop nest, so a fusion may require a layout change, which
+itself costs. **Registers**: each op added to a group increases live values, and crossing the
+threshold spills, which is catastrophic and non-local — adding op $k$ can make ops $1..k{-}1$ slower.
+**Reductions**: fusing across one changes the loop structure entirely. **Memory**: materialising
+fewer intermediates lowers peak memory, which may be the binding constraint rather than speed.
+
+So it is a partitioning problem over a DAG with non-linear costs, which is NP-hard in general.
+Inductor uses heuristics — fuse elementwise greedily, respect iteration-space compatibility, cap
+group size, estimate register pressure — and they are good on typical models and beatable on unusual
+ones.
+
+The transferable point: when a compiler underperforms, the question is rarely "did it miss an
+optimisation" and usually "did its cost model mis-rank two legal choices". Reading the generated code
+tells you which.
+
+</Probe>
+
+<Probe q="Why not generate the matmul too? Inductor generates everything else.">
+
+Because cuBLAS and cuTLASS represent an enormous amount of specialised effort that a general-purpose
+scheduler will not match, and matmul is the one op where the gap is decisive.
+
+A production GEMM kernel encodes: tile sizes tuned per architecture and per shape; the three-level
+blocking from the hardware series; `ldmatrix`/`mma` tensor-core instruction selection; swizzled
+shared memory to avoid bank conflicts; software-pipelined `cp.async` stages; split-K for skinny
+problems; and a heuristic table mapping shapes to kernels built from exhaustive benchmarking. Every
+one of those is a decision Inductor's general machinery would have to rediscover for each shape.
+
+So Inductor does two more useful things instead. It **fuses the epilogue** — bias, activation,
+scaling, residual add — into the GEMM, which library calls alone cannot do and which is pure memory
+traffic in eager mode. And under `max-autotune` it **benchmarks** a Triton GEMM template against the
+library call and picks the winner per shape, which sometimes wins on unusual sizes the library's
+heuristics handle poorly, especially skinny or oddly-aligned shapes.
+
+The general principle is the pattern-matching one from Module 5: decompose to expose structure, then
+recognise the cases a human already solved better and defer to them. A compiler that insists on
+generating everything loses to a compiler that knows when to call a library — and knowing which is
+the actual engineering.
+
+</Probe>
+
+<Probe q="Your compiled model is slower than eager. Walk the diagnosis.">
+
+Rare but real, and the causes are enumerable.
+
+1. **Are you measuring steady state?** Warm up past compilation, `torch.cuda.synchronize()` before
+   timing. This explains most reports.
+2. **Is it recompiling?** `TORCH_LOGS=recompiles`. Continuous recompilation is strictly worse than
+   eager (Module 10).
+3. **Graph breaks in a loop?** `TORCH_LOGS=graph_breaks`. Many small graphs pay compilation costs and
+   keep eager's overhead (Module 4).
+4. **Read the generated Triton.** `TORCH_LOGS=output_code`. Look for a very large fused kernel — and
+   check for register spilling, which Triton reports and which is usually the culprit when one kernel
+   is unexpectedly slow.
+5. **Did layout changes cost more than fusion saved?** Inductor may insert `contiguous()` to make a
+   fusion legal; if the copy is bigger than the traffic saved, that fusion was a mistake.
+6. **Did a decomposition lose a good kernel?** If a pattern match failed, a fused library op may have
+   been replaced by a slower generated equivalent — attention is the classic case.
+
+Then the escape hatches, in increasing order of effort: try `mode="max-autotune"`; mark the offending
+submodule with `torch.compiler.disable` and leave it eager; or write the kernel yourself in Triton
+and register it as a custom op.
+
+The last of these is the point worth making about the whole design: because the output is Triton
+rather than an opaque binary, you can read it, understand the decision, and override it. That is a
+qualitatively better position than a black-box compiler.
+
+</Probe>
+
+<Probe q="What does Inductor do about memory that eager cannot?">
+
+It knows every buffer's lifetime before anything runs, which turns allocation into planning.
+
+Eager mode asks the caching allocator for each intermediate as it appears and returns it when the
+refcount drops (Module 8). The allocator is fast and good, but it is reacting to a stream of requests
+with no knowledge of the future. Inductor has the whole graph, so it can:
+
+- **Reuse buffers.** Once an intermediate's last consumer has run, its storage is available for a
+  later tensor of compatible size — computed statically, so no allocator round trip at all.
+- **Not materialise fused intermediates.** The largest saving is the tensors that never exist because
+  they stayed in registers inside a fusion group.
+- **Order operations to lower peak memory.** Among schedules that respect dataflow, some hold fewer
+  tensors live simultaneously, and the peak is what determines whether you OOM.
+- **Choose recompute over storage**, in concert with AOTAutograd's partitioner (Module 5).
+
+This is precisely the XLA-style compile-time planning that PyTorch's dynamic allocator gave up in
+exchange for eager flexibility — and `torch.compile` recovers a large part of it *within* each graph,
+while the allocator still handles everything between graphs.
+
+Which is the honest description of the whole system: it is not that dynamic allocation was wrong, it
+is that a graph is the scope in which planning is possible, and PyTorch spent years not having one.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="What is define-by-index lowering, and why does it make fusion easy to express?">
+
+Each operator becomes a buffer plus a function from output index to the expression computing it, in
+terms of loads from other buffers — `relu(x*a+b)` is `max(x[i]*a[i]+b[i], 0)` at index `i`. Fusion is
+then just substituting the producer's expression into the consumer's load, so the question shifts
+from *whether* fusion is possible to *when* it is profitable.
+
+</SelfCheck>
+
+<SelfCheck q="Why is fusion NP-hard in general, and name three coupling constraints.">
+
+Because it is a partitioning problem over a DAG with non-linear costs, and greedy local choices are
+not optimal — a producer with two consumers may be best fused into one, both, or neither, depending
+on cost and what is already in each group. Constraints: iteration-space compatibility (which may force
+a layout change); register pressure (adding one op can spill and slow the whole group); and reductions,
+which change the loop structure and limit what can join them. Peak memory is a fourth.
+
+</SelfCheck>
+
+<SelfCheck q="Why does Inductor call cuBLAS for matmul but still add value there?">
+
+Because production GEMM kernels encode per-architecture tile tuning, three-level blocking, tensor-core
+instruction selection, swizzled shared memory, pipelined `cp.async`, split-K and exhaustively
+benchmarked shape heuristics — none of which a general scheduler will rediscover. Inductor adds value
+by **fusing the epilogue** (bias, activation, scale, residual) into the GEMM, which the library call
+alone cannot do, and by benchmarking a Triton template against the library under `max-autotune`.
+
+</SelfCheck>
+
+<SelfCheck q="Compiled is slower than eager. Give the first four checks.">
+
+Measuring steady state with warm-up and `synchronize()`; recompilation via `TORCH_LOGS=recompiles`;
+graph breaks in a loop via `TORCH_LOGS=graph_breaks`; then read the generated Triton with
+`TORCH_LOGS=output_code` looking for an over-large fusion group and register spilling. After that:
+layout copies costing more than the fusion saved, and a failed pattern match replacing a good library
+kernel.
+
+</SelfCheck>
+
+<SelfCheck q="What can Inductor do about memory that the eager allocator cannot, and why?">
+
+Because it knows every buffer's lifetime in advance it can statically reuse storage with no allocator
+round trip, avoid materialising fused intermediates entirely, order operations among dataflow-legal
+schedules to lower the peak, and trade storage for recomputation with AOTAutograd's partitioner. This
+recovers XLA-style compile-time planning *within* a graph, while the caching allocator still handles
+everything between graphs.
+
+</SelfCheck>

@@ -1,0 +1,250 @@
+---
+n: 10
+title: 'Dynamic shapes and recompilation'
+blurb: 'Specializing on a shape makes the fastest kernel and the least reusable one. Symbolic shapes are the compromise, and 0/1 specialization is the trap inside it.'
+part: 'M'
+minutes: 15
+draft: false
+tags: ['dynamic shapes', 'symbolic shapes', 'recompilation', 'guards', 'mark_dynamic', 'SymInt', 'cache_size_limit', 'bucketing']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+A compiler wants constants. Knowing a dimension is exactly 512 lets it pick tile sizes, unroll loops,
+prove there is no ragged edge, and compute every stride at compile time. Knowing only that it is
+"some integer" forces guard branches, runtime index arithmetic, and tile choices that must be
+correct for any value. **Specialisation buys speed and costs reuse**, and since compilation is
+expensive, the reuse is what determines whether you ever amortise it.
+
+PyTorch's compromise is **symbolic shapes**. Rather than baking in `batch == 4`, Dynamo introduces a
+symbol `s0` and records the *facts it actually needed*: that `s0 >= 2`, that two tensors share a
+dimension, that `s0 * 512` was the flattened size. Those become guards. One compiled artifact then
+serves every input satisfying them, and you recompile only when a genuinely new fact is required. By
+default Dynamo compiles the first call with static shapes, and on seeing a *second* distinct shape
+recompiles that dimension as dynamic — an automatic policy that assumes changing once means changing
+often.
+
+The trap inside this is **0/1 specialisation**. PyTorch always specialises on dimensions of size 0
+or 1, because they are not merely small — they change semantics. A size-1 dimension broadcasts; a
+size-0 tensor makes reductions and indexing behave differently. Treating them symbolically would
+require every downstream decision to be conditional on whether the symbol happens to be 1, which is
+unmanageable. So a batch size of 1 always gets its own compilation, and code that works fine for
+batch 4 and 8 can recompile unexpectedly at batch 1 — which is exactly the case you care about in
+inference.
+
+<Callout type="bridge" title="the same trade as Module 8's fragmentation">
+  Shape diversity is expensive twice over: it recompiles the graph *and* it fragments the allocator by
+  churning size classes. Bucketing sequence lengths fixes both at once, which is why it is the single
+  most effective change in most varying-shape workloads.
+</Callout>
+
+## Numbers worth memorizing
+
+| Setting                                    | Behaviour                                       |
+| ------------------------------------------ | ----------------------------------------------- |
+| `dynamic=None` (default)                   | static first, then recompile dynamic on change   |
+| `dynamic=True`                             | assume dynamic from the start — fewer recompiles, slower kernels |
+| `dynamic=False`                            | always specialise — fastest kernels, most recompiles |
+| `torch._dynamo.mark_dynamic(t, dim)`       | declare a dimension dynamic up front             |
+| `torch._dynamo.maybe_mark_dynamic(t, dim)` | hint, not a requirement                          |
+| `mark_static(t, dim)`                      | force specialisation on a dimension              |
+
+| Quantity                              | Value                                              |
+| ------------------------------------- | -------------------------------------------------- |
+| `cache_size_limit`                     | **8** — then it warns and falls back to eager      |
+| `accumulated_cache_size_limit`         | 256 across all frames                              |
+| Recompile cost                         | seconds to minutes each                             |
+| Guard evaluation                       | ~1–5 µs per call                                    |
+| Dynamic-kernel penalty vs static       | ~0–15%, workload dependent                          |
+| **Always specialised**                 | **dims of size 0 and 1**                            |
+
+```bash
+TORCH_LOGS=recompiles              # why each recompile happened
+TORCH_LOGS=dynamic                 # symbolic shape reasoning
+TORCH_LOGS=guards                  # the guards installed
+```
+
+The bucketing arithmetic, for sequence lengths up to $L$:
+
+| Strategy               | Compilations | Wasted compute        |
+| ---------------------- | ------------ | --------------------- |
+| Exact shapes           | one per length seen | none — but you never amortise |
+| Pad to max             | 1            | up to $L/\ell$ per request |
+| Powers of two          | $\log_2 L$   | ≤ 2×                  |
+| Multiples of 128       | $L/128$      | ≤ 128 tokens           |
+| Dynamic (symbolic)     | 1            | none, ~0–15% slower kernels |
+
+<Callout type="trap" title="silently falling back to eager">
+  Exceeding `cache_size_limit` does not error. Dynamo logs a warning and runs that frame eagerly
+  forever after — so a model that was fast in testing becomes slow in production under more varied
+  input, with no exception and no obvious signal. `TORCH_LOGS=recompiles` in staging is how you catch
+  it before users do.
+</Callout>
+
+## Critical thinking
+
+<Probe q="Why not compile dynamic from the start and avoid recompilation entirely?">
+
+Because dynamic kernels are genuinely worse, and for many workloads the specialised path is worth
+more than the compilations it costs.
+
+What a compiler loses without a constant dimension:
+
+- **Tile selection.** Knowing $N = 4096$ lets it pick a tile dividing evenly with no ragged edge.
+  Symbolic $N$ needs masking on every access and a tile that is merely reasonable across the range.
+- **Loop unrolling and constant folding.** Trip counts become runtime values, so the unroll factor
+  must be conservative and index arithmetic stays in the kernel.
+- **Vectorisation proofs.** Whether a dimension is a multiple of 4 decides if you can use `float4`
+  loads, and a symbol is not.
+- **Branch elimination.** Every "is this dimension zero" check that a constant folds away survives.
+- **Autotuning specificity.** `max-autotune` benchmarks a config for the shapes it sees; a symbolic
+  shape gets one config for the whole range.
+
+Empirically the penalty is roughly 0–15%, and it is very workload dependent: tiny for
+memory-bound elementwise chains, larger for GEMM-adjacent code where tile-shape fit matters.
+
+Hence the default policy, which is a reasonable bet rather than a principle: assume static, and
+switch a dimension to dynamic once it has demonstrably changed. Compile twice, then stop. Set
+`dynamic=True` up front when you know shapes will vary widely — serving with variable sequence
+lengths — and `dynamic=False` when they truly do not, such as fixed-size training batches, where you
+want every constant the compiler can get.
+
+</Probe>
+
+<Probe q="Explain 0/1 specialization, and why batch size 1 is the case it hurts.">
+
+Sizes 0 and 1 are not merely small values of a dimension; they change what operations *mean*.
+
+A dimension of size **1 broadcasts**. `a + b` where `a` is `(4, 1)` and `b` is `(4, 8)` produces
+`(4, 8)`, while `(4, 2) + (4, 8)` is an error. So whether an operation broadcasts, what output shape
+results, and what stride pattern the kernel needs all depend on whether that symbol equals 1.
+
+A dimension of size **0** changes reductions and indexing: an empty sum is the identity, an empty max
+is an error or `-inf` depending on the op, and many kernels need a separate early-exit path.
+
+Treating these symbolically would mean every downstream shape inference, stride computation and
+kernel choice becoming conditional on "unless it is 1", which multiplies the compiler's case analysis
+without bound. So PyTorch specialises: a dimension observed as 0 or 1 gets a guard fixing it there.
+
+The practical bite is inference. Batch 4 and batch 8 may share a compiled artifact via symbolic
+`s0 >= 2`, but **batch 1 always compiles separately** — and batch 1 is the latency-critical case
+(Module 9). Two consequences: benchmark batch 1 explicitly rather than assuming it shares the warm
+path, and be aware that a dimension you *expect* to be dynamic will silently specialise if the first
+input happens to have it as 1. `mark_dynamic` will not help; the specialisation is deliberate.
+
+</Probe>
+
+<Probe q="Your serving job compiles fine in testing and is slow in production. Diagnose.">
+
+The overwhelmingly likely cause is that production input is more varied, you blew through
+`cache_size_limit`, and Dynamo silently fell back to eager.
+
+The sequence:
+
+1. **`TORCH_LOGS=recompiles`** in a staging replica against production-like traffic. The log names
+   the guard that failed and the values involved, which usually identifies the offending dimension
+   immediately.
+2. **Count distinct shapes.** If the request distribution has 40 sequence lengths and the limit is 8,
+   the outcome was determined the moment traffic hit.
+3. **Check for the fallback warning.** Once exceeded, that frame runs eager permanently — the model
+   is not "sometimes slow", it has stopped being compiled.
+
+The fixes, in the order to try them:
+
+- **Bucket the shapes.** Pad to multiples of 128, or to powers of two. This collapses forty shapes
+  into a handful, and it simultaneously stops the allocator fragmenting (Module 8). Almost always the
+  right first move.
+- **`mark_dynamic`** on the dimension that varies, so one artifact serves the range.
+- **Raise `cache_size_limit`** only if the shape set is genuinely small and bounded — this treats the
+  symptom and costs memory and compile time.
+- **`dynamic=True`** to skip the static-first attempt entirely.
+
+The general lesson is the Module 1 one: recompilation is inherent to caching a compiled artifact
+keyed on input properties. The product difference is that PyTorch tells you — but only if you look,
+which means `TORCH_LOGS=recompiles` belongs in your staging environment rather than in your
+debugging repertoire.
+
+</Probe>
+
+<Probe q="Where do symbolic shapes stop working entirely?">
+
+When a shape depends on the **data**, not just on the input's metadata — because then no guard can be
+checked in advance.
+
+```python
+mask = scores > threshold
+selected = x[mask]          # shape depends on the values in scores
+```
+
+The output's size is unknown until the kernel runs. Dynamo cannot introduce a symbol with facts,
+because the fact would be "whatever that comparison produced". Options, none free:
+
+- **Graph break**, run it eagerly, resume compiling afterwards. Correct, and costs everything
+  Module 4 lists.
+- **Unbacked SymInts**, PyTorch's mechanism for symbols with no known value. It works, but every
+  downstream decision needing that value now needs either a runtime branch or an explicit assertion
+  from you (`torch._check(n > 0)`), and unresolvable constraints turn into errors.
+- **Restructure to a fixed shape.** Compute on everything and mask, rather than selecting: keep the
+  dense form, multiply by the mask, pay the wasted FLOPs and keep the graph static.
+
+That last option is the one production systems pick, and it is the bridge to the next module. MoE
+routing is exactly this pattern — the number of tokens per expert is data-dependent — and the
+industry's answer is precisely "pick a fixed capacity, pad or drop, keep shapes static". You trade
+compute you do not need for a graph you can compile and capture.
+
+The framing worth keeping: **data-dependent shapes are where the whole compiled-mode edifice stops,**
+and every workaround is a way of buying staticness with wasted work.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="What are symbolic shapes recording, and what is the default policy?">
+
+Not a fixed value but the *facts the compilation actually needed* — `s0 >= 2`, that two tensors share
+a dimension, that a flattened size is `s0 * 512` — installed as guards, so one artifact serves every
+input satisfying them. Default `dynamic=None`: compile the first call static, and on seeing a second
+distinct shape recompile that dimension as dynamic. Compile twice, then stop.
+
+</SelfCheck>
+
+<SelfCheck q="Why does a compiler want constant dimensions? Name four things it loses without them.">
+
+Tile selection that divides evenly with no ragged edge; loop unrolling and constant-folded index
+arithmetic; vectorisation proofs such as whether a dimension is a multiple of 4 for `float4` loads;
+and branch elimination for zero-size checks. Plus autotuning specificity, since a symbolic shape gets
+one config for the whole range. The measured penalty is ~0–15%, larger for GEMM-adjacent code.
+
+</SelfCheck>
+
+<SelfCheck q="Explain 0/1 specialization and why it bites inference specifically.">
+
+Size 1 **broadcasts** and size 0 changes reduction and indexing semantics, so treating them
+symbolically would make every downstream shape inference and kernel choice conditional on "unless it
+is 1". PyTorch therefore always specialises those dimensions. The bite: batch 4 and 8 can share an
+artifact via `s0 >= 2`, but **batch 1 always compiles separately** — and batch 1 is the
+latency-critical inference case. Benchmark it explicitly; `mark_dynamic` will not override it.
+
+</SelfCheck>
+
+<SelfCheck q="What happens when you exceed cache_size_limit, and why is that dangerous?">
+
+Dynamo logs a warning and runs that frame **eagerly forever after**. No exception, no obvious signal —
+so a model fast in testing silently stops being compiled under more varied production traffic. The
+default limit is 8. Put `TORCH_LOGS=recompiles` in staging rather than saving it for debugging.
+
+</SelfCheck>
+
+<SelfCheck q="Where do symbolic shapes fail entirely, and what do production systems do?">
+
+When the shape depends on the **data** rather than on input metadata — `x[scores > threshold]` — since
+no guard can be checked in advance. Options: graph break; unbacked SymInts, which push runtime
+branches and explicit `torch._check` assertions onto you; or restructure to a fixed shape by computing
+densely and masking. Production picks the last: fixed capacity, pad or drop, wasted FLOPs in exchange
+for a compilable and capturable graph.
+
+</SelfCheck>

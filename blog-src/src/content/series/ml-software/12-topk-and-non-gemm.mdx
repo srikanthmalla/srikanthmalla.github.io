@@ -1,0 +1,257 @@
+---
+n: 12
+title: 'top-k, sort, and the ops that are not GEMM'
+blurb: 'Selection has low arithmetic intensity, irregular access and a serial dependency. Vocabularies grew to 256k and it became a visible fraction of every decode step.'
+part: 'M'
+minutes: 15
+draft: false
+tags: ['top-k', 'sort', 'radix select', 'sampling', 'FlashInfer', 'vocabulary', 'scatter', 'argsort', 'irregular ops']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+GPUs are built for one shape of problem: regular, dense, high-arithmetic-intensity work with static
+control flow. GEMM is the ideal case, and everything in Parts K and L is tuned for it. Selection —
+top-$k$, sort, argmax over a large axis — is the opposite on every axis. Its arithmetic intensity is
+essentially zero, since it reads $n$ values and does comparisons rather than FLOPs. Its access
+pattern is irregular once you start moving elements. It has a **serial dependency**: a comparison
+tree's depth is logarithmic at best, and naive approaches are worse. And its output size is small
+while its input is large, so it is a pure reduction with an awkward payload.
+
+For years this did not matter, because the vocabulary was 32k and the top-$k$ was a rounding error
+next to a 7B-parameter forward pass. Two things changed. **Vocabularies grew**: Llama 3 uses 128k
+tokens, Gemma 256k, and sampling cost scales with vocabulary while the rest of decode does not. And
+**the rest of decode got faster** — quantisation, FlashAttention, CUDA Graphs and speculative
+decoding compressed everything else, so a fixed cost that was 1% became 5–15% of a decode step. The
+classic implementation made it worse by **sorting the whole vocabulary** to find the top few, which
+is $O(n \log n)$ work to answer an $O(n)$ question.
+
+The fix is the one numerical computing always reaches for: solve the problem you have rather than a
+harder one that contains it. You do not need a sorted vocabulary; you need a threshold. **Radix
+select** finds the $k$-th largest by examining bits from the most significant down, partitioning by
+digit and recursing only into the bucket containing the boundary — $O(n)$ passes over the data with
+no data movement. Better still, top-$k$ and top-$p$ filtering followed by sampling can be done
+**without any sorting at all**, by iteratively guessing a threshold, checking the resulting
+probability mass with a couple of reductions, and rejecting — which is what FlashInfer's sorting-free
+sampling does.
+
+<Callout type="bridge" title="the hardware series called this in advance">
+  Its GBDT module argues that comparator networks and memory-lookup-shaped compute are a different
+  regime from GEMM, with latency set by dependency depth rather than FLOP count. top-$k$ is that
+  regime showing up in the middle of an LLM. FLOPs tell you nothing about its cost.
+</Callout>
+
+## Numbers worth memorizing
+
+| Model family     | Vocabulary | Logits per step, fp32 |
+| ---------------- | ---------- | --------------------- |
+| GPT-2 / Llama 2  | 32k / 32k  | 128 KB                |
+| Llama 3          | 128k       | 512 KB                |
+| Gemma            | 256k       | 1 MB                  |
+
+| Approach                          | Complexity        | Notes                          |
+| --------------------------------- | ----------------- | ------------------------------ |
+| Full sort, take $k$               | $O(n \log n)$     | the naive baseline, still common |
+| Partial sort / heap               | $O(n \log k)$     | poor GPU fit — serial heap      |
+| **Radix select**                  | $O(n)$ per pass, few passes | no data movement       |
+| Bitonic top-$k$ in shared memory  | $O(n \log^2 k)$   | good for small $k$              |
+| **Sorting-free rejection sampling** | $O(n)$ reductions | no ordering computed at all   |
+
+| Cost, per decode step, 128k vocab      | Order of magnitude          |
+| -------------------------------------- | --------------------------- |
+| Sort-based top-$k$ + top-$p$            | ~100–500 µs                 |
+| Radix select based                      | ~20–60 µs                   |
+| Sorting-free sampling                   | ~10–30 µs                   |
+| **Share of a graphed decode step**      | **from ~15% down to ~1–2%** |
+
+Where selection appears in a modern stack, which is more places than people expect:
+
+| Site                       | What is selected                       |
+| -------------------------- | -------------------------------------- |
+| Sampling                   | top-$k$ / top-$p$ over the vocabulary   |
+| MoE routing                | top-$k$ over experts (Module 11)        |
+| Speculative decoding       | comparisons over draft and target dists |
+| Beam search                | top-$k$ over beams × vocabulary         |
+| Attention sparsification   | top-$k$ over keys                       |
+| Retrieval / ANN            | top-$k$ over a large index              |
+
+<Callout type="trap" title="argsort to get a threshold">
+  `torch.sort(logits, descending=True)[0][k]` computes a full ordering of 128,000 values to read one
+  of them. You wanted a *selection*, and you asked for an *ordering*. This one line is the single most
+  common instance of the mistake this module is about.
+</Callout>
+
+## Critical thinking
+
+<Probe q="Why is top-k hard on a GPU when it barely does any arithmetic?">
+
+Because GPUs are throughput machines for *regular* work, and every property of selection is
+irregular.
+
+- **No arithmetic intensity.** You read $n$ values and perform comparisons. There is nothing to
+  amortise the memory traffic against, so you are pinned at the memory roof from the start — 1 MB of
+  logits at 3 TB/s is ~0.3 µs of pure bandwidth, and any real implementation is far above that floor,
+  which tells you the cost is *structure*, not data movement.
+- **A serial dependency.** Selection is fundamentally a reduction, and a reduction's depth is at best
+  $\log n$ — 17 dependent levels for 128k. Heap-based partial sorts are worse: inherently serial,
+  branch-heavy, and a poor fit for SIMT execution.
+- **Data-dependent control flow.** Whether an element survives depends on its value, so lanes in a
+  warp diverge. Compaction requires a prefix sum and a scatter, which is another reduction plus
+  irregular writes.
+- **Small output, large input.** Most of the machine finishes early and idles while the final
+  reduction levels play out with almost no parallelism left.
+
+The consequence to internalise: **FLOP counting is useless here**. A top-$k$ over 128k values does
+essentially no arithmetic and can cost more wall-clock than a matrix multiply doing billions of
+operations, because its cost is set by dependency depth and irregularity. Any performance model built
+on FLOPs will mispredict it by orders of magnitude, and that is precisely why it was overlooked until
+it started showing up in profiles.
+
+</Probe>
+
+<Probe q="Explain radix select, and why it beats sorting for this problem.">
+
+Radix select finds the $k$-th largest value by examining the bits of the representation from most
+significant to least, and it never orders anything it does not have to.
+
+Take 8 bits at a time. Histogram all $n$ values by their top 8 bits — 256 buckets, one atomic-add
+pass. Scan the histogram from the high bucket down, accumulating counts, until you find the bucket
+containing the $k$-th element. Every value in higher buckets is definitely in the top $k$; everything
+in lower buckets is definitely out. Recurse into the boundary bucket with the next 8 bits, now over a
+much smaller candidate set.
+
+Why it fits the machine:
+
+- **Each pass is a histogram**, which is a well-understood, coalesced, high-throughput GPU primitive.
+- **Passes are bounded.** 32-bit floats at 8 bits per pass is at most 4 passes, and typically 2 in
+  practice because the candidate set collapses immediately.
+- **No data movement.** You are computing a *threshold*, not rearranging elements. The final step is
+  one predicated pass extracting values above it.
+- **Order-preserving keys.** Floats can be monotonically mapped to unsigned integers with a couple of
+  bit operations, so radix ordering matches numeric ordering exactly.
+
+Against $O(n \log n)$ sorting: sorting computes the full permutation of 128,000 elements, moving data
+$\log n$ times, to answer a question about one boundary value. Radix select does a handful of
+histogram passes and one filter, and it is the difference between ~100–500 µs and ~20–60 µs.
+
+The transferable principle is the one this module is really about: **solve the problem you have.**
+Sorting is a strictly harder problem that happens to contain the answer, and reaching for it is a
+habit from a serial world where the constant factors made it not matter.
+
+</Probe>
+
+<Probe q="How can you sample from a top-p distribution without ever sorting?">
+
+By reframing it as **finding a threshold**, then using rejection sampling — because the sorted order
+was never actually part of the answer.
+
+The definition of top-$p$ is: the smallest set of tokens whose cumulative probability exceeds $p$.
+That reads like it needs a sorted cumulative sum, but what it *determines* is a probability cutoff
+$\tau$ such that the tokens with $p_i \ge \tau$ are exactly that set. Given $\tau$, the sorted order
+is irrelevant — you sample from the renormalised distribution restricted to those tokens.
+
+So the loop is:
+
+1. **Guess $\tau$**, from the max and a running estimate.
+2. **Two reductions** compute the mass above it and the count, both fully parallel.
+3. **Adjust** by bisection or a fixed-point step.
+4. **Sample** from the masked distribution by inverse-CDF over a prefix sum, or by rejection.
+
+A handful of parallel reductions, no ordering, no data movement. This is the essence of FlashInfer's
+sorting-free sampling, and it composes: top-$k$ and top-$p$ together become a joint threshold search,
+and rejection sampling lets you draw the token and verify the constraint in the same kernel.
+
+Two properties worth appreciating. It is **exact**, not an approximation — the rejection step
+guarantees the sample comes from the correct distribution, so this is not a quality trade. And it is
+**shape-static**: the work does not depend on how many tokens pass the filter, so unlike a compaction
+approach it stays CUDA-graphable (Module 9), which matters enormously since sampling sits inside the
+decode loop you spent Part L making capturable.
+
+</Probe>
+
+<Probe q="Where else does this pattern bite, and what is the general rule?">
+
+Everywhere the workload stops looking like dense linear algebra, and the pattern is always the same:
+an op with low intensity, irregular access, or data-dependent output size sitting on a critical path
+that everything else has been optimised off.
+
+Instances worth recognising:
+
+- **MoE routing** (Module 11) is a top-$k$ over experts per token, plus a scatter — the same op, and
+  it feeds a data-dependent shape.
+- **Speculative decoding** compares draft and target distributions per position; done naively it
+  materialises and sorts more than it needs.
+- **Beam search** is top-$k$ over beams × vocabulary — a much larger selection, done every step.
+- **Sparse and long-context attention** selects top-$k$ blocks or keys, so the selection sits inside
+  the attention kernel.
+- **Embedding gather/scatter** in recommenders is irregular memory access with no arithmetic at all,
+  and is usually the dominant cost of those models.
+- **Sequence packing and unpadding** are prefix sums and scatters — cheap in FLOPs, awkward on a GPU.
+
+The general rule, and it is the useful takeaway: **once you have optimised the GEMMs, your bottleneck
+moves to the ops that are not GEMMs, and none of your GEMM intuitions transfer.** FLOP counts do not
+predict their cost, arithmetic-intensity reasoning gives a floor that is far below reality, and the
+compiler will not fix them — Inductor fuses elementwise chains well and has essentially nothing to
+say about a selection algorithm.
+
+Which is why these are the ops that end up hand-written in Triton or CUTLASS (Module 7), and why
+libraries like FlashInfer exist at all. They are the residue that the general machinery cannot reach.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="Why did top-k become a visible cost only recently?">
+
+Two changes multiplied. **Vocabularies grew** — 32k to 128k (Llama 3) to 256k (Gemma) — and sampling
+cost scales with vocabulary while the rest of decode does not. And **everything else got faster**:
+quantisation, FlashAttention, CUDA Graphs and speculative decoding compressed the rest of the step, so
+a fixed cost that was ~1% became 5–15%. The naive implementation made it worse by sorting the whole
+vocabulary, $O(n\log n)$ work for an $O(n)$ question.
+
+</SelfCheck>
+
+<SelfCheck q="Name the four properties that make selection a bad GPU fit.">
+
+Essentially zero arithmetic intensity, so nothing amortises the memory traffic; a serial reduction
+dependency at least $\log n$ deep — 17 levels for 128k, and worse for heap approaches; data-dependent
+control flow causing warp divergence and requiring prefix-sum compaction; and a small output from a
+large input, so most of the machine idles through the final reduction levels. FLOP counting mispredicts
+its cost by orders of magnitude.
+
+</SelfCheck>
+
+<SelfCheck q="Explain radix select in one paragraph, and say why it beats sorting here.">
+
+Histogram all values by their top 8 bits into 256 buckets, scan from the high bucket down accumulating
+counts to find the bucket containing the $k$-th element, then recurse into just that bucket with the
+next 8 bits. At most 4 passes for fp32, typically 2. Each pass is a coalesced histogram — a strong GPU
+primitive — and **no data is moved**, since you are computing a threshold, not a permutation. Sorting
+computes the full ordering of 128,000 elements to answer a question about one boundary value.
+
+</SelfCheck>
+
+<SelfCheck q="How does sorting-free top-p sampling work, and what two properties make it valuable?">
+
+Top-$p$ determines a probability **threshold** $\tau$; the sorted order is not part of the answer. So:
+guess $\tau$, compute the mass and count above it with two parallel reductions, adjust by bisection,
+then sample from the masked distribution by inverse-CDF or rejection. It is **exact** — the rejection
+step guarantees the correct distribution, so no quality is traded — and **shape-static**, since the
+work does not depend on how many tokens pass, keeping the decode loop CUDA-graphable.
+
+</SelfCheck>
+
+<SelfCheck q="State the general rule this module is an instance of.">
+
+Once the GEMMs are optimised, the bottleneck moves to the ops that are not GEMMs — and no GEMM
+intuition transfers. FLOP counts do not predict their cost, arithmetic-intensity reasoning gives a
+floor far below reality, and the compiler cannot help: Inductor fuses elementwise chains and has
+nothing to say about a selection algorithm. Hence hand-written Triton/CUTLASS and libraries like
+FlashInfer. The same pattern appears in MoE routing, speculative decoding, beam search, sparse
+attention, embedding gathers and sequence packing.
+
+</SelfCheck>

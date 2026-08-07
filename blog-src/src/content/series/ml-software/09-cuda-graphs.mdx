@@ -1,0 +1,258 @@
+---
+n: 9
+title: 'CUDA Graphs'
+blurb: 'Record the launches once, replay them as one submission. The constraints — static addresses, static shapes, no CPU in the loop — are what the rest of the stack has to bend around.'
+part: 'L'
+minutes: 15
+draft: false
+tags: ['CUDA Graphs', 'launch overhead', 'reduce-overhead', 'capture', 'replay', 'static addresses', 'memory pool', 'decode']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+A CUDA Graph is a recorded DAG of kernel launches that you submit as a **single** operation. You
+capture once — running the model in a special mode where launches are recorded rather than executed —
+and thereafter `replay()` issues the whole thing with one driver call. The per-launch cost from
+Module 2, several microseconds each, collapses from $N \times t_{\text{launch}}$ to roughly a
+constant. For a decode step with 2000 tiny kernels, that is milliseconds of CPU time becoming tens of
+microseconds, and it is the single largest lever available at batch 1.
+
+The price is that a replay is **exactly** what was captured. The graph stores kernel handles and
+their arguments, and those arguments include **device pointers**. So every tensor the graph touches
+must live at the same address on every replay — inputs, outputs and all intermediates. This is why
+capture requires its own memory pool: the allocator switches to a private pool during capture, and
+the addresses it hands out are baked into the graph. Feed new data by copying into the captured input
+buffers rather than by passing a new tensor. Shapes must be identical, because they were compiled
+into the kernels' launch configurations. And **no CPU logic runs during replay**, so anything
+data-dependent — a Python branch, a `.item()`, an allocation, a dynamic shape — is not merely slow
+but impossible.
+
+Those constraints are the reason this module sits where it does. Everything in Part M is a case
+where the workload will not hold still enough to be captured, and much of Part N is engineering to
+make it hold still anyway. The mental model to carry: **CUDA Graphs convert a program into a fixed
+recording, and the whole difficulty is that real inference workloads are not fixed.**
+
+<Callout type="bridge" title="this is the hardware series' fixed-cost argument">
+  Launch overhead is a fixed per-op cost, and Amdahl says removing a fixed cost matters exactly when
+  the variable cost is small. Large batch: kernels are long, launches are noise, graphs buy little.
+  Batch 1: kernels are microseconds, launches dominate, graphs buy everything.
+</Callout>
+
+## Numbers worth memorizing
+
+| Quantity                                | Value                                     |
+| --------------------------------------- | ----------------------------------------- |
+| `cudaLaunchKernel`                       | ~2–5 µs CPU each                           |
+| Graph replay, whole graph                | ~5–10 µs total                             |
+| Capture cost                             | one-off, ~ms                               |
+| Kernels per LLM decode step              | ~1000–3000                                 |
+| **CPU per decode step, eager**           | **~5–20 ms**                               |
+| **CPU per decode step, graphed**         | **~10–50 µs**                              |
+| Typical batch-1 decode speed-up          | **1.5–3×**                                 |
+| Typical large-batch training speed-up    | 1.0–1.05× — kernels already dominate       |
+
+What a graph forbids:
+
+| Forbidden during replay          | Why                                        |
+| -------------------------------- | ------------------------------------------ |
+| New tensor addresses             | pointers are baked into recorded arguments  |
+| Different shapes                 | launch configs are fixed                    |
+| Allocation                       | the allocator is CPU-side and not replayed  |
+| Python control flow              | no CPU executes                             |
+| `.item()`, `.cpu()`, prints      | require a sync and CPU work                 |
+| CPU–GPU dependent branching      | same                                        |
+| Most collectives (unless captured) | need matching capture across ranks        |
+
+Usage:
+
+```python
+model = torch.compile(model, mode="reduce-overhead")   # Inductor handles capture
+
+# or by hand, when you need control:
+static_in  = torch.zeros(B, S, device="cuda")
+static_out = torch.zeros(B, V, device="cuda")
+
+g = torch.cuda.CUDAGraph()
+for _ in range(3):                       # warm up on a side stream first
+    out = model(static_in)
+with torch.cuda.graph(g):
+    static_out.copy_(model(static_in))
+
+static_in.copy_(real_input)              # feed by copying in
+g.replay()
+result = static_out.clone()              # read before the next replay overwrites
+```
+
+<Callout type="trap" title="the output buffer is reused every replay">
+  `static_out` is the same memory on every replay. Hold a reference without cloning and the next
+  replay silently overwrites your result — a bug that looks like the model producing the same answer
+  twice, or worse, like data corruption under concurrency.
+</Callout>
+
+## Critical thinking
+
+<Probe q="Why do CUDA Graphs need their own memory pool?">
+
+Because recorded launch arguments include **device pointers**, so the addresses used during capture
+must remain valid and unchanged for every replay — and the ordinary caching allocator makes no such
+promise.
+
+Under normal operation the allocator hands out whatever block is convenient and reuses it as soon as
+the tensor is freed. If a captured graph's intermediate lived at address `0x7f...a000` during
+capture, and the allocator later hands that block to something else, replaying the graph writes into
+memory that now belongs to another tensor. Not slow — **wrong**, silently.
+
+So capture switches the allocator into a **private pool** reserved for that graph. Allocations during
+capture come from it, are never handed to anything outside, and stay valid for the graph's lifetime.
+Consequences worth knowing:
+
+- **Memory is held for as long as the graph is alive**, even between replays, because those addresses
+  must remain reserved. Capturing several graphs — one per batch size, say — multiplies this.
+- **Pools can be shared** between graphs that never run concurrently, which is exactly what serving
+  frameworks do when capturing many shape buckets (Module 14).
+- **Anything allocating during replay is forbidden**, since the allocator is CPU-side and does not
+  run.
+- **Warm-up must happen before capture**, on a side stream, so that lazily-initialised buffers —
+  cuBLAS workspaces, autotuning caches — are already allocated and do not get captured or, worse,
+  allocated mid-replay.
+
+The general statement: a CUDA Graph converts dynamic allocation into **static addressing**, which is
+the same trade as everything else here — generality exchanged for the removal of per-iteration
+overhead.
+
+</Probe>
+
+<Probe q="Why do graphs help decode enormously and training barely at all?">
+
+Because the benefit is a fixed cost removed, and its significance depends entirely on the variable
+cost beside it.
+
+**Decode, batch 1.** Each kernel touches a small tensor and runs for a few microseconds. There are
+one to three thousand of them per token. CPU launch work is ~5–20 ms while GPU work might be 5–15 ms,
+so the CPU is on or near the critical path and the GPU has gaps between kernels. Collapse launches to
+a single replay and you remove most of that: 1.5–3× is routine.
+
+**Training, large batch.** Each kernel now runs for hundreds of microseconds to milliseconds because
+the tensors are large. The same 2000 launches still cost ~10 ms of CPU, but GPU work is seconds. The
+CPU finishes queueing long before the GPU catches up, so launch cost is fully hidden behind execution
+and removing it changes nothing measurable.
+
+The dividing line is simply whether $N \times t_{\text{launch}}$ exceeds $\sum_i t_{\text{gpu},i}$ —
+Module 2's inequality again. You can locate yourself on it with one measurement: compare summed CPU
+time against summed CUDA time in the profiler.
+
+Two refinements that matter operationally. Even when the CPU is not the critical path, graphs reduce
+**jitter**, because launch cost is exposed to OS scheduling noise and replay is not — which matters
+for latency SLOs even at neutral mean throughput. And the benefit *returns* at large batch if your
+model has very many small kernels, as MoE does (Module 11), because op count and tensor size are
+independent axes.
+
+</Probe>
+
+<Probe q="How does mode=&quot;reduce-overhead&quot; interact with graph breaks, and why is that combination so bad?">
+
+Badly, and the interaction is the most common reason `reduce-overhead` disappoints.
+
+A CUDA Graph cannot contain a Python callback, so it cannot span a graph break. Inductor's option is
+to capture each compiled fragment separately and run the Python between them. So with $k$ graph
+breaks you get $k+1$ separate captures, each with its own replay call, and Python interpreter work
+between every pair.
+
+That costs more than the arithmetic suggests:
+
+- **Each capture needs its own pool**, so memory multiplies by the number of fragments.
+- **Per-fragment fixed cost.** A replay is ~5–10 µs regardless of size, so many tiny graphs reclaim
+  much less than one large graph.
+- **The Python between them is exactly what you were removing.** A break inside a per-layer loop
+  gives 32 replays interleaved with 32 Python excursions, and the excursions dominate.
+- **Inductor may decline to capture at all** when a region allocates or mutates in ways capture
+  forbids, and you get the compilation cost with none of the benefit.
+
+Which is why the practical recipe is: get `fullgraph=True` working *first* (Module 4), then enable
+`reduce-overhead`. In the other order you cannot tell whether a disappointing result means graphs did
+not help or that you never really got one.
+
+The diagnostic is direct — profile and count `cudaGraphLaunch` calls per step. One is the goal; forty
+means you have a graph-break problem wearing a CUDA Graphs costume.
+
+</Probe>
+
+<Probe q="What breaks when a captured model meets a new sequence length, and what do people do about it?">
+
+The graph is invalid, because shapes were compiled into launch configurations and addresses were
+baked into arguments. Nothing degrades gracefully; you must capture again or not use the graph.
+
+The three responses used in practice, in increasing sophistication:
+
+1. **Pad to a fixed shape.** Capture at the maximum length and pad every request up to it. Simple and
+   always correct, but you compute on padding — at a 2048 capture with 128-token requests you are
+   wasting 94% of the work, which is usually unacceptable.
+2. **Bucket and capture per bucket.** Capture graphs at, say, 1, 2, 4, 8, ... 256 and dispatch each
+   request to the smallest fitting bucket. Waste falls to at most 2× and typically far less. The cost
+   is capture time and memory: each graph holds its pool, so a dozen buckets multiply reserved memory.
+   Sharing pools between mutually-exclusive graphs is how serving frameworks make this affordable.
+3. **Split the model.** Keep the shape-dependent part (attention over a variable-length KV cache)
+   outside the graph and capture only the shape-invariant part (the MLPs and projections, whose
+   shapes depend on batch, not on sequence length). This is essentially vLLM's piecewise approach and
+   it is why paged attention matters here — a paged KV cache makes the attention kernel's *arguments*
+   fixed-size even as the sequence grows (Module 14).
+
+The through-line, and the thing to take from Part L as a whole: making a workload capturable is
+mostly an exercise in **manufacturing staticness** — bucketing, padding, paging, and splitting the
+model along the boundary between what varies and what does not. Part M is what happens when the
+dynamism refuses to be manufactured away.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="What does a CUDA Graph record, and what does that imply for tensor addresses?">
+
+A DAG of kernel launches with their arguments — and the arguments include **device pointers**. So
+every tensor the graph touches must live at the same address on every replay, which is why capture
+uses a private allocator pool whose addresses are baked in, and why you feed new data by *copying
+into* the captured input buffers rather than passing new tensors.
+
+</SelfCheck>
+
+<SelfCheck q="Give the inequality that predicts whether graphs will help, and both regimes.">
+
+Graphs help when $N \times t_{\text{launch}} \gtrsim \sum_i t_{\text{gpu},i}$. Batch-1 decode: ~1000–3000
+kernels of a few microseconds each, so ~5–20 ms of CPU against comparable GPU time — 1.5–3× speed-up.
+Large-batch training: kernels run for hundreds of microseconds, so ~10 ms of launch cost hides behind
+seconds of GPU work — about 1.0×. Locate yourself by comparing summed self-CPU against self-CUDA time.
+
+</SelfCheck>
+
+<SelfCheck q="List four things forbidden during replay.">
+
+Allocating memory (the allocator is CPU-side and does not run); any Python control flow, since no CPU
+executes; `.item()`, `.cpu()` or prints, which need a sync and CPU work; and different shapes or new
+tensor addresses, since launch configurations and pointer arguments were fixed at capture. Also note
+the captured output buffer is reused every replay — clone it before the next one.
+
+</SelfCheck>
+
+<SelfCheck q="Why do graph breaks ruin reduce-overhead, and what is the diagnostic?">
+
+A graph cannot contain a Python callback, so $k$ breaks force $k+1$ separate captures with Python in
+between — each with its own memory pool, each paying the ~5–10 µs fixed replay cost, and the
+interleaved Python being exactly the overhead you were removing. A break inside a per-layer loop
+gives 32 replays and 32 Python excursions. Diagnostic: **count `cudaGraphLaunch` calls per step** —
+one is the goal. Get `fullgraph=True` working before enabling `reduce-overhead`.
+
+</SelfCheck>
+
+<SelfCheck q="Three ways to handle varying sequence length with captured graphs?">
+
+Pad to a fixed maximum — simple, but computing on padding wastes most of the work at short lengths.
+Bucket and capture per bucket — waste bounded by the bucket ratio, cost is capture time and memory
+per pool, mitigated by sharing pools between mutually-exclusive graphs. Or split the model, capturing
+only the shape-invariant part and leaving variable-length attention outside — vLLM's piecewise
+approach, enabled by paged KV making the attention kernel's arguments fixed-size.
+
+</SelfCheck>

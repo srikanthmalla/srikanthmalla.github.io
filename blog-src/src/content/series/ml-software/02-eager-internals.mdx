@@ -1,0 +1,261 @@
+---
+n: 2
+title: 'What eager mode actually does per op'
+blurb: 'Python, the dispatcher, the autograd tape and the allocator all run before your kernel does. Roughly 8 µs of CPU work to launch 2 µs of GPU work.'
+part: 'J'
+minutes: 16
+draft: false
+tags: ['dispatcher', 'autograd', 'ATen', 'TensorImpl', 'dispatch keys', 'CPU overhead', 'launch bound', 'eager']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+`c = a + b` on CUDA tensors looks like one operation. It is closer to a dozen, almost all of them on
+the CPU. Python resolves `__add__` through the C extension boundary into `THPVariable_add`, which
+parses arguments against a schema (`add.Tensor(Tensor self, Tensor other, *, Scalar alpha=1)`)
+including overload resolution and type promotion. The result enters the **dispatcher**, which
+computes a *dispatch key set* from the arguments — CUDA, Autograd, and possibly Autocast,
+Functionalize, or a subclass key — and jumps through the table in priority order. Autograd runs
+first: it allocates an `AddBackward0` node, records references to the inputs, and links it into the
+tape. Then the backend kernel runs, which asks the caching allocator for an output buffer, computes
+broadcasting and strides, picks a vectorised template, and finally issues `cudaLaunchKernel`. The
+kernel itself is asynchronous, so the CPU returns immediately and starts the next op.
+
+The consequence is that **eager mode's cost is a CPU cost**, and the GPU is frequently idle waiting
+for it. A small elementwise op on a modest tensor might take 2–4 µs of GPU time behind roughly
+5–10 µs of CPU work to get there. A model with a thousand ops per step therefore spends something
+like 8 ms of CPU time per forward pass regardless of how large the tensors are, and if the GPU work
+per op is smaller than the CPU work per op, you are **launch-bound**: the profile shows low GPU
+utilisation, adding a faster GPU changes nothing, and the fix is not a better kernel.
+
+This is the precise sense in which eager mode leaves performance on the table, and it decomposes
+into exactly three recoverable losses, which the whole of Parts K and L attack in turn. **Per-op CPU
+overhead**, removed by capturing a graph once and replaying it (Modules 4 and 9). **Memory traffic
+between ops**, since every intermediate is materialised to HBM and read back, removed by fusion
+(Modules 6 and 7). And **allocator work**, one request per intermediate, reduced by planning
+(Module 8). Nothing here is about the arithmetic — the FLOPs are identical in eager and compiled
+mode. The entire subject is overhead.
+
+<Callout type="bridge" title="this is Module 1 of the hardware series from the other side">
+  Arithmetic intensity says a memory-bound kernel is limited by bytes moved. Eager mode adds a
+  second, independent ceiling: even a perfectly bandwidth-efficient kernel cannot run more often
+  than the CPU can launch it. Batch-1 decode is usually up against both at once.
+</Callout>
+
+## Numbers worth memorizing
+
+The per-op CPU pipeline, order of magnitude on a modern server core:
+
+| Stage                                  | Cost        |
+| -------------------------------------- | ----------- |
+| Python bytecode + C-extension boundary | ~1–2 µs     |
+| Argument parsing, overload resolution  | ~0.5–1 µs   |
+| Dispatcher key computation and jump    | ~0.2–0.5 µs |
+| Autograd node alloc + tape wiring      | ~1–2 µs     |
+| Caching allocator hit                  | ~0.3–1 µs   |
+| Shape/stride/broadcast setup           | ~0.5 µs     |
+| `cudaLaunchKernel`                     | ~2–5 µs     |
+| **Total CPU per op**                   | **~5–10 µs** |
+
+| Quantity                                   | Value                                  |
+| ------------------------------------------ | -------------------------------------- |
+| Small elementwise kernel, GPU time          | 2–4 µs                                 |
+| Ops in a transformer layer forward          | ~50–150 (unfused)                      |
+| Ops per step, 32-layer model                | ~2000–5000 including backward          |
+| **CPU time per step, eager**                | **~10–40 ms — independent of tensor size** |
+| Break-even tensor size                      | ~1–4 M elements before GPU time dominates |
+| `cudaLaunchKernel` floor                    | ~2 µs; CUDA Graph replay ~1–2 µs *total* |
+| Backward pass ops                           | ~2× forward                            |
+
+The rule that follows, worth carrying as a single line:
+
+$$
+t_{\text{step}} \;\approx\; \max\!\bigl(\underbrace{N_{\text{ops}} \times t_{\text{cpu}}}_{\text{launch bound}},\;
+\underbrace{\textstyle\sum_i t_{\text{gpu},i}}_{\text{compute bound}}\bigr)
+$$
+
+At batch 1 with a small model the left term wins and no kernel optimisation helps. At batch 256 the
+right term wins and the CPU is irrelevant. **The same code is a different problem at different
+batch sizes**, which is why benchmarks that report one batch size are close to useless.
+
+<Callout type="trap" title="reading GPU utilization as a performance number">
+  `nvidia-smi` reports the fraction of time *at least one* kernel was resident, not how much of the
+  machine that kernel used. A launch-bound model with thousands of tiny kernels can read 95%
+  utilisation while using a few percent of the SMs. Use a profiler that shows kernel duration and
+  gaps, not a utilisation percentage.
+</Callout>
+
+## Critical thinking
+
+<Probe q="Explain the dispatcher, and why it costs what it costs.">
+
+The dispatcher is a multiple-dispatch table indexed by a **bitset of dispatch keys**, not a simple
+device switch. Every tensor carries a key set; the dispatcher takes the union across arguments, adds
+thread-local includes and excludes, and selects the highest-priority key with a registered kernel
+for that operator.
+
+The keys are layered so that features compose without knowing about each other. `Autograd` sits
+above backend keys, so autograd runs first, records the tape, then *re-dispatches* to the backend
+below it. `Autocast` sits above autograd and inserts casts. `Functionalize` removes mutation.
+Python subclasses and `FakeTensor` (Module 5) hook in the same way. This is why you can wrap a model
+in AMP, compile it, and run it under a tensor subclass without any of those features knowing the
+others exist — a genuinely excellent design that is central to how extensible PyTorch is.
+
+The cost has three parts. Computing the key set touches every argument. Each layer that
+re-dispatches is another indirect call — an op under autocast plus autograd traverses several before
+reaching a kernel. And the indirect jumps are **hard to predict**, so they hit the branch
+misprediction penalty; the table is large and cold relative to the tiny amount of real work.
+
+At around 0.2–0.5 µs per dispatch it looks negligible, and per op it is. Multiplied by several
+thousand ops per step, it is milliseconds. The design intent is worth appreciating: this cost buys
+composability, and **graph capture is precisely the technique for paying it once instead of every
+iteration** rather than for removing it.
+
+</Probe>
+
+<Probe q="What does autograd actually build, and what does it cost even when you do not call backward?">
+
+It builds a **directed acyclic graph of Node objects on the heap**, one per differentiable op, wired
+by `next_edges` to the nodes producing each input. Every tensor requiring grad carries a
+`grad_fn` pointer. The tape is not an interpretable data structure you configured; it is an object
+graph assembled during the forward pass.
+
+Costs incurred during forward regardless of whether backward runs:
+
+- **A heap allocation per op** for the Node, plus its edge vector.
+- **Saved tensors.** Each node keeps whatever backward needs. `matmul` saves both inputs; `relu`
+  can save just the output. This is why activation memory is a forward-pass property — it is
+  the tape holding references, and it is the reason `torch.no_grad()` reduces memory as well
+  as time.
+- **Reference-count traffic**, since every saved tensor is a shared pointer touched under
+  contention.
+- **Version counters**, bumped on every in-place op so that backward can detect a tensor mutated
+  after being saved.
+
+Two practical consequences. First, inference without `torch.no_grad()` or `inference_mode()` pays
+all of this for nothing — usually 10–30% of step time plus all the activation memory. Second,
+`inference_mode()` is strictly stronger than `no_grad()`: it also skips version counting and
+view tracking, so its tensors cannot later be used in autograd at all. That restriction is what
+makes it faster.
+
+Module 5's AOTAutograd changes the picture entirely: it traces forward *and* backward ahead of time
+into a single joint graph, so at run time there is no tape being built at all — the backward is just
+another compiled function.
+
+</Probe>
+
+<Probe q="Your profile shows 95% GPU utilization but poor throughput. Diagnose it.">
+
+Distrust the number. `nvidia-smi` utilisation is the fraction of sampled intervals in which *any*
+kernel was resident. A thousand tiny kernels back to back reads near 100% while occupying a handful
+of SMs.
+
+The diagnostic sequence:
+
+1. **Look at a timeline, not a percentage.** Nsight Systems or the PyTorch profiler with
+   `record_shapes=True`. You want kernel durations and the **gaps between them**. Gaps of a few
+   microseconds between kernels are the signature of launch-bound execution.
+2. **Compare CPU and GPU totals.** In the profiler's table, sum self CPU time and self CUDA time. If
+   CPU total exceeds GPU total, the CPU is the critical path and no kernel work will help.
+3. **Count kernels per step.** Thousands of kernels with a median duration of a few microseconds is
+   diagnostic on its own.
+4. **Run the null experiment.** Increase batch size. If step time barely moves, you were launch
+   bound and just absorbed the extra work into existing overhead — the single most informative
+   measurement available, and it takes one line.
+5. **Check occupancy per kernel**, which is what utilisation is usually mistaken for.
+
+If it is launch bound, the fixes are in this series, in order of leverage: `torch.compile` to fuse
+and cut op count, CUDA Graphs to eliminate per-launch cost (Module 9), and larger batches if the
+workload allows. If it is genuinely compute bound, none of that matters and you are back to Module 1
+of the hardware series.
+
+</Probe>
+
+<Probe q="Why is a small model on a fast GPU often slower per sample than on a slower one?">
+
+Because at small scale you are not measuring the GPU. You are measuring the CPU, the driver, and the
+PCIe path — and a faster GPU improves none of them.
+
+If each op needs ~8 µs of CPU work to launch and the kernel itself takes 3 µs on an A100 or 1.5 µs
+on an H100, the step time is set by the 8 µs either way. The H100 finishes sooner and waits longer.
+Meanwhile the H100 machine may have a *worse* single-thread CPU, or more NUMA distance, or a driver
+version with different launch costs — so the newer system can measure slower per sample on a small
+model while being dramatically faster on a large one.
+
+Three second-order effects push the same direction. Larger GPUs have more SMs, so a small kernel
+that fills one SM leaves proportionally more of the machine idle — utilisation *falls* as the GPU
+grows. Clock behaviour differs, and a mostly-idle GPU may sit at a lower clock. And the wave
+quantisation cost of a partly-filled final wave is a larger fraction when there are more SMs to fill.
+
+The correct response is not to buy a slower GPU but to recognise which regime you are in, and to
+report throughput per dollar at the batch size you will actually serve. This is the software
+analogue of the hardware series' Module 4: **at batch 1 the machine's throughput features are
+liabilities**, and here the liability is that all that parallel hardware is waiting on one Python
+thread.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="List what happens between `c = a + b` and the kernel launching.">
+
+Python dispatch through the C-extension boundary; argument parsing against the operator schema with
+overload resolution and type promotion; dispatch key set computation and a jump through the
+dispatcher table; autograd allocating a Node, saving inputs and wiring the tape, then re-dispatching;
+the backend kernel asking the caching allocator for an output buffer; broadcasting and stride
+computation; and finally `cudaLaunchKernel`. Roughly **5–10 µs of CPU work**, nearly all of it before
+any arithmetic.
+
+</SelfCheck>
+
+<SelfCheck q="Write the rule that decides whether you are launch bound, and the one-line experiment.">
+
+$t_{\text{step}} \approx \max(N_{\text{ops}} \cdot t_{\text{cpu}},\ \sum_i t_{\text{gpu},i})$. The
+experiment: **increase the batch size**. If step time barely changes, the left term dominates and you
+are launch bound, so kernel optimisation cannot help — you need fewer, bigger kernels or graph
+replay.
+
+</SelfCheck>
+
+<SelfCheck q="Why is the dispatcher a key set rather than a device switch, and what does that buy?">
+
+Because features must compose without knowing about each other. Autograd sits above backend keys and
+re-dispatches after recording; Autocast sits above autograd and inserts casts; Functionalize removes
+mutation; subclasses and FakeTensor hook in the same way. That layering is what lets you wrap a model
+in AMP, compile it, and run it under a tensor subclass simultaneously. The cost is key-set
+computation, several indirect calls per op, and hard-to-predict jumps — negligible per op, milliseconds
+per step.
+
+</SelfCheck>
+
+<SelfCheck q="What does autograd cost during forward even if you never call backward?">
+
+A heap-allocated Node plus edge vector per op; saved tensors held for backward, which *is* activation
+memory; reference-count traffic on those shared pointers; and version-counter bumps on in-place ops.
+Inference without `no_grad()`/`inference_mode()` pays all of it — typically 10–30% of step time plus
+the activation memory. `inference_mode()` is stronger because it also skips version counting and view
+tracking, which is why its tensors can never re-enter autograd.
+
+</SelfCheck>
+
+<SelfCheck q="Why is nvidia-smi utilization misleading here?">
+
+It reports the fraction of sampled intervals with *any* kernel resident, not how much of the machine
+that kernel used. Thousands of tiny kernels read near 100% while occupying a few SMs. Use a timeline
+showing kernel durations and the microsecond gaps between them, compare summed CPU against summed
+CUDA time, and count kernels per step.
+
+</SelfCheck>
+
+<SelfCheck q="Name the three recoverable losses in eager mode and which modules attack each.">
+
+Per-op CPU overhead, attacked by capturing once and replaying (Modules 4 and 9). Memory traffic
+between ops, since every intermediate round-trips to HBM, attacked by fusion (Modules 6 and 7).
+Allocator work, one request per intermediate, reduced by planning (Module 8). The arithmetic is
+identical in both modes — the entire subject is overhead.
+
+</SelfCheck>

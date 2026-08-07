@@ -1,0 +1,274 @@
+---
+n: 7
+title: 'Triton: the block programming model'
+blurb: 'CUDA makes you write per-thread code and manage shared memory. Triton makes you write per-block code and gives the compiler the rest — which is exactly what makes it a codegen target.'
+part: 'K'
+minutes: 16
+draft: false
+tags: ['Triton', 'block programming', 'autotune', 'tl.load', 'num_warps', 'PTX', 'MLIR', 'codegen', 'softmax kernel']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+CUDA's unit of programming is the **thread**. You write what one thread does, then reason manually
+about how 32 of them coalesce into memory transactions, how to stage tiles through shared memory
+without bank conflicts, where to place `__syncthreads()`, and how to map your data onto a block and
+grid. All the hardware series' Module 2 concerns are yours to handle by hand.
+
+Triton's unit is the **block**. You write what one *program instance* does to a whole tile of data,
+using operations on block-shaped values: `tl.load` a range of pointers, `tl.sum` along an axis,
+`tl.dot` two tiles. There is no thread index, no `__syncthreads()`, no explicit shared memory. The
+compiler decides how to distribute the tile across threads within the block, when a value should
+live in registers versus shared memory, how to schedule loads to hide latency, and how to select
+tensor-core instructions. You keep the decisions that need domain knowledge — tile shape, blocking
+strategy, what to compute where — and hand over the ones that are mechanical but tedious.
+
+That division is precisely why Triton is a good **compiler target** rather than merely a nicer way
+for humans to write kernels, and it is the reason Inductor emits Triton instead of CUDA C. A code
+generator can reliably produce correct per-block code with parameterised tile sizes; producing
+correct, well-coalesced, conflict-free, properly-synchronised per-thread CUDA is far harder to do
+mechanically. Triton also compiles through **its own MLIR-based pipeline** — Triton IR to TritonGPU
+IR to LLVM IR to PTX — so the layout decisions that CUDA leaves to the programmer are represented
+explicitly in the IR as *layout attributes* the compiler can reason about and rewrite.
+
+<Callout type="bridge" title="the same abstraction move as the tiling hierarchy">
+  The hardware series describes GEMM blocking at register, shared-memory and L2 levels. Triton lets
+  you express the shared-memory tile directly and infers the register tile, so you specify the level
+  where your knowledge lives and let the compiler handle the level below. That is the whole pitch.
+</Callout>
+
+## Numbers worth memorizing
+
+A complete fused softmax, which is roughly what Inductor generates for one:
+
+```python
+import triton
+import triton.language as tl
+
+@triton.jit
+def softmax_kernel(out_ptr, in_ptr, stride, n_cols, BLOCK: tl.constexpr):
+    row = tl.program_id(0)                       # which row this instance owns
+    cols = tl.arange(0, BLOCK)                   # a whole tile of indices
+    mask = cols < n_cols                         # guard the ragged edge
+
+    x = tl.load(in_ptr + row * stride + cols, mask=mask, other=-float('inf'))
+    x = x - tl.max(x, axis=0)                    # numerically stable
+    num = tl.exp(x)
+    y = num / tl.sum(num, axis=0)
+
+    tl.store(out_ptr + row * stride + cols, y, mask=mask)
+```
+
+Everything the CUDA version would need — the reduction tree, shared memory for cross-thread
+communication, the syncs, the coalescing analysis — is absent because the compiler supplies it.
+
+| Concept                | CUDA                                  | Triton                        |
+| ---------------------- | ------------------------------------- | ----------------------------- |
+| Unit of code           | one thread                            | one block ("program")          |
+| Index                  | `blockIdx`, `threadIdx`               | `tl.program_id`, `tl.arange`   |
+| Shared memory          | explicit `__shared__` + syncs          | inferred                       |
+| Coalescing             | your responsibility                    | compiler's                     |
+| Bank conflicts         | pad or swizzle by hand                 | compiler's                     |
+| Tensor cores           | `wmma`/`mma` intrinsics                | `tl.dot`                       |
+| Ragged edges           | manual bounds checks                   | `mask=`                        |
+
+| Tunable            | Meaning                                        | Typical      |
+| ------------------ | ---------------------------------------------- | ------------ |
+| `BLOCK_*`          | tile shape — `tl.constexpr`, so specialised     | 16–256       |
+| `num_warps`        | threads per block ÷ 32                          | 4–8          |
+| `num_stages`       | software-pipelining depth for `cp.async`        | 2–5          |
+| `tl.constexpr`     | compile-time constant → a new kernel per value  | —            |
+
+```python
+@triton.autotune(
+    configs=[triton.Config({'BLOCK_M': m, 'BLOCK_N': n}, num_warps=w, num_stages=s)
+             for m in (64, 128) for n in (64, 128) for w in (4, 8) for s in (3, 4)],
+    key=['M', 'N', 'K'],          # re-benchmark when these change
+)
+@triton.jit
+def matmul_kernel(...): ...
+```
+
+| Fact                                   | Value                                    |
+| -------------------------------------- | ---------------------------------------- |
+| Compile pipeline                       | Triton IR → TritonGPU IR → LLVM IR → PTX  |
+| First-compile cost per kernel          | ~0.5–5 s                                  |
+| Autotune cost                          | configs × benchmark runs — often minutes  |
+| Cache                                  | `~/.triton/cache`, keyed by source + constexpr |
+| Typical Triton vs cuBLAS on GEMM       | 80–95% of library                         |
+| Typical Triton vs hand CUDA, elementwise | ~100%                                   |
+
+<Callout type="trap" title="constexpr multiplies your kernels">
+  Every distinct `tl.constexpr` value compiles a separate kernel. An autotune space of 32 configs
+  across 5 shapes is 160 compilations on first run. This is a large part of `max-autotune`'s compile
+  time, and why the Triton cache directory matters so much in production.
+</Callout>
+
+## Critical thinking
+
+<Probe q="Why is a block-level language a better codegen target than CUDA C?">
+
+Because the things Triton removes are exactly the things a code generator is bad at.
+
+To emit correct CUDA C, Inductor would have to decide the thread-to-data mapping and verify it
+coalesces; allocate shared memory and place every `__syncthreads()` correctly, where an error is a
+race rather than a compile failure; handle ragged edges with bounds checks per access; and select
+tensor-core intrinsics with their layout requirements. Each is a *global* property of the kernel, so
+a local mistake produces a silently wrong or slow kernel rather than an error.
+
+In Triton those are the compiler's obligations. The generator emits per-block code with symbolic tile
+sizes and a `mask` for the edges, and correctness follows from the language's semantics rather than
+from the generator's cleverness. Fusion becomes textual composition of block-level expressions, which
+is exactly what Inductor's define-by-index representation (Module 6) produces naturally.
+
+There is a second, less obvious reason: **portability**. The same Triton kernel compiles for NVIDIA
+and AMD, because the block abstraction does not encode a warp size or a specific memory hierarchy.
+Inductor gets multi-vendor support without a second backend.
+
+The trade is a ceiling. For the last 10–20% on a GEMM you need control Triton deliberately does not
+expose — which is why Inductor calls cuBLAS for matmul and uses Triton for everything around it. The
+right way to hold it: Triton is the language for the 95% of kernels nobody was ever going to
+hand-write, not a replacement for the 5% that are hand-written by specialists.
+
+</Probe>
+
+<Probe q="Walk through what the compiler must infer from that softmax kernel.">
+
+The source says what to compute; the compiler decides essentially everything about how.
+
+**Thread mapping.** `BLOCK` might be 1024 with `num_warps=8`, so 256 threads each handle 4 elements.
+That distribution is chosen so the resulting loads are coalesced — the hardware series' Module 2
+requirement, satisfied by construction rather than by the author.
+
+**Reduction strategy.** `tl.max` and `tl.sum` are cross-thread reductions. The compiler emits a
+warp-level shuffle reduction, then a cross-warp reduction through shared memory, with the syncs in
+the right places. In CUDA this is 20 lines that people get subtly wrong.
+
+**Memory placement.** `x` is used three times — for the max, the subtract, and the exp. The compiler
+keeps it in registers rather than reloading, and decides when a value must spill to shared memory
+because it is needed across warps.
+
+**Masking.** `mask=mask, other=-inf` becomes predicated loads; the `-inf` fill is what makes the max
+correct on the ragged edge without a separate code path.
+
+**Fusion and scheduling.** The exp is computed once and reused; loads are hoisted and scheduled to
+overlap with arithmetic.
+
+**Instruction selection.** `tl.exp` maps to the fast SFU path or a polynomial depending on precision
+requirements.
+
+The point to extract: this kernel is *one pass* over the row despite computing a max, a sum and an
+elementwise transform — precisely the fusion win from Module 3, expressed in a way where it is the
+obvious way to write it rather than a manual optimisation.
+
+</Probe>
+
+<Probe q="What does autotune actually search, and why can it not be replaced by a cost model?">
+
+It searches tile shapes (`BLOCK_M/N/K`), `num_warps`, `num_stages`, and sometimes ordering or
+swizzling parameters — then benchmarks each configuration on the real shapes and caches the winner
+keyed by the `key=` list.
+
+A cost model struggles because the objective is genuinely discontinuous in the parameters:
+
+- **Occupancy is a step function.** Registers per thread determine blocks per SM as an integer, so
+  one extra register can halve occupancy. A smooth model cannot see the cliff.
+- **Spilling is a cliff, not a slope.** Crossing 255 registers converts register access into local
+  memory traffic — a qualitative change.
+- **Wave quantisation.** Whether the grid divides evenly into SMs is a modular-arithmetic property of
+  tile size and problem shape.
+- **The memory system is not analytic.** L2 hit rates depend on scheduling order and on what else is
+  resident.
+- **Hardware and toolchain vary.** The same config differs across A100, H100 and driver versions.
+
+So the honest position is that autotuning is empirical for the same reason kernel tuning has always
+been empirical, and Triton simply makes running the experiment cheap — you generate 32 variants from
+one source instead of writing 32 kernels.
+
+The cost is compile time, and it is why `max-autotune` is 3–20× slower to compile and why persisting
+`~/.triton/cache` (and Inductor's cache) across processes is a production concern rather than a
+detail.
+
+</Probe>
+
+<Probe q="When should you write a Triton kernel yourself rather than letting Inductor generate one?">
+
+Four situations, and the first is by far the most common.
+
+1. **Inductor cannot express the algorithm.** The clearest case is an algorithm with a different
+   *structure*, not just a different fusion — FlashAttention is the canonical example. It is not a
+   fused version of the naive attention graph; it is a different algorithm with online softmax and
+   tiling that never materialises the $N \times N$ matrix. No scheduler discovers that by fusing the
+   graph it was given.
+2. **A custom op with no ATen decomposition.** Novel quantisation formats, custom sparsity, unusual
+   layouts. Write the kernel, register it as a custom op with a `FakeTensor` rule so Dynamo can trace
+   through it, and Inductor treats it as an opaque node.
+3. **Inductor's fusion decision is wrong and you can prove it.** Read the generated code first — if
+   it is spilling, a hand-written version with a smaller tile may win.
+4. **Numerical control.** When you need a specific accumulation order or precision that the
+   decomposition does not preserve.
+
+What you should *not* do is write Triton for ordinary elementwise fusion. Inductor is good at it, it
+adapts to shapes automatically, and hand-written kernels rot as the model changes.
+
+The healthy mental model is that Inductor and hand-written Triton are the same language at different
+authorship levels, so dropping down is a local decision rather than a rewrite — which is a materially
+better position than a compiler whose output you cannot read or replace.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="State the abstraction difference between CUDA and Triton, and what the compiler takes over.">
+
+CUDA's unit is the **thread**; Triton's is the **block**, operating on whole tiles via `tl.load`,
+`tl.sum`, `tl.dot`. The compiler takes over thread-to-data mapping (and therefore coalescing), shared
+memory allocation and synchronisation, bank-conflict avoidance, reduction tree generation, and
+tensor-core instruction selection. You keep tile shape, blocking strategy and algorithm.
+
+</SelfCheck>
+
+<SelfCheck q="Why is Triton a better codegen target than CUDA C?">
+
+Because the obligations it removes are global properties a generator handles badly — thread mapping
+and coalescing, correct `__syncthreads()` placement (where errors are races, not compile failures),
+per-access bounds checks, and tensor-core layout requirements. In Triton correctness follows from
+language semantics, fusion is textual composition of block expressions matching Inductor's
+define-by-index form, and the same kernel compiles for NVIDIA and AMD. The cost is a ceiling of
+roughly 80–95% of a tuned library GEMM.
+
+</SelfCheck>
+
+<SelfCheck q="Name five things the compiler infers from a Triton softmax.">
+
+The thread-to-data distribution such that loads coalesce; the warp-shuffle plus cross-warp
+shared-memory reduction for `tl.max`/`tl.sum` with correct synchronisation; register versus shared
+placement for values reused across the kernel; predicated loads with an `-inf` fill for the masked
+ragged edge; and instruction selection for `tl.exp`. The result is a single pass over the row that
+computes a max, a sum and an elementwise transform.
+
+</SelfCheck>
+
+<SelfCheck q="Why must autotuning be empirical?">
+
+Because the objective is discontinuous in the parameters: occupancy is a step function of registers
+per thread, register spilling is a cliff at 255, wave quantisation is modular arithmetic on tile size
+versus SM count, L2 behaviour depends on scheduling order and co-residents, and results differ across
+architectures and driver versions. Triton's contribution is not a better model but a cheaper
+experiment — 32 variants from one source. The price is compile time, hence the cache.
+
+</SelfCheck>
+
+<SelfCheck q="Give the strongest reason to hand-write a Triton kernel.">
+
+When the algorithm has a different *structure*, not just a different fusion. FlashAttention is not a
+fused version of naive attention — it is online softmax with tiling that never materialises the
+$N\times N$ matrix, and no scheduler finds that by fusing the graph it was handed. Secondary reasons:
+custom ops with no ATen decomposition, a provably wrong fusion decision, and control over
+accumulation order. Do not hand-write ordinary elementwise fusion.
+
+</SelfCheck>

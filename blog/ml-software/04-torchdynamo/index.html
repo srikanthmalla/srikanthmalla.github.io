@@ -1,0 +1,537 @@
+<!DOCTYPE html><html lang="en" data-astro-cid-z4jru4n3><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>4. TorchDynamo: capturing Python at runtime — ML Software &amp; Compilers</title><meta name="description" content="Two earlier attempts failed by being silently wrong or by demanding a Python subset. Dynamo takes a third route: capture bytecode, guard the assumptions, and bail out when it cannot."><link rel="icon" href="data:,"><script>
+      (() => {
+        try {
+          const t = localStorage.getItem('refresher:theme');
+          if (t === 'light') document.documentElement.classList.add('light');
+        } catch (e) {}
+      })();
+    </script><link rel="stylesheet" href="/blog/_astro/BaseLayout.B9q2yynj.css"><style>.wrap[data-astro-cid-5x65ok44]{max-width:68ch;margin-inline:auto;padding:3rem 1.25rem 6rem}@media (width>=1024px){.wrap[data-astro-cid-5x65ok44]{max-width:calc(68ch + 6rem);padding-inline:3rem}}.mhead[data-astro-cid-5x65ok44]{border-block-end:1px solid var(--rule);margin-block-end:.5rem;padding-block-end:1.75rem}.mhead-kicker[data-astro-cid-5x65ok44]{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint);margin:0 0 .85rem;font-size:.6875rem;font-weight:500}.mhead-n[data-astro-cid-5x65ok44]{color:var(--accent);font-weight:640}.mhead-dot[data-astro-cid-5x65ok44]{opacity:.5;padding-inline:.35rem}.mhead-title[data-astro-cid-5x65ok44]{font-family:var(--font-sans);letter-spacing:-.027em;color:var(--ink-strong);text-wrap:balance;margin:0;font-size:clamp(1.75rem,1.3rem + 1.9vw,2.375rem);font-weight:660;line-height:1.12}.mhead-blurb[data-astro-cid-5x65ok44]{color:var(--ink-muted);max-width:58ch;margin:.85rem 0 0;font-size:1.0625rem;line-height:1.6}.mfoot[data-astro-cid-5x65ok44]{border-block-start:1px solid var(--rule);margin-block-start:4rem;padding-block-start:1.75rem}.mark[data-astro-cid-5x65ok44]{font-family:var(--font-sans);border:1px solid var(--rule);background:var(--bg-raised);color:var(--ink-muted);cursor:pointer;border-radius:5px;padding:.4rem .85rem;font-size:.75rem;font-weight:550}.mark[data-astro-cid-5x65ok44]:hover{color:var(--ink-strong);border-color:var(--ink-faint)}.mark[data-astro-cid-5x65ok44][aria-pressed=true]{color:var(--bridge);border-color:color-mix(in oklab, var(--bridge) 45%, var(--rule))}.pager[data-astro-cid-5x65ok44]{grid-template-columns:1fr 1fr;gap:1rem;margin-block-start:2rem;display:grid}.pager-link[data-astro-cid-5x65ok44]{border:1px solid var(--rule);font-family:var(--font-sans);border-radius:6px;flex-direction:column;gap:.25rem;padding:.75rem .9rem;text-decoration:none;display:flex}.pager-link[data-astro-cid-5x65ok44]:hover{border-color:var(--ink-faint);background:var(--bg-raised)}.pager-link[data-astro-cid-5x65ok44].is-next{text-align:end}.pager-dir[data-astro-cid-5x65ok44]{text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);font-size:.6875rem}.pager-title[data-astro-cid-5x65ok44]{color:var(--ink-strong);font-size:.8125rem;font-weight:550;line-height:1.35}
+</style><style>.callout{border:1px solid var(--rule);border-inline-start-width:2px;border-radius:5px;margin-block:1.75rem;padding:.9rem 1.1rem 1rem;font-size:.9375rem;line-height:1.65}.callout-probe{border-inline-start-color:var(--probe);background:var(--probe-bg)}.callout-trap{border-inline-start-color:var(--trap);background:var(--trap-bg)}.callout-bridge{border-inline-start-color:var(--bridge);background:var(--bridge-bg)}.callout-label{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;align-items:center;gap:.45rem;margin:0 0 .5rem;font-size:.6875rem;font-weight:620;display:flex}.callout-probe .callout-label{color:var(--probe)}.callout-trap .callout-label{color:var(--trap)}.callout-bridge .callout-label{color:var(--bridge)}.callout-mark{background:currentColor;border-radius:50%;flex:none;width:5px;height:5px}.callout-title{text-transform:none;letter-spacing:0;color:var(--ink-muted);font-weight:500}.callout-body>:first-child{margin-block-start:0}.callout-body>:last-child{margin-block-end:0}.callout-body>*+*{margin-block-start:.75em}.probe{margin-block:1.75rem}.prose .probe-q{font-family:var(--font-sans);letter-spacing:-.01em;color:var(--ink-strong);margin:0 0 .6rem;padding-inline-start:1.15rem;font-size:1rem;font-weight:600;line-height:1.45;position:relative}.prose .probe-q:before{content:"›";color:var(--accent);font-weight:700;position:absolute;inset-inline-start:0}.probe-a{border-inline-start:1px solid var(--rule);margin-inline-start:.1rem;padding-inline-start:1.15rem}.probe-a>*+*{margin-block-start:1.15em}.probe-a>:first-child{margin-block-start:0}.probe-a>:last-child{margin-block-end:0}.selfcheck{border-block-start:1px solid var(--rule-soft)}.selfcheck:last-of-type{border-block-end:1px solid var(--rule-soft)}.prose>.selfcheck+.selfcheck{margin-block-start:0}.selfcheck>summary{cursor:pointer;color:var(--ink);align-items:baseline;gap:1rem;padding:.7rem .2rem;list-style:none;display:flex}.selfcheck>summary::-webkit-details-marker{display:none}.selfcheck>summary:hover{color:var(--ink-strong)}.selfcheck-q{flex:1}.selfcheck-q code{white-space:nowrap}.selfcheck-cue{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);flex:none;padding-block-start:.15rem;font-size:.6875rem;font-weight:600}.selfcheck>summary:hover .selfcheck-cue{color:var(--accent)}.selfcheck-cue-hide,.selfcheck[open] .selfcheck-cue-show{display:none}.selfcheck[open] .selfcheck-cue-hide{display:inline}.selfcheck-a{color:var(--ink-muted);border-inline-start:2px solid var(--rule);margin-block-end:.9rem;margin-inline-start:.2rem;padding:.15rem .2rem 1.05rem;padding-inline-start:1rem;font-size:.9375rem}.selfcheck-a>:first-child{margin-block-start:0}.selfcheck-a>:last-child{margin-block-end:0}.selfcheck-a>*+*{margin-block-start:.7em}.selfcheck-a strong{color:var(--ink)}
+</style></head><body data-astro-cid-z4jru4n3><a href="#content" class="skip" data-astro-cid-z4jru4n3>Skip to content</a><div class="shell" data-astro-cid-z4jru4n3><aside class="rail" data-rail data-astro-cid-z4jru4n3><nav class="rail-nav" aria-label="ML Software &amp; Compilers contents" data-astro-cid-wv7whodv><div class="rail-head" data-astro-cid-wv7whodv><a href="/blog/" class="rail-up" data-astro-cid-wv7whodv>All series</a><a href="/blog/ml-software/" class="rail-home" data-astro-cid-wv7whodv><span class="rail-home-title" data-astro-cid-wv7whodv>ML Software &amp; Compilers</span><span class="rail-home-sub" data-astro-cid-wv7whodv>How PyTorch becomes kernels</span></a><p class="rail-progress" data-astro-cid-wv7whodv><span class="rail-progress-bar" data-astro-cid-wv7whodv><span data-progress-fill data-astro-cid-wv7whodv></span></span><span class="rail-progress-text" data-astro-cid-wv7whodv><span data-progress-count data-astro-cid-wv7whodv>0</span>/14 reviewed</span></p></div><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part J</span>The fault line</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-software/01-why-eager-won/" class="rail-link" title="TensorFlow 1 made the right performance bet and lost anyway. The interesting question is why JAX later made the same bet and won." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>1</span><span class="rail-title" data-astro-cid-wv7whodv>Why eager won</span><span class="rail-tick" data-tick="ml-software/01-why-eager-won" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/02-eager-internals/" class="rail-link" title="Python, the dispatcher, the autograd tape and the allocator all run before your kernel does. Roughly 8 µs of CPU work to launch 2 µs of GPU work." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>2</span><span class="rail-title" data-astro-cid-wv7whodv>What eager mode actually does per op</span><span class="rail-tick" data-tick="ml-software/02-eager-internals" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/03-what-graph-mode-buys/" class="rail-link" title="Three overheads, three mechanisms, three different ceilings. Knowing which one binds tells you whether compiling will help before you try it." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>3</span><span class="rail-title" data-astro-cid-wv7whodv>What graph mode actually buys</span><span class="rail-tick" data-tick="ml-software/03-what-graph-mode-buys" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part K</span>Capture</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-software/04-torchdynamo/" class="rail-link is-active" aria-current="page" title="Two earlier attempts failed by being silently wrong or by demanding a Python subset. Dynamo takes a third route: capture bytecode, guard the assumptions, and bail out when it cannot." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>4</span><span class="rail-title" data-astro-cid-wv7whodv>TorchDynamo: capturing Python at runtime</span><span class="rail-tick" data-tick="ml-software/04-torchdynamo" aria-hidden="true" data-astro-cid-wv7whodv></span></a><ul class="rail-sub" data-rail-sub data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="#the-core-mental-model" class="rail-sub-link" data-toc="the-core-mental-model" data-astro-cid-wv7whodv>The core mental model</a></li><li data-astro-cid-wv7whodv><a href="#numbers-worth-memorizing" class="rail-sub-link" data-toc="numbers-worth-memorizing" data-astro-cid-wv7whodv>Numbers worth memorizing</a></li><li data-astro-cid-wv7whodv><a href="#critical-thinking" class="rail-sub-link" data-toc="critical-thinking" data-astro-cid-wv7whodv>Critical thinking</a></li><li data-astro-cid-wv7whodv><a href="#self-check" class="rail-sub-link" data-toc="self-check" data-astro-cid-wv7whodv>Self-check</a></li></ul></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/05-ir-ladder/" class="rail-link" title="ATen to Prims, functionalization, and AOTAutograd. Then the other lowering universe — MLIR dialects, torch-mlir, StableHLO — and why the CUDA path never goes there." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>5</span><span class="rail-title" data-astro-cid-wv7whodv>The IR ladder, and the MLIR fork in the road</span><span class="rail-tick" data-tick="ml-software/05-ir-ladder" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/06-inductor/" class="rail-link" title="The scheduler is the compiler. Fusion is a graph-partitioning problem under register and occupancy constraints, and the interesting failures are all in where it draws the lines." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>6</span><span class="rail-title" data-astro-cid-wv7whodv>Inductor: deciding what to fuse</span><span class="rail-tick" data-tick="ml-software/06-inductor" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/07-triton/" class="rail-link" title="CUDA makes you write per-thread code and manage shared memory. Triton makes you write per-block code and gives the compiler the rest — which is exactly what makes it a codegen target." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>7</span><span class="rail-title" data-astro-cid-wv7whodv>Triton: the block programming model</span><span class="rail-tick" data-tick="ml-software/07-triton" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part L</span>Runtime</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-software/08-caching-allocator/" class="rail-link" title="cudaMalloc synchronises the device, so PyTorch calls it as rarely as possible. The design that follows — pools, splitting, stream ownership — explains almost every confusing OOM you will ever see." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>8</span><span class="rail-title" data-astro-cid-wv7whodv>The caching allocator</span><span class="rail-tick" data-tick="ml-software/08-caching-allocator" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/09-cuda-graphs/" class="rail-link" title="Record the launches once, replay them as one submission. The constraints — static addresses, static shapes, no CPU in the loop — are what the rest of the stack has to bend around." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>9</span><span class="rail-title" data-astro-cid-wv7whodv>CUDA Graphs</span><span class="rail-tick" data-tick="ml-software/09-cuda-graphs" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part M</span>Where it breaks</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-software/10-dynamic-shapes/" class="rail-link" title="Specializing on a shape makes the fastest kernel and the least reusable one. Symbolic shapes are the compromise, and 0/1 specialization is the trap inside it." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>10</span><span class="rail-title" data-astro-cid-wv7whodv>Dynamic shapes and recompilation</span><span class="rail-tick" data-tick="ml-software/10-dynamic-shapes" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/11-moe/" class="rail-link" title="Routing makes every expert's batch size a function of the data. Capacity factors, grouped GEMM and sort-permute are all ways of buying back a static shape — and each one costs something real." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>11</span><span class="rail-title" data-astro-cid-wv7whodv>MoE: dynamism the compiler cannot remove</span><span class="rail-tick" data-tick="ml-software/11-moe" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/12-topk-and-non-gemm/" class="rail-link" title="Selection has low arithmetic intensity, irregular access and a serial dependency. Vocabularies grew to 256k and it became a visible fraction of every decode step." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>12</span><span class="rail-title" data-astro-cid-wv7whodv>top-k, sort, and the ops that are not GEMM</span><span class="rail-tick" data-tick="ml-software/12-topk-and-non-gemm" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part N</span>Synthesis</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-software/13-partitioning-the-stack/" class="rail-link" title="What to compile, what to leave eager, what to hand-write. A decision procedure that starts from which overhead binds, not from which tool is newest." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>13</span><span class="rail-title" data-astro-cid-wv7whodv>Partitioning the stack</span><span class="rail-tick" data-tick="ml-software/13-partitioning-the-stack" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/14-inference-server/" class="rail-link" title="Continuous batching wants shapes that change every step; CUDA Graphs want shapes that never change. Paged KV, bucketing and piecewise compilation are how vLLM and SGLang reconcile them." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>14</span><span class="rail-title" data-astro-cid-wv7whodv>The inference server</span><span class="rail-tick" data-tick="ml-software/14-inference-server" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-other" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv>Other series</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>ML Hardware &amp; Low-Latency Systems</span></a></li><li data-astro-cid-wv7whodv><a href="/blog/diffusion/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>Diffusion</span></a></li></ul></section><div class="rail-foot" data-astro-cid-wv7whodv><p data-astro-cid-wv7whodv><kbd data-astro-cid-wv7whodv>j</kbd> <kbd data-astro-cid-wv7whodv>k</kbd> section · <kbd data-astro-cid-wv7whodv>/</kbd> search · <kbd data-astro-cid-wv7whodv>[</kbd><kbd data-astro-cid-wv7whodv>]</kbd> module</p></div></nav></aside><div class="col" data-astro-cid-z4jru4n3><header class="topbar" data-astro-cid-z4jru4n3><button class="icon-btn only-narrow" data-rail-toggle aria-label="Toggle contents" data-astro-cid-z4jru4n3><svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M1.5 3.5h12M1.5 7.5h12M1.5 11.5h12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg></button><p class="crumb" data-astro-cid-z4jru4n3>Part K · Capture › TorchDynamo: capturing Python at runtime</p><div class="topbar-actions" data-astro-cid-z4jru4n3><button class="search-btn" data-search-open aria-label="Search" data-astro-cid-z4jru4n3><span aria-hidden="true" data-astro-cid-z4jru4n3>⌕</span><span class="search-btn-label" data-astro-cid-z4jru4n3>Search</span><kbd data-astro-cid-z4jru4n3>/</kbd></button><button class="icon-btn" data-theme-toggle aria-label="Toggle theme" data-astro-cid-z4jru4n3><svg class="i-sun" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><circle cx="7.5" cy="7.5" r="3" stroke="currentColor" stroke-width="1.2" data-astro-cid-z4jru4n3></circle><path d="M7.5 .8v1.7M7.5 12.5v1.7M14.2 7.5h-1.7M2.5 7.5H.8M12.24 2.76l-1.2 1.2M3.96 11.04l-1.2 1.2M12.24 12.24l-1.2-1.2M3.96 3.96l-1.2-1.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg><svg class="i-moon" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M13 9.3A5.8 5.8 0 0 1 5.7 2 5.9 5.9 0 1 0 13 9.3Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" data-astro-cid-z4jru4n3></path></svg></button><a class="site-link" href="/" data-astro-cid-z4jru4n3>srikanthmalla.com</a></div></header><main id="content" data-astro-cid-z4jru4n3><article class="wrap" data-article data-astro-cid-5x65ok44><header class="mhead" data-astro-cid-5x65ok44><p class="mhead-kicker" data-astro-cid-5x65ok44><span class="mhead-n" data-astro-cid-5x65ok44>Module 4</span><span class="mhead-dot" data-astro-cid-5x65ok44>·</span>Part K — Capture<span class="mhead-dot" data-astro-cid-5x65ok44>·</span>16 min</p><h1 class="mhead-title" data-astro-cid-5x65ok44>TorchDynamo: capturing Python at runtime</h1><p class="mhead-blurb" data-astro-cid-5x65ok44>Two earlier attempts failed by being silently wrong or by demanding a Python subset. Dynamo takes a third route: capture bytecode, guard the assumptions, and bail out when it cannot.</p></header><div class="prose" data-astro-cid-5x65ok44><h2 id="the-core-mental-model">The core mental model<a class="anchor" href="#the-core-mental-model" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>PyTorch tried to capture graphs twice before and both attempts failed in instructive ways.
+<code>torch.jit.trace</code> runs your function once with example inputs and records the ops that executed. It
+is easy to use and <strong>silently wrong</strong>: Python control flow is evaluated during tracing, so an <code>if</code>
+bakes in whichever branch the example took, a Python <code>len()</code> becomes a constant, and a loop is
+unrolled to the length it happened to have. The model runs, produces plausible numbers, and is
+incorrect for any input that would have taken the other branch. <code>torch.jit.script</code> went the other
+way and <em>compiled</em> Python — but only a subset, TorchScript, with its own type system and its own
+error messages. It was correct, and it demanded you rewrite your model in a language nobody wanted
+to learn for a benefit they could not see.</p>
+<p>Dynamo takes a third route: it hooks CPython’s <strong>frame evaluation API</strong> (PEP 523), so before a
+Python function executes, Dynamo gets its bytecode. It symbolically interprets that bytecode,
+tracking which values are tensors and which are ordinary Python, and builds an FX graph of the
+tensor operations. When it reaches something it cannot represent — a data-dependent branch, a call
+into an opaque C extension, a <code>print</code> — it does not fail and does not guess. It <strong>breaks the
+graph</strong>: compiles what it has, emits a call back into the Python interpreter for the awkward part,
+and resumes capturing afterwards. The user’s code is unmodified and always correct, because the
+fallback is simply running the original Python.</p>
+<p>The second half of the design is <strong>guards</strong>. A compiled graph is only valid under the assumptions
+made while tracing — this tensor was <code>float16</code> on <code>cuda:0</code> with shape <code>(4, 512)</code>, this Python flag
+was <code>True</code>, this attribute had that value. Dynamo records those as guards and checks them on entry;
+if they hold, it runs the compiled code, and if not, it compiles a new variant. That is what makes
+capture safe in a language as dynamic as Python: <strong>you are not required to prove your program is
+static, only to pay when it turns out not to be.</strong> Everything difficult in Part M is a consequence of
+what those guards have to check.</p>
+<aside class="callout callout-bridge"><p class="callout-label"><span class="callout-mark" aria-hidden="true"></span>Bridge to what you know<span class="callout-title"> · you have met this design before</span></p><div class="callout-body"><p>Guards plus deoptimisation is exactly how a tracing JIT for a dynamic language works — V8’s hidden
+classes, LuaJIT’s trace exits, PyPy’s guards. Dynamo is a tracing JIT that happens to emit tensor
+graphs instead of machine code, and its failure modes are the classic ones: guard churn and
+bailout storms.</p></div></aside>
+<h2 id="numbers-worth-memorizing">Numbers worth memorizing<a class="anchor" href="#numbers-worth-memorizing" aria-hidden="true" tabindex="-1">#</a></h2>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Capture mechanism</th><th>Correctness</th><th>Ergonomics</th><th>Verdict</th></tr></thead><tbody><tr><td><code>torch.jit.trace</code></td><td><strong>silently wrong</strong> on control flow</td><td>trivial to use</td><td>dangerous</td></tr><tr><td><code>torch.jit.script</code></td><td>correct</td><td>a Python subset, own errors</td><td>rejected by users</td></tr><tr><td><code>torch.fx.symbolic_trace</code></td><td>fails on data-dependent flow</td><td>proxy-based</td><td>fine for clean models</td></tr><tr><td><strong>TorchDynamo</strong></td><td>correct — falls back to Python</td><td>transparent</td><td>the answer</td></tr></tbody></table></div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Quantity</th><th>Value</th></tr></thead><tbody><tr><td>Hook</td><td>CPython frame evaluation API (PEP 523), 3.8+</td></tr><tr><td>Output</td><td>an FX graph of ATen/torch ops + guards</td></tr><tr><td>Guard check cost</td><td>~1–5 µs per call, on the fast path</td></tr><tr><td><code>cache_size_limit</code></td><td>8 by default — then it gives up and runs eager</td></tr><tr><td>Cost of one graph break</td><td>2 extra graphs + a Python round trip; kills CUDA Graphs across the boundary</td></tr></tbody></table></div>
+<p>Common graph-break causes, in roughly descending frequency:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Cause</th><th>Fix</th></tr></thead><tbody><tr><td>Data-dependent branch (<code>if x.sum() &gt; 0</code>)</td><td>restructure, or accept the break</td></tr><tr><td><code>.item()</code>, <code>.tolist()</code>, <code>int(tensor)</code></td><td>keep it on device</td></tr><tr><td><code>print</code>, logging, <code>pdb</code></td><td>remove from the hot path</td></tr><tr><td>Unsupported builtin or C extension</td><td>often fixed in a newer PyTorch</td></tr><tr><td>Tensor → Python conversion for control</td><td><code>torch.where</code>, masking</td></tr><tr><td><code>try</code>/<code>except</code> around tensor ops</td><td>hoist out</td></tr><tr><td>Calling into a non-traceable library</td><td>wrap as a custom op</td></tr></tbody></table></div>
+<p>The essential debugging incantations:</p>
+<pre class="astro-code astro-code-themes github-light github-dark-default" style="background-color:#fff;--shiki-dark-bg:#0d1117;color:#24292e;--shiki-dark:#e6edf3;overflow-x:auto" tabindex="0" data-language="bash"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E6EDF3">TORCH_LOGS</span><span style="color:#D73A49;--shiki-dark:#FF7B72">=</span><span style="color:#032F62;--shiki-dark:#A5D6FF">graph_breaks,recompiles</span><span style="color:#6F42C1;--shiki-dark:#FFA657"> python</span><span style="color:#032F62;--shiki-dark:#A5D6FF"> train.py</span></span></code></pre>
+<pre class="astro-code astro-code-themes github-light github-dark-default" style="background-color:#fff;--shiki-dark-bg:#0d1117;color:#24292e;--shiki-dark:#e6edf3;overflow-x:auto" tabindex="0" data-language="python"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E6EDF3">torch._dynamo.explain(model)(example_input)   </span><span style="color:#6A737D;--shiki-dark:#8B949E"># every break, with reasons</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E6EDF3">torch.compile(model, </span><span style="color:#E36209;--shiki-dark:#FFA657">fullgraph</span><span style="color:#D73A49;--shiki-dark:#FF7B72">=</span><span style="color:#005CC5;--shiki-dark:#79C0FF">True</span><span style="color:#24292E;--shiki-dark:#E6EDF3">)          </span><span style="color:#6A737D;--shiki-dark:#8B949E"># turn breaks into hard errors</span></span></code></pre>
+<aside class="callout callout-trap"><p class="callout-label"><span class="callout-mark" aria-hidden="true"></span>Common trap<span class="callout-title"> · fullgraph=False hides the problem</span></p><div class="callout-body"><p>The default silently tolerates breaks, so a model shattered into forty graphs still “compiles” and
+still runs — at close to eager speed. Develop with <code>fullgraph=True</code> to see the truth, then relax it
+if the remaining breaks are genuinely acceptable.</p></div></aside>
+<h2 id="critical-thinking">Critical thinking<a class="anchor" href="#critical-thinking" aria-hidden="true" tabindex="-1">#</a></h2>
+<section class="probe"><h3 class="probe-q">Why is torch.jit.trace dangerous rather than merely limited?</h3><div class="probe-a"><p>Because it fails <strong>silently and plausibly</strong>. A limitation you hit is an error message; a limitation
+that produces wrong numbers is a bug that ships.</p><pre class="astro-code astro-code-themes github-light github-dark-default" style="background-color:#fff;--shiki-dark-bg:#0d1117;color:#24292e;--shiki-dark:#e6edf3;overflow-x:auto" tabindex="0" data-language="python"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#FF7B72">def</span><span style="color:#6F42C1;--shiki-dark:#D2A8FF"> forward</span><span style="color:#24292E;--shiki-dark:#E6EDF3">(self, x):</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#FF7B72">    if</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> x.sum() </span><span style="color:#D73A49;--shiki-dark:#FF7B72">&gt;</span><span style="color:#005CC5;--shiki-dark:#79C0FF"> 0</span><span style="color:#24292E;--shiki-dark:#E6EDF3">:        </span><span style="color:#6A737D;--shiki-dark:#8B949E"># evaluated once, during tracing</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#FF7B72">        return</span><span style="color:#005CC5;--shiki-dark:#79C0FF"> self</span><span style="color:#24292E;--shiki-dark:#E6EDF3">.a(x)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#FF7B72">    return</span><span style="color:#005CC5;--shiki-dark:#79C0FF"> self</span><span style="color:#24292E;--shiki-dark:#E6EDF3">.b(x)       </span><span style="color:#6A737D;--shiki-dark:#8B949E"># if the example was positive, this branch is gone forever</span></span></code></pre><p>The traced module contains only <code>self.a</code>. It runs, returns tensors of the right shape and dtype, and
+is wrong for half its inputs. Nothing warns you. The same applies to <code>for i in range(x.shape[0])</code>,
+which unrolls to the example’s batch size and then produces garbage or a shape error later, and to
+any Python <code>int</code> derived from a tensor, which is frozen as a constant.</p><p>Contrast the two safe designs. <code>script</code> refuses to compile what it cannot represent — correct, but
+it moved the burden to the user. Dynamo represents what it can and <strong>falls back to the interpreter</strong>
+for the rest, so the failure mode is a performance loss rather than a correctness loss.</p><p>That ordering is the design principle worth extracting: when a capture system meets something it
+cannot express, its options are <em>be wrong</em>, <em>refuse</em>, or <em>deoptimise</em>. Only the third gives you both
+correctness and adoption, and it is why every successful JIT for a dynamic language has chosen it.</p></div></section>
+<section class="probe"><h3 class="probe-q">Walk through exactly what happens at a graph break, and why one break can cost far more than it looks.</h3><div class="probe-a"><p>Take a break in the middle of a function. Dynamo compiles the ops it captured before the break into
+graph A, emits a <strong>resume function</strong> whose bytecode continues from the break point, runs the
+offending operation in the ordinary Python interpreter, then re-enters compilation for graph B.</p><p>The visible cost is modest: two compiled graphs instead of one, plus a Python round trip.</p><p>The costs that are not visible are the ones that matter:</p><ul>
+<li><strong>No fusion across the boundary.</strong> The last op of A and the first of B cannot be fused, so an
+intermediate that would have stayed in registers is now materialised to HBM and read back — the
+Module 3 traffic argument, in reverse.</li>
+<li><strong>CUDA Graphs are dead across it.</strong> A replayable graph cannot contain a Python callback, so
+<code>mode=&quot;reduce-overhead&quot;</code> degrades to capturing each fragment separately, or to nothing. For a
+launch-bound model this alone can erase the entire benefit (Module 9).</li>
+<li><strong>Guards multiply.</strong> Each fragment carries its own guard set, checked on every call.</li>
+<li><strong>Breaks in loops compound.</strong> One break inside a per-layer loop is 32 breaks in a 32-layer model,
+so 33 graphs, none of which can fuse with its neighbours.</li>
+</ul><p>Which is why <code>TORCH_LOGS=graph_breaks</code> is the first thing to run when compilation underdelivers, and
+why <code>fullgraph=True</code> during development is worth the friction. A model reported as “compiled” with
+forty breaks has most of eager’s overhead and all of compilation’s cost.</p></div></section>
+<section class="probe"><h3 class="probe-q">What is in a guard, and why is guard design the hard part?</h3><div class="probe-a"><p>A guard is a cheap predicate over the inputs and the environment that must hold for the compiled code
+to be valid. Typical contents: tensor dtype, device, layout, requires-grad, rank and shape (or a
+symbolic relation on shape, Module 10); the <em>identity</em> or value of Python arguments; the type of
+<code>self</code> and values of attributes it read; global state such as the grad mode and autocast state.</p><p>The design tension is a direct trade:</p><ul>
+<li><strong>Too strict</strong> and you recompile constantly. Guarding on an exact batch size recompiles for every
+batch size; hit <code>cache_size_limit</code> (8) and Dynamo stops trying and runs eager forever — often
+the real reason a model “stopped being fast”.</li>
+<li><strong>Too loose</strong> and you run a compiled graph under assumptions that no longer hold, which is
+miscompilation: silently wrong numbers.</li>
+</ul><p>So guards must be simultaneously <em>sound</em> (never admit an invalid input), <em>precise</em> (not so
+conservative as to recompile needlessly), and <em>cheap</em> (a few microseconds, since they run on every
+call and the whole point was to remove microseconds).</p><p>The clever move is <strong>symbolic shapes</strong>: rather than guarding <code>batch == 4</code>, guard <code>batch &gt;= 2</code> or
+record that two dimensions are equal, so one compiled artifact serves many shapes. That is Module
+10’s subject and it is where most remaining pain in <code>torch.compile</code> lives — because deciding <em>which</em>
+facts to specialise on and which to leave symbolic is undecidable in general, and the heuristics are
+what you fight.</p></div></section>
+<section class="probe"><h3 class="probe-q">Why capture bytecode rather than the Python source, or the ops as they execute?</h3><div class="probe-a"><p>All three have been tried; bytecode is the only one that is both correct and transparent.</p><p><strong>Source-level</strong> (AutoGraph in TF2, and <code>jit.script</code>’s parser) means parsing Python, rewriting
+control flow, and handling every syntactic form the language allows — including code you did not
+write, in libraries you do not control. You end up debugging generated source, and you must
+reimplement Python’s semantics correctly, which nobody has ever quite done.</p><p><strong>Op-level tracing</strong> (<code>jit.trace</code>, <code>fx.symbolic_trace</code>) sees only what executed, so control flow is
+invisible by construction. That is the silent-wrongness failure above; you cannot fix it by trying
+harder, because the information was never observed.</p><p><strong>Bytecode</strong> sits at exactly the right level. It is a small, stable, well-specified instruction set —
+far simpler than Python’s surface syntax. Control flow is <em>explicit</em> as jump instructions, so Dynamo
+can see a branch rather than merely following one. It works regardless of how the source was
+written, including decorated, generated or third-party code. And because PEP 523 lets you replace
+the evaluation of a frame, Dynamo can hand back <strong>modified bytecode</strong> that calls the compiled graph,
+so the fallback path is the interpreter itself rather than a reimplementation of it.</p><p>The cost is that Dynamo must model the CPython interpreter’s stack machine, and is coupled to
+bytecode details that change between Python versions — which is exactly why each new CPython release
+needs Dynamo work. That is a maintenance burden accepted deliberately in exchange for being able to
+capture arbitrary Python correctly.</p></div></section>
+<h2 id="self-check">Self-check<a class="anchor" href="#self-check" aria-hidden="true" tabindex="-1">#</a></h2>
+<details class="selfcheck"><summary><span class="selfcheck-q">Why did trace and script both fail, and what third option does Dynamo take?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p><code>jit.trace</code> records only what executed, so Python control flow is baked in — <strong>silently wrong</strong> for
+inputs taking another branch. <code>jit.script</code> compiled a Python <em>subset</em> with its own type system,
+correct but demanding a rewrite users would not do. Dynamo interprets <strong>bytecode</strong>, captures what it
+can, and falls back to the real interpreter for the rest — so failures cost performance, never
+correctness.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">List the hidden costs of a single graph break.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>No fusion across the boundary, so an intermediate that would have stayed in registers round-trips to
+HBM; CUDA Graphs cannot span it, which can erase the entire benefit for a launch-bound model;
+duplicated guard sets checked per fragment; and a break inside a per-layer loop becomes one per
+layer — 32 breaks and 33 unfusable graphs in a 32-layer model.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">What does a guard contain, and what are the three properties it must satisfy at once?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Dtype, device, layout, requires-grad, rank and shape (or symbolic relations); the identity or value
+of Python arguments and read attributes; and global state like grad and autocast mode. Guards must be
+<strong>sound</strong> (never admit an invalid input), <strong>precise</strong> (not recompiling needlessly), and <strong>cheap</strong> (a
+few microseconds, since they run on every call). Too strict means constant recompilation until
+<code>cache_size_limit</code> is hit and it silently reverts to eager; too loose means miscompilation.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Why bytecode rather than source or executed ops?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Source-level rewriting requires reimplementing Python’s semantics and leaves you debugging generated
+code. Op-level tracing never observes control flow at all, which is why it is silently wrong.
+Bytecode is small, stable and explicit about control flow as jump instructions, works on code you did
+not write, and via PEP 523 lets Dynamo hand back modified bytecode so the fallback is the real
+interpreter. The price is coupling to CPython bytecode details, which is why each Python release
+needs Dynamo work.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Which flag should you develop with, and why is the default misleading?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p><code>fullgraph=True</code>, which turns graph breaks into hard errors. The default tolerates breaks silently,
+so a model shattered into forty graphs still reports as compiled while running at close to eager
+speed and paying compilation cost on top. Pair it with
+<code>TORCH_LOGS=graph_breaks,recompiles</code> and <code>torch._dynamo.explain</code>.</p></div></details></div><footer class="mfoot" data-astro-cid-5x65ok44><button class="mark" data-mark="ml-software/04-torchdynamo" aria-pressed="false" data-astro-cid-5x65ok44>Mark as reviewed</button><nav class="pager" data-astro-cid-5x65ok44><a class="pager-link" href="/blog/ml-software/03-what-graph-mode-buys/" data-prev data-astro-cid-5x65ok44><span class="pager-dir" data-astro-cid-5x65ok44>← Previous</span><span class="pager-title" data-astro-cid-5x65ok44>3. What graph mode actually buys</span></a><a class="pager-link is-next" href="/blog/ml-software/05-ir-ladder/" data-next data-astro-cid-5x65ok44><span class="pager-dir" data-astro-cid-5x65ok44>Next →</span><span class="pager-title" data-astro-cid-5x65ok44>5. The IR ladder, and the MLIR fork in the road</span></a></nav></footer></article></main></div></div><div class="search-overlay" data-search hidden data-astro-cid-ac66eqjo><div class="search-backdrop" data-search-close data-astro-cid-ac66eqjo></div><div class="search-panel" role="dialog" aria-modal="true" aria-label="Search modules" data-astro-cid-ac66eqjo><div class="search-input-row" data-astro-cid-ac66eqjo><span class="search-icon" aria-hidden="true" data-astro-cid-ac66eqjo>⌕</span><input type="text" class="search-input" placeholder="Search all modules…" autocomplete="off" spellcheck="false" data-search-input data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>esc</kbd></div><ul class="search-results" data-search-results data-astro-cid-ac66eqjo></ul><p class="search-empty" data-search-empty hidden data-astro-cid-ac66eqjo>No matches.</p><p class="search-hint" data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>↑</kbd><kbd data-astro-cid-ac66eqjo>↓</kbd> move · <kbd data-astro-cid-ac66eqjo>↵</kbd> open</p></div></div><script>(function(){const indexUrl = "/blog/search.json";
+
+  (() => {
+    const overlay = document.querySelector('[data-search]');
+    if (!overlay) return;
+    const input = overlay.querySelector('[data-search-input]');
+    const list = overlay.querySelector('[data-search-results]');
+    const empty = overlay.querySelector('[data-search-empty]');
+
+    let index = null;
+    let loading = null;
+    let active = 0;
+
+    const load = () => {
+      if (index) return Promise.resolve(index);
+      if (!loading) {
+        loading = fetch(indexUrl)
+          .then((r) => r.json())
+          .then((d) => (index = d))
+          .catch(() => (index = []));
+      }
+      return loading;
+    };
+
+    function open() {
+      overlay.hidden = false;
+      document.documentElement.style.overflow = 'hidden';
+      load().then(() => input.focus());
+      input.focus();
+      input.select();
+    }
+
+    function close() {
+      overlay.hidden = true;
+      document.documentElement.style.overflow = '';
+    }
+
+    function escapeHtml(s) {
+      return s.replace(
+        /[&<>"]/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]
+      );
+    }
+
+    // Excerpt around the first matched term, with the term marked.
+    function excerpt(text, terms) {
+      const lower = text.toLowerCase();
+      let at = -1;
+      for (const t of terms) {
+        const i = lower.indexOf(t);
+        if (i !== -1 && (at === -1 || i < at)) at = i;
+      }
+      if (at === -1) at = 0;
+      const start = Math.max(0, at - 60);
+      let slice = text.slice(start, start + 190);
+      if (start > 0) slice = '…' + slice;
+      if (start + 190 < text.length) slice += '…';
+      let html = escapeHtml(slice);
+      for (const t of terms) {
+        html = html.replace(
+          new RegExp(`(${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'),
+          '<mark>$1</mark>'
+        );
+      }
+      return html;
+    }
+
+    function score(rec, terms) {
+      let s = 0;
+      const hay = (rec.m + ' ' + rec.h + ' ' + (rec.s || '') + ' ' + (rec.k || '')).toLowerCase();
+      const body = rec.t.toLowerCase();
+      for (const t of terms) {
+        if (hay.includes(t)) s += 12;
+        const i = body.indexOf(t);
+        if (i !== -1) s += 4 + Math.max(0, 3 - Math.floor(i / 400));
+        else if (!hay.includes(t)) return 0; // every term must appear
+      }
+      return s;
+    }
+
+    function render(results, terms) {
+      active = 0;
+      list.innerHTML = results
+        .map(
+          (r, i) => `
+          <li>
+            <a href="${r.u}" class="search-hit${i === 0 ? ' is-active' : ''}" data-hit>
+              <span class="search-hit-crumb"><span class="search-hit-series">${escapeHtml(r.s||"")}</span><span class="search-hit-n">${r.n}</span>${escapeHtml(r.m)} <span class="search-hit-sep">›</span> ${escapeHtml(r.h)}</span>
+              <span class="search-hit-text">${excerpt(r.t, terms)}</span>
+            </a>
+          </li>`
+        )
+        .join('');
+      empty.hidden = results.length > 0;
+    }
+
+    function run() {
+      const q = input.value.trim().toLowerCase();
+      if (!q || !index) {
+        list.innerHTML = '';
+        empty.hidden = true;
+        return;
+      }
+      const terms = q.split(/\s+/).filter(Boolean);
+      const results = index
+        .map((r) => ({ r, s: score(r, terms) }))
+        .filter((x) => x.s > 0)
+        .sort((a, b) => b.s - a.s || a.r.n - b.r.n)
+        .slice(0, 12)
+        .map((x) => x.r);
+      render(results, terms);
+    }
+
+    function move(delta) {
+      const hits = list.querySelectorAll('[data-hit]');
+      if (!hits.length) return;
+      hits[active]?.classList.remove('is-active');
+      active = (active + delta + hits.length) % hits.length;
+      hits[active].classList.add('is-active');
+      hits[active].scrollIntoView({ block: 'nearest' });
+    }
+
+    input.addEventListener('input', () => {
+      load().then(run);
+      run();
+    });
+
+    overlay.querySelector('[data-search-close]').addEventListener('click', close);
+
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        move(1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        move(-1);
+      } else if (e.key === 'Enter') {
+        const hit = list.querySelectorAll('[data-hit]')[active];
+        if (hit) {
+          e.preventDefault();
+          window.location.href = hit.getAttribute('href');
+        }
+      }
+    });
+
+    document.querySelectorAll('[data-search-open]').forEach((b) =>
+      b.addEventListener('click', open)
+    );
+
+    window.__openSearch = open;
+  })();
+})();</script><script>(function(){const base = "/blog";
+
+      (() => {
+        const root = document.documentElement;
+
+        /* ---- theme ---------------------------------------------------- */
+        document.querySelector('[data-theme-toggle]')?.addEventListener('click', () => {
+          const light = root.classList.toggle('light');
+          try {
+            localStorage.setItem('refresher:theme', light ? 'light' : 'dark');
+          } catch (e) {}
+        });
+
+        /* ---- progress (localStorage) ---------------------------------- */
+        const KEY = 'refresher:progress';
+        const readSet = () => {
+          try {
+            return new Set(JSON.parse(localStorage.getItem(KEY) || '[]'));
+          } catch (e) {
+            return new Set();
+          }
+        };
+        const writeSet = (s) => {
+          try {
+            localStorage.setItem(KEY, JSON.stringify([...s]));
+          } catch (e) {}
+        };
+
+        function paintProgress() {
+          const done = readSet();
+          const ticks = document.querySelectorAll('[data-tick]');
+          // A module can own more than one tick (rail + contents card), so
+          // count distinct module ids rather than elements.
+          const ids = new Set();
+          ticks.forEach((t) => {
+            const id = t.getAttribute('data-tick');
+            ids.add(id);
+            if (done.has(id)) t.setAttribute('data-read', '');
+            else t.removeAttribute('data-read');
+          });
+          const n = [...ids].filter((id) => done.has(id)).length;
+          const total = ids.size || 1;
+          const fill = document.querySelector('[data-progress-fill]');
+          if (fill) fill.style.width = `${(n / total) * 100}%`;
+          const count = document.querySelector('[data-progress-count]');
+          if (count) count.textContent = String(n);
+          document.querySelectorAll('[data-mark]').forEach((btn) => {
+            const id = btn.getAttribute('data-mark');
+            const on = done.has(id);
+            btn.setAttribute('aria-pressed', String(on));
+            btn.textContent = on ? '✓ Reviewed' : 'Mark as reviewed';
+          });
+        }
+
+        document.querySelectorAll('[data-mark]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-mark');
+            const s = readSet();
+            s.has(id) ? s.delete(id) : s.add(id);
+            writeSet(s);
+            paintProgress();
+          });
+        });
+
+        paintProgress();
+
+        /* ---- scrollspy over h2s, mirrored into the rail --------------- */
+        const article = document.querySelector('[data-article]');
+        const heads = article ? [...article.querySelectorAll('h2[id]')] : [];
+        const subLinks = new Map(
+          [...document.querySelectorAll('[data-toc]')].map((a) => [
+            a.getAttribute('data-toc'),
+            a,
+          ])
+        );
+
+        if (heads.length && subLinks.size) {
+          let currentId = null;
+          const spy = () => {
+            let found = heads[0].id;
+            for (const h of heads) {
+              if (h.getBoundingClientRect().top <= 96) found = h.id;
+              else break;
+            }
+            if (found === currentId) return;
+            subLinks.get(currentId)?.classList.remove('is-current');
+            currentId = found;
+            const el = subLinks.get(currentId);
+            if (el) {
+              el.classList.add('is-current');
+              el.scrollIntoView({ block: 'nearest' });
+            }
+          };
+          spy();
+          addEventListener('scroll', spy, { passive: true });
+        }
+
+        /* ---- keyboard ------------------------------------------------- */
+        const stops = article
+          ? [...article.querySelectorAll('h2[id], h3[id]')]
+          : [];
+
+        function jump(delta) {
+          if (!stops.length) return;
+          // The heading we are "in": the last one scrolled past the threshold.
+          let cur = -1;
+          for (let i = 0; i < stops.length; i++) {
+            if (stops[i].getBoundingClientRect().top <= 100) cur = i;
+            else break;
+          }
+          const target = cur + delta;
+          if (target < 0) return scrollTo({ top: 0, behavior: 'smooth' });
+          if (target >= stops.length) return;
+          stops[target].scrollIntoView({ block: 'start' });
+        }
+
+        addEventListener('keydown', (e) => {
+          const tag = (e.target.tagName || '').toLowerCase();
+          if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+          if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+          if (e.key === '/') {
+            e.preventDefault();
+            window.__openSearch?.();
+          } else if (e.key === 'j') {
+            e.preventDefault();
+            jump(1);
+          } else if (e.key === 'k') {
+            e.preventDefault();
+            jump(-1);
+          } else if (e.key === '[' || e.key === ']') {
+            const sel = e.key === '[' ? '[data-prev]' : '[data-next]';
+            const a = document.querySelector(sel);
+            if (a) {
+              e.preventDefault();
+              window.location.href = a.getAttribute('href');
+            }
+          }
+        });
+
+        /* ---- narrow-screen rail --------------------------------------- */
+        const rail = document.querySelector('[data-rail]');
+        document.querySelector('[data-rail-toggle]')?.addEventListener('click', () => {
+          rail.classList.toggle('is-open');
+        });
+        rail?.addEventListener('click', (e) => {
+          if (e.target.closest('a')) rail.classList.remove('is-open');
+        });
+      })();
+    })();</script></body></html>

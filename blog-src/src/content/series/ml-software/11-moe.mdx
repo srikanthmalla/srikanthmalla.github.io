@@ -1,0 +1,326 @@
+---
+n: 11
+title: 'MoE: dynamism the compiler cannot remove'
+blurb: 'Routing makes every expert''s batch size a function of the data. Capacity factors, grouped GEMM and sort-permute are all ways of buying back a static shape — and each one costs something real.'
+part: 'M'
+minutes: 20
+draft: false
+tags: ['MoE', 'routing', 'capacity factor', 'grouped GEMM', 'expert parallelism', 'all-to-all', 'token dropping', 'load balance', 'megablocks']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+A Mixture-of-Experts layer replaces one FFN with $E$ of them plus a router that sends each token to
+its top-$k$ experts. The point is to grow parameters without growing FLOPs per token: 8 experts with
+top-2 routing is roughly 4× the parameters at roughly the same compute. The problem is that the
+router's output **depends on the activations**, so the number of tokens each expert receives is
+unknown until the forward pass runs. Expert 3 might get 500 tokens this batch and 20 the next.
+
+That single fact defeats the entire apparatus of Parts K and L. Shapes are data-dependent, so
+symbolic shapes cannot help (Module 10) — there is no guard you can check in advance. Kernel launch
+configurations depend on those shapes, so CUDA Graphs cannot capture the layer (Module 9). And you
+cannot even write it as a loop over experts with `x[mask]` without a graph break, because the mask's
+cardinality is a runtime value. A dense transformer is a fixed program applied to varying data; an
+MoE transformer is a **program whose shape is a function of the data**, and no amount of compiler
+sophistication removes that.
+
+So every production MoE implementation buys staticness back, and the choices differ only in what they
+pay. **Capacity factor** fixes each expert's buffer at $C \cdot T k / E$ tokens and pads or drops to
+fit — static shapes, at the cost of wasted compute on padding and lost tokens on overflow.
+**Grouped/batched GEMM** keeps the ragged sizes but launches one kernel that handles variable
+per-group $M$, moving the dynamism into kernel arguments rather than launch configuration — static
+launch, ragged work. **Sort-permute-compute-unpermute** reorders tokens so each expert's rows are
+contiguous, turning the problem into a segmented GEMM over a sorted array. Each is a different point
+on the same trade, and understanding which one a framework chose tells you most of what you need to
+know about its performance profile.
+
+<Callout type="bridge" title="this is the GBDT insight, inverted">
+  The hardware series argues that a decision tree's depth is *control flow*, not a data dependency,
+  so evaluating every node in parallel removes the chain. MoE routing is the opposite: it is a
+  genuine data dependency, and the analogous move — compute every expert for every token — is exactly
+  what MoE exists to avoid. You cannot speculate your way out of it, because the speculation is the
+  entire cost you were saving.
+</Callout>
+
+## Numbers worth memorizing
+
+| Quantity                            | Typical                                       |
+| ----------------------------------- | --------------------------------------------- |
+| Experts $E$                         | 8–256 (Mixtral 8, DeepSeek-V3 256 + shared)   |
+| Top-$k$                             | 1–8, most often **2**                          |
+| Active params / total               | ~1/8 to ~1/20                                  |
+| Capacity factor $C$                 | 1.0–2.0 train, 1.0–1.25 or uncapped at inference |
+| Expert capacity                     | $C \cdot T \cdot k / E$ tokens                 |
+| Tokens dropped at $C = 1.0$         | ~2–10% with a good balance loss                |
+| Load-balance loss weight            | ~0.01                                          |
+
+The imbalance arithmetic, which is the number that drives everything else:
+
+| | Tokens to the busiest expert | Padding waste at that $C$ |
+| --- | --- | --- |
+| Perfect balance | $Tk/E$ | 0% |
+| Realistic ($\sim$1.5× skew) | $1.5\,Tk/E$ | need $C \ge 1.5$, so ~50% waste |
+| $C = 1.0$, dropping | capped at $Tk/E$ | 0% waste, ~2–10% tokens dropped |
+
+Implementation strategies:
+
+| Strategy               | Shapes  | CUDA-graphable | Waste                | Used by |
+| ---------------------- | ------- | -------------- | -------------------- | ------- |
+| Dense (all experts, masked) | static | yes       | $E/k \times$ — defeats the point | toy code |
+| Capacity + pad/drop    | static  | **yes**        | padding, or dropped tokens | classic GShard/Switch |
+| Grouped/batched GEMM   | ragged  | with fixed argument buffers | ~none | modern kernels |
+| Sort + segmented GEMM  | ragged  | with bucketing | ~none, plus sort cost | MegaBlocks-style |
+| Loop over experts      | ragged  | **no**         | none, but launch-bound | eager reference |
+
+| Distributed cost                 | Value                                    |
+| -------------------------------- | ---------------------------------------- |
+| Expert parallelism communication | 2 all-to-all per MoE layer (dispatch + combine) |
+| All-to-all latency, intra-node NVLink | ~10–50 µs                          |
+| All-to-all latency, inter-node   | ~100–500 µs — often the dominant term    |
+| Bytes per all-to-all             | $T \cdot k \cdot d_{\text{model}} \cdot$ dtype |
+
+<Callout type="trap" title="benchmarking MoE with uniform random routing">
+  Synthetic benchmarks often route tokens uniformly, which produces perfect balance and hides the
+  entire problem. Real routers are skewed — some experts specialise and attract far more traffic —
+  and the tail expert sets the layer's latency because everyone waits at the all-to-all. Measure with
+  a real router on real text, and report the *max* expert load, not the mean.
+</Callout>
+
+## Critical thinking
+
+<Probe q="Work through exactly why an MoE layer cannot be captured in a CUDA Graph.">
+
+Because both the launch configuration and the pointer arguments depend on values computed inside the
+forward pass.
+
+Take the natural implementation:
+
+```python
+logits = router(x)                     # [T, E]
+idx = logits.topk(k, dim=-1).indices   # [T, k] — data dependent
+for e in range(E):
+    sel = (idx == e).any(-1)           # runtime cardinality
+    out[sel] += experts[e](x[sel])     # shape unknown until executed
+```
+
+Three separate blockers, and fixing one does not fix the others:
+
+1. **`x[sel]` has a data-dependent shape.** The number of rows is a runtime value, so the GEMM's $M$
+   dimension — and therefore the grid dimensions of the launch — cannot be recorded. A graph records
+   a *fixed* launch configuration.
+2. **The index tensors are data.** Even with fixed shapes, `sel` is computed on device, so any host
+   logic depending on it needs a sync — and no host code runs during replay.
+3. **Allocation.** `x[sel]` allocates a new tensor whose size is unknown, and allocation is forbidden
+   during replay (Module 9).
+
+Capacity-based MoE fixes all three at once, which is why it exists. Fix each expert's buffer at
+$C \cdot Tk/E$ rows, scatter tokens into it with a fixed-shape scatter, run $E$ GEMMs of identical
+known shape, and gather back. Every shape is now a compile-time constant, every allocation is
+static, and there is no host logic in the loop. The layer becomes capturable and the whole of Part L
+applies again.
+
+The price is stated plainly by the arithmetic in the table: with realistic routing skew you need
+$C \approx 1.5$ to avoid dropping tokens, so roughly a third of the expert compute is on padding.
+You bought a static graph with wasted FLOPs — which, at batch 1 where launch overhead dominates
+(Module 9), is very often the right trade even though it looks wasteful.
+
+</Probe>
+
+<Probe q="Capacity factor: what exactly is being traded, and how do you choose it?">
+
+Capacity $C$ sets each expert's buffer to $C \cdot Tk/E$ tokens, and it trades **wasted compute**
+against **dropped tokens**, mediated entirely by how imbalanced your router is.
+
+- $C$ **too low**: the busiest expert overflows and excess tokens are dropped — they skip the FFN
+  entirely and pass through on the residual. Training degrades subtly; inference produces
+  measurably worse output for exactly the tokens the router thought were most specialised.
+- $C$ **too high**: every expert's buffer is sized for the worst case while most are half empty, so
+  you pay FLOPs on padding in every expert, every layer, every step.
+
+The distribution is what decides it. With perfect balance $C = 1.0$ suffices. Real routers skew
+because experts specialise, and a common shape is a busiest expert at 1.3–1.8× the mean — hence
+$C = 1.25$–$2.0$ in practice.
+
+The levers that let you run a lower $C$:
+
+- **Load-balancing loss.** An auxiliary term penalising the dot product of routing probability mass
+  and actual token fractions, weighted around 0.01. It flattens the distribution and directly buys
+  you a lower capacity factor.
+- **Noisy / stochastic routing** during training, which prevents early winner-take-all dynamics.
+- **Expert-choice routing**, which inverts the assignment: instead of each token picking $k$ experts,
+  each expert picks its top $T k / E$ tokens. Load is then **perfectly balanced by construction** and
+  $C = 1.0$ is exact — at the cost that some tokens get more experts than others and some get none,
+  which is fine for training and awkward for autoregressive inference.
+- **Shared experts** (DeepSeek's design), where a always-on expert handles common patterns so the
+  routed experts specialise more cleanly.
+
+At inference the calculus shifts, because dropping a token is a visible quality regression rather
+than a training nuisance. Many serving systems run uncapped with grouped GEMM instead, accepting
+ragged shapes and losing CUDA Graphs for that layer — which is exactly the trade the next probe is
+about.
+
+</Probe>
+
+<Probe q="How does grouped GEMM avoid the padding waste, and what does it give up?">
+
+By moving the dynamism from the **launch configuration** into **kernel arguments**.
+
+A grouped (or batched-variable) GEMM launches one kernel over a fixed grid sized for the *total*
+work, and each block reads a small descriptor array — pointers, and per-group $M$, $N$, $K$ — to
+discover which group it belongs to and where its data lives. The grid does not depend on the split of
+work between groups, only on the total, which is $Tk$ and therefore known. So no expert needs padding
+and no tokens are dropped: every block does useful work on some expert's rows.
+
+MegaBlocks framed this as block-sparse matrix multiplication, which is the clean way to see it — the
+MoE layer is one big block-sparse GEMM whose sparsity pattern is the routing assignment.
+
+What you give up:
+
+- **Load balance within the kernel.** Blocks assigned to a large group finish later, so the kernel's
+  duration is set by the largest group. You removed the *padding* waste, not the *tail* — and at
+  extreme skew the tail can cost as much as the padding would have.
+- **CUDA Graphs, unless you are careful.** The descriptor arrays are device tensors computed at
+  runtime, so the graph can only be captured if those buffers are at fixed addresses with fixed
+  maximum sizes. It is doable — allocate worst-case descriptor buffers and let the grid over-provision
+  — but it is engineering rather than a decorator.
+- **Kernel complexity.** You are now in hand-written CUTLASS or Triton territory (Module 7), not
+  something Inductor generates.
+- **Autotuning difficulty.** The best tile shape depends on group sizes that vary per batch, so a
+  single configuration must serve a distribution.
+
+The honest summary: grouped GEMM is the right answer for throughput-oriented inference where the
+padding waste is the dominant cost, and capacity-based padding remains competitive at small batch
+where launch overhead and graph capture matter more than FLOPs.
+
+</Probe>
+
+<Probe q="Why is the all-to-all usually the real bottleneck, not the expert compute?">
+
+Because expert parallelism puts a **latency-bound collective on the critical path twice per layer**,
+and unlike the compute it does not shrink when you add GPUs.
+
+With experts sharded across devices, each MoE layer must dispatch every token to whichever device
+holds its chosen experts, then combine the results back. That is two all-to-alls. Intra-node over
+NVLink they cost tens of microseconds; **inter-node they are hundreds**, and a 60-layer model with
+MoE every other layer performs 60 of them per forward pass.
+
+Three properties make this worse than the raw number suggests:
+
+1. **It is a synchronisation point.** Every rank waits for the slowest, so the *most loaded expert's
+   device* sets the pace — routing imbalance converts directly into collective latency, which is why
+   the max expert load matters far more than the mean.
+2. **The message sizes are small and irregular.** $T k d_{\text{model}}$ bytes split across $E$
+   destinations means many small transfers, which is the regime where interconnect latency rather
+   than bandwidth binds.
+3. **Adding devices adds hops.** Scaling expert parallelism increases the number of participants and
+   often crosses more node boundaries, so the collective gets *slower* as you scale the thing you
+   scaled it to make faster.
+
+The mitigations are all about overlap and locality: **overlap dispatch with the attention compute**
+of the same layer, so the collective hides behind work that does not depend on it; **place
+frequently co-selected experts on the same node** to keep traffic intra-node; use **shared experts**
+that need no routing at all; and reduce $k$, since traffic scales linearly in it.
+
+The framing worth extracting, and it is the hardware series' argument arriving in a distributed
+setting: this is a *latency* problem wearing a bandwidth problem's clothing. The links are not full;
+you are waiting on round trips and on the slowest participant.
+
+</Probe>
+
+<Probe q="You are asked to make an MoE model CUDA-graphable at batch 1. What do you actually do?">
+
+Batch 1 is the case where you should accept substantial waste, because launch overhead is the
+dominant cost (Module 9) and the FLOPs are nearly free.
+
+Concretely:
+
+1. **Fix capacity and pad.** At batch 1 with a short sequence, $T$ is small and $Tk/E$ may be under
+   one token per expert. Set every expert's buffer to a fixed small size — often just a handful of
+   rows — and accept that most are empty. The absolute waste is tiny because the tensors are tiny.
+2. **Never drop.** At inference, dropping is a quality regression. Size capacity to the worst case
+   you will accept and assert on overflow.
+3. **Make routing a fixed-shape scatter.** Compute the top-$k$ on device, build a fixed-shape
+   assignment matrix, and use `index_add_`/scatter into preallocated buffers — no boolean indexing,
+   no data-dependent allocation.
+4. **Bucket the sequence length** and capture one graph per bucket, sharing pools between them
+   (Module 9).
+5. **Verify.** Count `cudaGraphLaunch` calls per decode step: one per bucket is the target.
+   `TORCH_LOGS=graph_breaks` should be empty for the MoE layer.
+
+And the sanity check that decides whether any of this was worth it: measure the *dense-equivalent*
+time. At batch 1 an MoE layer that pads to full capacity is doing close to dense-model compute
+anyway, so if the graphed MoE is not clearly beating a dense model of the same active size, the
+architecture is buying you nothing at this batch size. MoE's advantage is a throughput advantage; at
+batch 1 you are paying its complexity for a much smaller share of its benefit.
+
+That is the honest conclusion of this module: MoE is a *throughput* architecture, and every technique
+here is about recovering enough staticness to stop it being a latency disaster.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="Why does routing defeat both symbolic shapes and CUDA Graphs?">
+
+Because the number of tokens per expert depends on the **activations**, so it is a data-dependent
+shape: no guard can be checked in advance (Module 10), the GEMM's $M$ and therefore the launch grid
+cannot be recorded (Module 9), and `x[mask]` allocates a runtime-sized tensor, which replay forbids. A
+dense transformer is a fixed program over varying data; an MoE transformer is a program whose *shape*
+is a function of the data.
+
+</SelfCheck>
+
+<SelfCheck q="Give the capacity formula and what C trades.">
+
+Each expert's buffer holds $C \cdot T k / E$ tokens. Too low and the busiest expert overflows, so
+tokens are dropped and skip the FFN entirely — a visible quality regression at inference. Too high and
+every expert pays FLOPs on padding. Realistic router skew of 1.3–1.8× forces $C \approx 1.25$–$2.0$,
+so roughly a third of expert compute can be padding. Lower it with a load-balancing loss (~0.01
+weight), noisy routing, expert-choice routing, or shared experts.
+
+</SelfCheck>
+
+<SelfCheck q="How does grouped GEMM remove padding waste, and what remains?">
+
+It launches one kernel over a grid sized for the *total* work $Tk$, with per-group pointers and
+$M,N,K$ read from device-side descriptor arrays — so the launch configuration no longer depends on
+the split between experts. No padding, no dropping. What remains: the kernel's duration is set by the
+largest group, so the tail is not removed; CUDA Graph capture needs fixed-address, worst-case
+descriptor buffers; and you are in hand-written CUTLASS/Triton territory with autotuning against a
+distribution of group sizes.
+
+</SelfCheck>
+
+<SelfCheck q="Why is the all-to-all the usual bottleneck, and what makes it worse as you scale?">
+
+Two latency-bound collectives per MoE layer sit on the critical path — tens of microseconds
+intra-node, **hundreds inter-node**, times ~60 layers. They synchronise, so the most-loaded expert's
+device sets the pace, converting routing imbalance directly into latency. Messages are small and
+irregular, so interconnect *latency* binds rather than bandwidth. And scaling expert parallelism adds
+participants and node crossings, so the collective slows as you scale.
+
+</SelfCheck>
+
+<SelfCheck q="Making MoE graphable at batch 1: the five steps, and the sanity check.">
+
+Fix capacity and pad (waste is tiny when tensors are tiny); never drop at inference; make routing a
+fixed-shape scatter into preallocated buffers with no boolean indexing; bucket sequence length and
+capture per bucket with shared pools; verify by counting `cudaGraphLaunch` per step. The sanity check:
+compare against a **dense model of the same active size** — a fully padded MoE at batch 1 does close
+to dense compute anyway, so if it does not clearly win, the architecture is buying nothing at that
+batch size. MoE is a throughput architecture.
+
+</SelfCheck>
+
+<SelfCheck q="Why can you not apply the decision-tree trick — evaluate everything in parallel — to MoE?">
+
+Because that is precisely what MoE exists to avoid. A tree's depth is control flow with no real data
+dependency, so evaluating all nodes and selecting is a pure area-for-latency win. Routing is a genuine
+data dependency, and computing every expert for every token is the dense model — $E/k$ times the
+FLOPs. The speculation *is* the cost you were saving.
+
+</SelfCheck>

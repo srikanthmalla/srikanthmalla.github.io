@@ -1,0 +1,560 @@
+<!DOCTYPE html><html lang="en" data-astro-cid-z4jru4n3><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>7. Triton: the block programming model — ML Software &amp; Compilers</title><meta name="description" content="CUDA makes you write per-thread code and manage shared memory. Triton makes you write per-block code and gives the compiler the rest — which is exactly what makes it a codegen target."><link rel="icon" href="data:,"><script>
+      (() => {
+        try {
+          const t = localStorage.getItem('refresher:theme');
+          if (t === 'light') document.documentElement.classList.add('light');
+        } catch (e) {}
+      })();
+    </script><link rel="stylesheet" href="/blog/_astro/BaseLayout.B9q2yynj.css"><style>.wrap[data-astro-cid-5x65ok44]{max-width:68ch;margin-inline:auto;padding:3rem 1.25rem 6rem}@media (width>=1024px){.wrap[data-astro-cid-5x65ok44]{max-width:calc(68ch + 6rem);padding-inline:3rem}}.mhead[data-astro-cid-5x65ok44]{border-block-end:1px solid var(--rule);margin-block-end:.5rem;padding-block-end:1.75rem}.mhead-kicker[data-astro-cid-5x65ok44]{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint);margin:0 0 .85rem;font-size:.6875rem;font-weight:500}.mhead-n[data-astro-cid-5x65ok44]{color:var(--accent);font-weight:640}.mhead-dot[data-astro-cid-5x65ok44]{opacity:.5;padding-inline:.35rem}.mhead-title[data-astro-cid-5x65ok44]{font-family:var(--font-sans);letter-spacing:-.027em;color:var(--ink-strong);text-wrap:balance;margin:0;font-size:clamp(1.75rem,1.3rem + 1.9vw,2.375rem);font-weight:660;line-height:1.12}.mhead-blurb[data-astro-cid-5x65ok44]{color:var(--ink-muted);max-width:58ch;margin:.85rem 0 0;font-size:1.0625rem;line-height:1.6}.mfoot[data-astro-cid-5x65ok44]{border-block-start:1px solid var(--rule);margin-block-start:4rem;padding-block-start:1.75rem}.mark[data-astro-cid-5x65ok44]{font-family:var(--font-sans);border:1px solid var(--rule);background:var(--bg-raised);color:var(--ink-muted);cursor:pointer;border-radius:5px;padding:.4rem .85rem;font-size:.75rem;font-weight:550}.mark[data-astro-cid-5x65ok44]:hover{color:var(--ink-strong);border-color:var(--ink-faint)}.mark[data-astro-cid-5x65ok44][aria-pressed=true]{color:var(--bridge);border-color:color-mix(in oklab, var(--bridge) 45%, var(--rule))}.pager[data-astro-cid-5x65ok44]{grid-template-columns:1fr 1fr;gap:1rem;margin-block-start:2rem;display:grid}.pager-link[data-astro-cid-5x65ok44]{border:1px solid var(--rule);font-family:var(--font-sans);border-radius:6px;flex-direction:column;gap:.25rem;padding:.75rem .9rem;text-decoration:none;display:flex}.pager-link[data-astro-cid-5x65ok44]:hover{border-color:var(--ink-faint);background:var(--bg-raised)}.pager-link[data-astro-cid-5x65ok44].is-next{text-align:end}.pager-dir[data-astro-cid-5x65ok44]{text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);font-size:.6875rem}.pager-title[data-astro-cid-5x65ok44]{color:var(--ink-strong);font-size:.8125rem;font-weight:550;line-height:1.35}
+</style><style>.callout{border:1px solid var(--rule);border-inline-start-width:2px;border-radius:5px;margin-block:1.75rem;padding:.9rem 1.1rem 1rem;font-size:.9375rem;line-height:1.65}.callout-probe{border-inline-start-color:var(--probe);background:var(--probe-bg)}.callout-trap{border-inline-start-color:var(--trap);background:var(--trap-bg)}.callout-bridge{border-inline-start-color:var(--bridge);background:var(--bridge-bg)}.callout-label{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;align-items:center;gap:.45rem;margin:0 0 .5rem;font-size:.6875rem;font-weight:620;display:flex}.callout-probe .callout-label{color:var(--probe)}.callout-trap .callout-label{color:var(--trap)}.callout-bridge .callout-label{color:var(--bridge)}.callout-mark{background:currentColor;border-radius:50%;flex:none;width:5px;height:5px}.callout-title{text-transform:none;letter-spacing:0;color:var(--ink-muted);font-weight:500}.callout-body>:first-child{margin-block-start:0}.callout-body>:last-child{margin-block-end:0}.callout-body>*+*{margin-block-start:.75em}.probe{margin-block:1.75rem}.prose .probe-q{font-family:var(--font-sans);letter-spacing:-.01em;color:var(--ink-strong);margin:0 0 .6rem;padding-inline-start:1.15rem;font-size:1rem;font-weight:600;line-height:1.45;position:relative}.prose .probe-q:before{content:"›";color:var(--accent);font-weight:700;position:absolute;inset-inline-start:0}.probe-a{border-inline-start:1px solid var(--rule);margin-inline-start:.1rem;padding-inline-start:1.15rem}.probe-a>*+*{margin-block-start:1.15em}.probe-a>:first-child{margin-block-start:0}.probe-a>:last-child{margin-block-end:0}.selfcheck{border-block-start:1px solid var(--rule-soft)}.selfcheck:last-of-type{border-block-end:1px solid var(--rule-soft)}.prose>.selfcheck+.selfcheck{margin-block-start:0}.selfcheck>summary{cursor:pointer;color:var(--ink);align-items:baseline;gap:1rem;padding:.7rem .2rem;list-style:none;display:flex}.selfcheck>summary::-webkit-details-marker{display:none}.selfcheck>summary:hover{color:var(--ink-strong)}.selfcheck-q{flex:1}.selfcheck-q code{white-space:nowrap}.selfcheck-cue{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);flex:none;padding-block-start:.15rem;font-size:.6875rem;font-weight:600}.selfcheck>summary:hover .selfcheck-cue{color:var(--accent)}.selfcheck-cue-hide,.selfcheck[open] .selfcheck-cue-show{display:none}.selfcheck[open] .selfcheck-cue-hide{display:inline}.selfcheck-a{color:var(--ink-muted);border-inline-start:2px solid var(--rule);margin-block-end:.9rem;margin-inline-start:.2rem;padding:.15rem .2rem 1.05rem;padding-inline-start:1rem;font-size:.9375rem}.selfcheck-a>:first-child{margin-block-start:0}.selfcheck-a>:last-child{margin-block-end:0}.selfcheck-a>*+*{margin-block-start:.7em}.selfcheck-a strong{color:var(--ink)}
+</style></head><body data-astro-cid-z4jru4n3><a href="#content" class="skip" data-astro-cid-z4jru4n3>Skip to content</a><div class="shell" data-astro-cid-z4jru4n3><aside class="rail" data-rail data-astro-cid-z4jru4n3><nav class="rail-nav" aria-label="ML Software &amp; Compilers contents" data-astro-cid-wv7whodv><div class="rail-head" data-astro-cid-wv7whodv><a href="/blog/" class="rail-up" data-astro-cid-wv7whodv>All series</a><a href="/blog/ml-software/" class="rail-home" data-astro-cid-wv7whodv><span class="rail-home-title" data-astro-cid-wv7whodv>ML Software &amp; Compilers</span><span class="rail-home-sub" data-astro-cid-wv7whodv>How PyTorch becomes kernels</span></a><p class="rail-progress" data-astro-cid-wv7whodv><span class="rail-progress-bar" data-astro-cid-wv7whodv><span data-progress-fill data-astro-cid-wv7whodv></span></span><span class="rail-progress-text" data-astro-cid-wv7whodv><span data-progress-count data-astro-cid-wv7whodv>0</span>/14 reviewed</span></p></div><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part J</span>The fault line</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-software/01-why-eager-won/" class="rail-link" title="TensorFlow 1 made the right performance bet and lost anyway. The interesting question is why JAX later made the same bet and won." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>1</span><span class="rail-title" data-astro-cid-wv7whodv>Why eager won</span><span class="rail-tick" data-tick="ml-software/01-why-eager-won" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/02-eager-internals/" class="rail-link" title="Python, the dispatcher, the autograd tape and the allocator all run before your kernel does. Roughly 8 µs of CPU work to launch 2 µs of GPU work." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>2</span><span class="rail-title" data-astro-cid-wv7whodv>What eager mode actually does per op</span><span class="rail-tick" data-tick="ml-software/02-eager-internals" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/03-what-graph-mode-buys/" class="rail-link" title="Three overheads, three mechanisms, three different ceilings. Knowing which one binds tells you whether compiling will help before you try it." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>3</span><span class="rail-title" data-astro-cid-wv7whodv>What graph mode actually buys</span><span class="rail-tick" data-tick="ml-software/03-what-graph-mode-buys" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part K</span>Capture</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-software/04-torchdynamo/" class="rail-link" title="Two earlier attempts failed by being silently wrong or by demanding a Python subset. Dynamo takes a third route: capture bytecode, guard the assumptions, and bail out when it cannot." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>4</span><span class="rail-title" data-astro-cid-wv7whodv>TorchDynamo: capturing Python at runtime</span><span class="rail-tick" data-tick="ml-software/04-torchdynamo" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/05-ir-ladder/" class="rail-link" title="ATen to Prims, functionalization, and AOTAutograd. Then the other lowering universe — MLIR dialects, torch-mlir, StableHLO — and why the CUDA path never goes there." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>5</span><span class="rail-title" data-astro-cid-wv7whodv>The IR ladder, and the MLIR fork in the road</span><span class="rail-tick" data-tick="ml-software/05-ir-ladder" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/06-inductor/" class="rail-link" title="The scheduler is the compiler. Fusion is a graph-partitioning problem under register and occupancy constraints, and the interesting failures are all in where it draws the lines." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>6</span><span class="rail-title" data-astro-cid-wv7whodv>Inductor: deciding what to fuse</span><span class="rail-tick" data-tick="ml-software/06-inductor" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/07-triton/" class="rail-link is-active" aria-current="page" title="CUDA makes you write per-thread code and manage shared memory. Triton makes you write per-block code and gives the compiler the rest — which is exactly what makes it a codegen target." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>7</span><span class="rail-title" data-astro-cid-wv7whodv>Triton: the block programming model</span><span class="rail-tick" data-tick="ml-software/07-triton" aria-hidden="true" data-astro-cid-wv7whodv></span></a><ul class="rail-sub" data-rail-sub data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="#the-core-mental-model" class="rail-sub-link" data-toc="the-core-mental-model" data-astro-cid-wv7whodv>The core mental model</a></li><li data-astro-cid-wv7whodv><a href="#numbers-worth-memorizing" class="rail-sub-link" data-toc="numbers-worth-memorizing" data-astro-cid-wv7whodv>Numbers worth memorizing</a></li><li data-astro-cid-wv7whodv><a href="#critical-thinking" class="rail-sub-link" data-toc="critical-thinking" data-astro-cid-wv7whodv>Critical thinking</a></li><li data-astro-cid-wv7whodv><a href="#self-check" class="rail-sub-link" data-toc="self-check" data-astro-cid-wv7whodv>Self-check</a></li></ul></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part L</span>Runtime</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-software/08-caching-allocator/" class="rail-link" title="cudaMalloc synchronises the device, so PyTorch calls it as rarely as possible. The design that follows — pools, splitting, stream ownership — explains almost every confusing OOM you will ever see." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>8</span><span class="rail-title" data-astro-cid-wv7whodv>The caching allocator</span><span class="rail-tick" data-tick="ml-software/08-caching-allocator" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/09-cuda-graphs/" class="rail-link" title="Record the launches once, replay them as one submission. The constraints — static addresses, static shapes, no CPU in the loop — are what the rest of the stack has to bend around." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>9</span><span class="rail-title" data-astro-cid-wv7whodv>CUDA Graphs</span><span class="rail-tick" data-tick="ml-software/09-cuda-graphs" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part M</span>Where it breaks</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-software/10-dynamic-shapes/" class="rail-link" title="Specializing on a shape makes the fastest kernel and the least reusable one. Symbolic shapes are the compromise, and 0/1 specialization is the trap inside it." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>10</span><span class="rail-title" data-astro-cid-wv7whodv>Dynamic shapes and recompilation</span><span class="rail-tick" data-tick="ml-software/10-dynamic-shapes" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/11-moe/" class="rail-link" title="Routing makes every expert's batch size a function of the data. Capacity factors, grouped GEMM and sort-permute are all ways of buying back a static shape — and each one costs something real." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>11</span><span class="rail-title" data-astro-cid-wv7whodv>MoE: dynamism the compiler cannot remove</span><span class="rail-tick" data-tick="ml-software/11-moe" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/12-topk-and-non-gemm/" class="rail-link" title="Selection has low arithmetic intensity, irregular access and a serial dependency. Vocabularies grew to 256k and it became a visible fraction of every decode step." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>12</span><span class="rail-title" data-astro-cid-wv7whodv>top-k, sort, and the ops that are not GEMM</span><span class="rail-tick" data-tick="ml-software/12-topk-and-non-gemm" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part N</span>Synthesis</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-software/13-partitioning-the-stack/" class="rail-link" title="What to compile, what to leave eager, what to hand-write. A decision procedure that starts from which overhead binds, not from which tool is newest." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>13</span><span class="rail-title" data-astro-cid-wv7whodv>Partitioning the stack</span><span class="rail-tick" data-tick="ml-software/13-partitioning-the-stack" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/14-inference-server/" class="rail-link" title="Continuous batching wants shapes that change every step; CUDA Graphs want shapes that never change. Paged KV, bucketing and piecewise compilation are how vLLM and SGLang reconcile them." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>14</span><span class="rail-title" data-astro-cid-wv7whodv>The inference server</span><span class="rail-tick" data-tick="ml-software/14-inference-server" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-other" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv>Other series</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>ML Hardware &amp; Low-Latency Systems</span></a></li><li data-astro-cid-wv7whodv><a href="/blog/diffusion/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>Diffusion</span></a></li></ul></section><div class="rail-foot" data-astro-cid-wv7whodv><p data-astro-cid-wv7whodv><kbd data-astro-cid-wv7whodv>j</kbd> <kbd data-astro-cid-wv7whodv>k</kbd> section · <kbd data-astro-cid-wv7whodv>/</kbd> search · <kbd data-astro-cid-wv7whodv>[</kbd><kbd data-astro-cid-wv7whodv>]</kbd> module</p></div></nav></aside><div class="col" data-astro-cid-z4jru4n3><header class="topbar" data-astro-cid-z4jru4n3><button class="icon-btn only-narrow" data-rail-toggle aria-label="Toggle contents" data-astro-cid-z4jru4n3><svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M1.5 3.5h12M1.5 7.5h12M1.5 11.5h12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg></button><p class="crumb" data-astro-cid-z4jru4n3>Part K · Capture › Triton: the block programming model</p><div class="topbar-actions" data-astro-cid-z4jru4n3><button class="search-btn" data-search-open aria-label="Search" data-astro-cid-z4jru4n3><span aria-hidden="true" data-astro-cid-z4jru4n3>⌕</span><span class="search-btn-label" data-astro-cid-z4jru4n3>Search</span><kbd data-astro-cid-z4jru4n3>/</kbd></button><button class="icon-btn" data-theme-toggle aria-label="Toggle theme" data-astro-cid-z4jru4n3><svg class="i-sun" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><circle cx="7.5" cy="7.5" r="3" stroke="currentColor" stroke-width="1.2" data-astro-cid-z4jru4n3></circle><path d="M7.5 .8v1.7M7.5 12.5v1.7M14.2 7.5h-1.7M2.5 7.5H.8M12.24 2.76l-1.2 1.2M3.96 11.04l-1.2 1.2M12.24 12.24l-1.2-1.2M3.96 3.96l-1.2-1.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg><svg class="i-moon" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M13 9.3A5.8 5.8 0 0 1 5.7 2 5.9 5.9 0 1 0 13 9.3Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" data-astro-cid-z4jru4n3></path></svg></button><a class="site-link" href="/" data-astro-cid-z4jru4n3>srikanthmalla.com</a></div></header><main id="content" data-astro-cid-z4jru4n3><article class="wrap" data-article data-astro-cid-5x65ok44><header class="mhead" data-astro-cid-5x65ok44><p class="mhead-kicker" data-astro-cid-5x65ok44><span class="mhead-n" data-astro-cid-5x65ok44>Module 7</span><span class="mhead-dot" data-astro-cid-5x65ok44>·</span>Part K — Capture<span class="mhead-dot" data-astro-cid-5x65ok44>·</span>16 min</p><h1 class="mhead-title" data-astro-cid-5x65ok44>Triton: the block programming model</h1><p class="mhead-blurb" data-astro-cid-5x65ok44>CUDA makes you write per-thread code and manage shared memory. Triton makes you write per-block code and gives the compiler the rest — which is exactly what makes it a codegen target.</p></header><div class="prose" data-astro-cid-5x65ok44><h2 id="the-core-mental-model">The core mental model<a class="anchor" href="#the-core-mental-model" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>CUDA’s unit of programming is the <strong>thread</strong>. You write what one thread does, then reason manually
+about how 32 of them coalesce into memory transactions, how to stage tiles through shared memory
+without bank conflicts, where to place <code>__syncthreads()</code>, and how to map your data onto a block and
+grid. All the hardware series’ Module 2 concerns are yours to handle by hand.</p>
+<p>Triton’s unit is the <strong>block</strong>. You write what one <em>program instance</em> does to a whole tile of data,
+using operations on block-shaped values: <code>tl.load</code> a range of pointers, <code>tl.sum</code> along an axis,
+<code>tl.dot</code> two tiles. There is no thread index, no <code>__syncthreads()</code>, no explicit shared memory. The
+compiler decides how to distribute the tile across threads within the block, when a value should
+live in registers versus shared memory, how to schedule loads to hide latency, and how to select
+tensor-core instructions. You keep the decisions that need domain knowledge — tile shape, blocking
+strategy, what to compute where — and hand over the ones that are mechanical but tedious.</p>
+<p>That division is precisely why Triton is a good <strong>compiler target</strong> rather than merely a nicer way
+for humans to write kernels, and it is the reason Inductor emits Triton instead of CUDA C. A code
+generator can reliably produce correct per-block code with parameterised tile sizes; producing
+correct, well-coalesced, conflict-free, properly-synchronised per-thread CUDA is far harder to do
+mechanically. Triton also compiles through <strong>its own MLIR-based pipeline</strong> — Triton IR to TritonGPU
+IR to LLVM IR to PTX — so the layout decisions that CUDA leaves to the programmer are represented
+explicitly in the IR as <em>layout attributes</em> the compiler can reason about and rewrite.</p>
+<aside class="callout callout-bridge"><p class="callout-label"><span class="callout-mark" aria-hidden="true"></span>Bridge to what you know<span class="callout-title"> · the same abstraction move as the tiling hierarchy</span></p><div class="callout-body"><p>The hardware series describes GEMM blocking at register, shared-memory and L2 levels. Triton lets
+you express the shared-memory tile directly and infers the register tile, so you specify the level
+where your knowledge lives and let the compiler handle the level below. That is the whole pitch.</p></div></aside>
+<h2 id="numbers-worth-memorizing">Numbers worth memorizing<a class="anchor" href="#numbers-worth-memorizing" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>A complete fused softmax, which is roughly what Inductor generates for one:</p>
+<pre class="astro-code astro-code-themes github-light github-dark-default" style="background-color:#fff;--shiki-dark-bg:#0d1117;color:#24292e;--shiki-dark:#e6edf3;overflow-x:auto" tabindex="0" data-language="python"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#FF7B72">import</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> triton</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#FF7B72">import</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> triton.language </span><span style="color:#D73A49;--shiki-dark:#FF7B72">as</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> tl</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#D2A8FF">@triton.jit</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#FF7B72">def</span><span style="color:#6F42C1;--shiki-dark:#D2A8FF"> softmax_kernel</span><span style="color:#24292E;--shiki-dark:#E6EDF3">(out_ptr, in_ptr, stride, n_cols, BLOCK: tl.constexpr):</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E6EDF3">    row </span><span style="color:#D73A49;--shiki-dark:#FF7B72">=</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> tl.program_id(</span><span style="color:#005CC5;--shiki-dark:#79C0FF">0</span><span style="color:#24292E;--shiki-dark:#E6EDF3">)                       </span><span style="color:#6A737D;--shiki-dark:#8B949E"># which row this instance owns</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E6EDF3">    cols </span><span style="color:#D73A49;--shiki-dark:#FF7B72">=</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> tl.arange(</span><span style="color:#005CC5;--shiki-dark:#79C0FF">0</span><span style="color:#24292E;--shiki-dark:#E6EDF3">, </span><span style="color:#005CC5;--shiki-dark:#79C0FF">BLOCK</span><span style="color:#24292E;--shiki-dark:#E6EDF3">)                   </span><span style="color:#6A737D;--shiki-dark:#8B949E"># a whole tile of indices</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E6EDF3">    mask </span><span style="color:#D73A49;--shiki-dark:#FF7B72">=</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> cols </span><span style="color:#D73A49;--shiki-dark:#FF7B72">&lt;</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> n_cols                         </span><span style="color:#6A737D;--shiki-dark:#8B949E"># guard the ragged edge</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E6EDF3">    x </span><span style="color:#D73A49;--shiki-dark:#FF7B72">=</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> tl.load(in_ptr </span><span style="color:#D73A49;--shiki-dark:#FF7B72">+</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> row </span><span style="color:#D73A49;--shiki-dark:#FF7B72">*</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> stride </span><span style="color:#D73A49;--shiki-dark:#FF7B72">+</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> cols, </span><span style="color:#E36209;--shiki-dark:#FFA657">mask</span><span style="color:#D73A49;--shiki-dark:#FF7B72">=</span><span style="color:#24292E;--shiki-dark:#E6EDF3">mask, </span><span style="color:#E36209;--shiki-dark:#FFA657">other</span><span style="color:#D73A49;--shiki-dark:#FF7B72">=-</span><span style="color:#005CC5;--shiki-dark:#79C0FF">float</span><span style="color:#24292E;--shiki-dark:#E6EDF3">(</span><span style="color:#032F62;--shiki-dark:#A5D6FF">&#39;inf&#39;</span><span style="color:#24292E;--shiki-dark:#E6EDF3">))</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E6EDF3">    x </span><span style="color:#D73A49;--shiki-dark:#FF7B72">=</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> x </span><span style="color:#D73A49;--shiki-dark:#FF7B72">-</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> tl.max(x, </span><span style="color:#E36209;--shiki-dark:#FFA657">axis</span><span style="color:#D73A49;--shiki-dark:#FF7B72">=</span><span style="color:#005CC5;--shiki-dark:#79C0FF">0</span><span style="color:#24292E;--shiki-dark:#E6EDF3">)                    </span><span style="color:#6A737D;--shiki-dark:#8B949E"># numerically stable</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E6EDF3">    num </span><span style="color:#D73A49;--shiki-dark:#FF7B72">=</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> tl.exp(x)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E6EDF3">    y </span><span style="color:#D73A49;--shiki-dark:#FF7B72">=</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> num </span><span style="color:#D73A49;--shiki-dark:#FF7B72">/</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> tl.sum(num, </span><span style="color:#E36209;--shiki-dark:#FFA657">axis</span><span style="color:#D73A49;--shiki-dark:#FF7B72">=</span><span style="color:#005CC5;--shiki-dark:#79C0FF">0</span><span style="color:#24292E;--shiki-dark:#E6EDF3">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E6EDF3">    tl.store(out_ptr </span><span style="color:#D73A49;--shiki-dark:#FF7B72">+</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> row </span><span style="color:#D73A49;--shiki-dark:#FF7B72">*</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> stride </span><span style="color:#D73A49;--shiki-dark:#FF7B72">+</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> cols, y, </span><span style="color:#E36209;--shiki-dark:#FFA657">mask</span><span style="color:#D73A49;--shiki-dark:#FF7B72">=</span><span style="color:#24292E;--shiki-dark:#E6EDF3">mask)</span></span></code></pre>
+<p>Everything the CUDA version would need — the reduction tree, shared memory for cross-thread
+communication, the syncs, the coalescing analysis — is absent because the compiler supplies it.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Concept</th><th>CUDA</th><th>Triton</th></tr></thead><tbody><tr><td>Unit of code</td><td>one thread</td><td>one block (“program”)</td></tr><tr><td>Index</td><td><code>blockIdx</code>, <code>threadIdx</code></td><td><code>tl.program_id</code>, <code>tl.arange</code></td></tr><tr><td>Shared memory</td><td>explicit <code>__shared__</code> + syncs</td><td>inferred</td></tr><tr><td>Coalescing</td><td>your responsibility</td><td>compiler’s</td></tr><tr><td>Bank conflicts</td><td>pad or swizzle by hand</td><td>compiler’s</td></tr><tr><td>Tensor cores</td><td><code>wmma</code>/<code>mma</code> intrinsics</td><td><code>tl.dot</code></td></tr><tr><td>Ragged edges</td><td>manual bounds checks</td><td><code>mask=</code></td></tr></tbody></table></div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Tunable</th><th>Meaning</th><th>Typical</th></tr></thead><tbody><tr><td><code>BLOCK_*</code></td><td>tile shape — <code>tl.constexpr</code>, so specialised</td><td>16–256</td></tr><tr><td><code>num_warps</code></td><td>threads per block ÷ 32</td><td>4–8</td></tr><tr><td><code>num_stages</code></td><td>software-pipelining depth for <code>cp.async</code></td><td>2–5</td></tr><tr><td><code>tl.constexpr</code></td><td>compile-time constant → a new kernel per value</td><td>—</td></tr></tbody></table></div>
+<pre class="astro-code astro-code-themes github-light github-dark-default" style="background-color:#fff;--shiki-dark-bg:#0d1117;color:#24292e;--shiki-dark:#e6edf3;overflow-x:auto" tabindex="0" data-language="python"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#D2A8FF">@triton.autotune</span><span style="color:#24292E;--shiki-dark:#E6EDF3">(</span></span>
+<span class="line"><span style="color:#E36209;--shiki-dark:#FFA657">    configs</span><span style="color:#D73A49;--shiki-dark:#FF7B72">=</span><span style="color:#24292E;--shiki-dark:#E6EDF3">[triton.Config({</span><span style="color:#032F62;--shiki-dark:#A5D6FF">&#39;BLOCK_M&#39;</span><span style="color:#24292E;--shiki-dark:#E6EDF3">: m, </span><span style="color:#032F62;--shiki-dark:#A5D6FF">&#39;BLOCK_N&#39;</span><span style="color:#24292E;--shiki-dark:#E6EDF3">: n}, </span><span style="color:#E36209;--shiki-dark:#FFA657">num_warps</span><span style="color:#D73A49;--shiki-dark:#FF7B72">=</span><span style="color:#24292E;--shiki-dark:#E6EDF3">w, </span><span style="color:#E36209;--shiki-dark:#FFA657">num_stages</span><span style="color:#D73A49;--shiki-dark:#FF7B72">=</span><span style="color:#24292E;--shiki-dark:#E6EDF3">s)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#FF7B72">             for</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> m </span><span style="color:#D73A49;--shiki-dark:#FF7B72">in</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> (</span><span style="color:#005CC5;--shiki-dark:#79C0FF">64</span><span style="color:#24292E;--shiki-dark:#E6EDF3">, </span><span style="color:#005CC5;--shiki-dark:#79C0FF">128</span><span style="color:#24292E;--shiki-dark:#E6EDF3">) </span><span style="color:#D73A49;--shiki-dark:#FF7B72">for</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> n </span><span style="color:#D73A49;--shiki-dark:#FF7B72">in</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> (</span><span style="color:#005CC5;--shiki-dark:#79C0FF">64</span><span style="color:#24292E;--shiki-dark:#E6EDF3">, </span><span style="color:#005CC5;--shiki-dark:#79C0FF">128</span><span style="color:#24292E;--shiki-dark:#E6EDF3">) </span><span style="color:#D73A49;--shiki-dark:#FF7B72">for</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> w </span><span style="color:#D73A49;--shiki-dark:#FF7B72">in</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> (</span><span style="color:#005CC5;--shiki-dark:#79C0FF">4</span><span style="color:#24292E;--shiki-dark:#E6EDF3">, </span><span style="color:#005CC5;--shiki-dark:#79C0FF">8</span><span style="color:#24292E;--shiki-dark:#E6EDF3">) </span><span style="color:#D73A49;--shiki-dark:#FF7B72">for</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> s </span><span style="color:#D73A49;--shiki-dark:#FF7B72">in</span><span style="color:#24292E;--shiki-dark:#E6EDF3"> (</span><span style="color:#005CC5;--shiki-dark:#79C0FF">3</span><span style="color:#24292E;--shiki-dark:#E6EDF3">, </span><span style="color:#005CC5;--shiki-dark:#79C0FF">4</span><span style="color:#24292E;--shiki-dark:#E6EDF3">)],</span></span>
+<span class="line"><span style="color:#E36209;--shiki-dark:#FFA657">    key</span><span style="color:#D73A49;--shiki-dark:#FF7B72">=</span><span style="color:#24292E;--shiki-dark:#E6EDF3">[</span><span style="color:#032F62;--shiki-dark:#A5D6FF">&#39;M&#39;</span><span style="color:#24292E;--shiki-dark:#E6EDF3">, </span><span style="color:#032F62;--shiki-dark:#A5D6FF">&#39;N&#39;</span><span style="color:#24292E;--shiki-dark:#E6EDF3">, </span><span style="color:#032F62;--shiki-dark:#A5D6FF">&#39;K&#39;</span><span style="color:#24292E;--shiki-dark:#E6EDF3">],          </span><span style="color:#6A737D;--shiki-dark:#8B949E"># re-benchmark when these change</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E6EDF3">)</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#D2A8FF">@triton.jit</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#FF7B72">def</span><span style="color:#6F42C1;--shiki-dark:#D2A8FF"> matmul_kernel</span><span style="color:#24292E;--shiki-dark:#E6EDF3">(...): </span><span style="color:#005CC5;--shiki-dark:#79C0FF">...</span></span></code></pre>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Fact</th><th>Value</th></tr></thead><tbody><tr><td>Compile pipeline</td><td>Triton IR → TritonGPU IR → LLVM IR → PTX</td></tr><tr><td>First-compile cost per kernel</td><td>~0.5–5 s</td></tr><tr><td>Autotune cost</td><td>configs × benchmark runs — often minutes</td></tr><tr><td>Cache</td><td><code>~/.triton/cache</code>, keyed by source + constexpr</td></tr><tr><td>Typical Triton vs cuBLAS on GEMM</td><td>80–95% of library</td></tr><tr><td>Typical Triton vs hand CUDA, elementwise</td><td>~100%</td></tr></tbody></table></div>
+<aside class="callout callout-trap"><p class="callout-label"><span class="callout-mark" aria-hidden="true"></span>Common trap<span class="callout-title"> · constexpr multiplies your kernels</span></p><div class="callout-body"><p>Every distinct <code>tl.constexpr</code> value compiles a separate kernel. An autotune space of 32 configs
+across 5 shapes is 160 compilations on first run. This is a large part of <code>max-autotune</code>’s compile
+time, and why the Triton cache directory matters so much in production.</p></div></aside>
+<h2 id="critical-thinking">Critical thinking<a class="anchor" href="#critical-thinking" aria-hidden="true" tabindex="-1">#</a></h2>
+<section class="probe"><h3 class="probe-q">Why is a block-level language a better codegen target than CUDA C?</h3><div class="probe-a"><p>Because the things Triton removes are exactly the things a code generator is bad at.</p><p>To emit correct CUDA C, Inductor would have to decide the thread-to-data mapping and verify it
+coalesces; allocate shared memory and place every <code>__syncthreads()</code> correctly, where an error is a
+race rather than a compile failure; handle ragged edges with bounds checks per access; and select
+tensor-core intrinsics with their layout requirements. Each is a <em>global</em> property of the kernel, so
+a local mistake produces a silently wrong or slow kernel rather than an error.</p><p>In Triton those are the compiler’s obligations. The generator emits per-block code with symbolic tile
+sizes and a <code>mask</code> for the edges, and correctness follows from the language’s semantics rather than
+from the generator’s cleverness. Fusion becomes textual composition of block-level expressions, which
+is exactly what Inductor’s define-by-index representation (Module 6) produces naturally.</p><p>There is a second, less obvious reason: <strong>portability</strong>. The same Triton kernel compiles for NVIDIA
+and AMD, because the block abstraction does not encode a warp size or a specific memory hierarchy.
+Inductor gets multi-vendor support without a second backend.</p><p>The trade is a ceiling. For the last 10–20% on a GEMM you need control Triton deliberately does not
+expose — which is why Inductor calls cuBLAS for matmul and uses Triton for everything around it. The
+right way to hold it: Triton is the language for the 95% of kernels nobody was ever going to
+hand-write, not a replacement for the 5% that are hand-written by specialists.</p></div></section>
+<section class="probe"><h3 class="probe-q">Walk through what the compiler must infer from that softmax kernel.</h3><div class="probe-a"><p>The source says what to compute; the compiler decides essentially everything about how.</p><p><strong>Thread mapping.</strong> <code>BLOCK</code> might be 1024 with <code>num_warps=8</code>, so 256 threads each handle 4 elements.
+That distribution is chosen so the resulting loads are coalesced — the hardware series’ Module 2
+requirement, satisfied by construction rather than by the author.</p><p><strong>Reduction strategy.</strong> <code>tl.max</code> and <code>tl.sum</code> are cross-thread reductions. The compiler emits a
+warp-level shuffle reduction, then a cross-warp reduction through shared memory, with the syncs in
+the right places. In CUDA this is 20 lines that people get subtly wrong.</p><p><strong>Memory placement.</strong> <code>x</code> is used three times — for the max, the subtract, and the exp. The compiler
+keeps it in registers rather than reloading, and decides when a value must spill to shared memory
+because it is needed across warps.</p><p><strong>Masking.</strong> <code>mask=mask, other=-inf</code> becomes predicated loads; the <code>-inf</code> fill is what makes the max
+correct on the ragged edge without a separate code path.</p><p><strong>Fusion and scheduling.</strong> The exp is computed once and reused; loads are hoisted and scheduled to
+overlap with arithmetic.</p><p><strong>Instruction selection.</strong> <code>tl.exp</code> maps to the fast SFU path or a polynomial depending on precision
+requirements.</p><p>The point to extract: this kernel is <em>one pass</em> over the row despite computing a max, a sum and an
+elementwise transform — precisely the fusion win from Module 3, expressed in a way where it is the
+obvious way to write it rather than a manual optimisation.</p></div></section>
+<section class="probe"><h3 class="probe-q">What does autotune actually search, and why can it not be replaced by a cost model?</h3><div class="probe-a"><p>It searches tile shapes (<code>BLOCK_M/N/K</code>), <code>num_warps</code>, <code>num_stages</code>, and sometimes ordering or
+swizzling parameters — then benchmarks each configuration on the real shapes and caches the winner
+keyed by the <code>key=</code> list.</p><p>A cost model struggles because the objective is genuinely discontinuous in the parameters:</p><ul>
+<li><strong>Occupancy is a step function.</strong> Registers per thread determine blocks per SM as an integer, so
+one extra register can halve occupancy. A smooth model cannot see the cliff.</li>
+<li><strong>Spilling is a cliff, not a slope.</strong> Crossing 255 registers converts register access into local
+memory traffic — a qualitative change.</li>
+<li><strong>Wave quantisation.</strong> Whether the grid divides evenly into SMs is a modular-arithmetic property of
+tile size and problem shape.</li>
+<li><strong>The memory system is not analytic.</strong> L2 hit rates depend on scheduling order and on what else is
+resident.</li>
+<li><strong>Hardware and toolchain vary.</strong> The same config differs across A100, H100 and driver versions.</li>
+</ul><p>So the honest position is that autotuning is empirical for the same reason kernel tuning has always
+been empirical, and Triton simply makes running the experiment cheap — you generate 32 variants from
+one source instead of writing 32 kernels.</p><p>The cost is compile time, and it is why <code>max-autotune</code> is 3–20× slower to compile and why persisting
+<code>~/.triton/cache</code> (and Inductor’s cache) across processes is a production concern rather than a
+detail.</p></div></section>
+<section class="probe"><h3 class="probe-q">When should you write a Triton kernel yourself rather than letting Inductor generate one?</h3><div class="probe-a"><p>Four situations, and the first is by far the most common.</p><ol>
+<li><strong>Inductor cannot express the algorithm.</strong> The clearest case is an algorithm with a different
+<em>structure</em>, not just a different fusion — FlashAttention is the canonical example. It is not a
+fused version of the naive attention graph; it is a different algorithm with online softmax and
+tiling that never materialises the <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>N</mi><mo>×</mo><mi>N</mi></mrow><annotation encoding="application/x-tex">N \times N</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.7667em;vertical-align:-0.0833em"></span><span class="mord mathnormal" style="margin-right:0.109em">N</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.109em">N</span></span></span></span> matrix. No scheduler discovers that by fusing the
+graph it was given.</li>
+<li><strong>A custom op with no ATen decomposition.</strong> Novel quantisation formats, custom sparsity, unusual
+layouts. Write the kernel, register it as a custom op with a <code>FakeTensor</code> rule so Dynamo can trace
+through it, and Inductor treats it as an opaque node.</li>
+<li><strong>Inductor’s fusion decision is wrong and you can prove it.</strong> Read the generated code first — if
+it is spilling, a hand-written version with a smaller tile may win.</li>
+<li><strong>Numerical control.</strong> When you need a specific accumulation order or precision that the
+decomposition does not preserve.</li>
+</ol><p>What you should <em>not</em> do is write Triton for ordinary elementwise fusion. Inductor is good at it, it
+adapts to shapes automatically, and hand-written kernels rot as the model changes.</p><p>The healthy mental model is that Inductor and hand-written Triton are the same language at different
+authorship levels, so dropping down is a local decision rather than a rewrite — which is a materially
+better position than a compiler whose output you cannot read or replace.</p></div></section>
+<h2 id="self-check">Self-check<a class="anchor" href="#self-check" aria-hidden="true" tabindex="-1">#</a></h2>
+<details class="selfcheck"><summary><span class="selfcheck-q">State the abstraction difference between CUDA and Triton, and what the compiler takes over.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>CUDA’s unit is the <strong>thread</strong>; Triton’s is the <strong>block</strong>, operating on whole tiles via <code>tl.load</code>,
+<code>tl.sum</code>, <code>tl.dot</code>. The compiler takes over thread-to-data mapping (and therefore coalescing), shared
+memory allocation and synchronisation, bank-conflict avoidance, reduction tree generation, and
+tensor-core instruction selection. You keep tile shape, blocking strategy and algorithm.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Why is Triton a better codegen target than CUDA C?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Because the obligations it removes are global properties a generator handles badly — thread mapping
+and coalescing, correct <code>__syncthreads()</code> placement (where errors are races, not compile failures),
+per-access bounds checks, and tensor-core layout requirements. In Triton correctness follows from
+language semantics, fusion is textual composition of block expressions matching Inductor’s
+define-by-index form, and the same kernel compiles for NVIDIA and AMD. The cost is a ceiling of
+roughly 80–95% of a tuned library GEMM.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Name five things the compiler infers from a Triton softmax.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>The thread-to-data distribution such that loads coalesce; the warp-shuffle plus cross-warp
+shared-memory reduction for <code>tl.max</code>/<code>tl.sum</code> with correct synchronisation; register versus shared
+placement for values reused across the kernel; predicated loads with an <code>-inf</code> fill for the masked
+ragged edge; and instruction selection for <code>tl.exp</code>. The result is a single pass over the row that
+computes a max, a sum and an elementwise transform.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Why must autotuning be empirical?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Because the objective is discontinuous in the parameters: occupancy is a step function of registers
+per thread, register spilling is a cliff at 255, wave quantisation is modular arithmetic on tile size
+versus SM count, L2 behaviour depends on scheduling order and co-residents, and results differ across
+architectures and driver versions. Triton’s contribution is not a better model but a cheaper
+experiment — 32 variants from one source. The price is compile time, hence the cache.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Give the strongest reason to hand-write a Triton kernel.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>When the algorithm has a different <em>structure</em>, not just a different fusion. FlashAttention is not a
+fused version of naive attention — it is online softmax with tiling that never materialises the
+<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>N</mi><mo>×</mo><mi>N</mi></mrow><annotation encoding="application/x-tex">N\times N</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.7667em;vertical-align:-0.0833em"></span><span class="mord mathnormal" style="margin-right:0.109em">N</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.109em">N</span></span></span></span> matrix, and no scheduler finds that by fusing the graph it was handed. Secondary reasons:
+custom ops with no ATen decomposition, a provably wrong fusion decision, and control over
+accumulation order. Do not hand-write ordinary elementwise fusion.</p></div></details></div><footer class="mfoot" data-astro-cid-5x65ok44><button class="mark" data-mark="ml-software/07-triton" aria-pressed="false" data-astro-cid-5x65ok44>Mark as reviewed</button><nav class="pager" data-astro-cid-5x65ok44><a class="pager-link" href="/blog/ml-software/06-inductor/" data-prev data-astro-cid-5x65ok44><span class="pager-dir" data-astro-cid-5x65ok44>← Previous</span><span class="pager-title" data-astro-cid-5x65ok44>6. Inductor: deciding what to fuse</span></a><a class="pager-link is-next" href="/blog/ml-software/08-caching-allocator/" data-next data-astro-cid-5x65ok44><span class="pager-dir" data-astro-cid-5x65ok44>Next →</span><span class="pager-title" data-astro-cid-5x65ok44>8. The caching allocator</span></a></nav></footer></article></main></div></div><div class="search-overlay" data-search hidden data-astro-cid-ac66eqjo><div class="search-backdrop" data-search-close data-astro-cid-ac66eqjo></div><div class="search-panel" role="dialog" aria-modal="true" aria-label="Search modules" data-astro-cid-ac66eqjo><div class="search-input-row" data-astro-cid-ac66eqjo><span class="search-icon" aria-hidden="true" data-astro-cid-ac66eqjo>⌕</span><input type="text" class="search-input" placeholder="Search all modules…" autocomplete="off" spellcheck="false" data-search-input data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>esc</kbd></div><ul class="search-results" data-search-results data-astro-cid-ac66eqjo></ul><p class="search-empty" data-search-empty hidden data-astro-cid-ac66eqjo>No matches.</p><p class="search-hint" data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>↑</kbd><kbd data-astro-cid-ac66eqjo>↓</kbd> move · <kbd data-astro-cid-ac66eqjo>↵</kbd> open</p></div></div><script>(function(){const indexUrl = "/blog/search.json";
+
+  (() => {
+    const overlay = document.querySelector('[data-search]');
+    if (!overlay) return;
+    const input = overlay.querySelector('[data-search-input]');
+    const list = overlay.querySelector('[data-search-results]');
+    const empty = overlay.querySelector('[data-search-empty]');
+
+    let index = null;
+    let loading = null;
+    let active = 0;
+
+    const load = () => {
+      if (index) return Promise.resolve(index);
+      if (!loading) {
+        loading = fetch(indexUrl)
+          .then((r) => r.json())
+          .then((d) => (index = d))
+          .catch(() => (index = []));
+      }
+      return loading;
+    };
+
+    function open() {
+      overlay.hidden = false;
+      document.documentElement.style.overflow = 'hidden';
+      load().then(() => input.focus());
+      input.focus();
+      input.select();
+    }
+
+    function close() {
+      overlay.hidden = true;
+      document.documentElement.style.overflow = '';
+    }
+
+    function escapeHtml(s) {
+      return s.replace(
+        /[&<>"]/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]
+      );
+    }
+
+    // Excerpt around the first matched term, with the term marked.
+    function excerpt(text, terms) {
+      const lower = text.toLowerCase();
+      let at = -1;
+      for (const t of terms) {
+        const i = lower.indexOf(t);
+        if (i !== -1 && (at === -1 || i < at)) at = i;
+      }
+      if (at === -1) at = 0;
+      const start = Math.max(0, at - 60);
+      let slice = text.slice(start, start + 190);
+      if (start > 0) slice = '…' + slice;
+      if (start + 190 < text.length) slice += '…';
+      let html = escapeHtml(slice);
+      for (const t of terms) {
+        html = html.replace(
+          new RegExp(`(${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'),
+          '<mark>$1</mark>'
+        );
+      }
+      return html;
+    }
+
+    function score(rec, terms) {
+      let s = 0;
+      const hay = (rec.m + ' ' + rec.h + ' ' + (rec.s || '') + ' ' + (rec.k || '')).toLowerCase();
+      const body = rec.t.toLowerCase();
+      for (const t of terms) {
+        if (hay.includes(t)) s += 12;
+        const i = body.indexOf(t);
+        if (i !== -1) s += 4 + Math.max(0, 3 - Math.floor(i / 400));
+        else if (!hay.includes(t)) return 0; // every term must appear
+      }
+      return s;
+    }
+
+    function render(results, terms) {
+      active = 0;
+      list.innerHTML = results
+        .map(
+          (r, i) => `
+          <li>
+            <a href="${r.u}" class="search-hit${i === 0 ? ' is-active' : ''}" data-hit>
+              <span class="search-hit-crumb"><span class="search-hit-series">${escapeHtml(r.s||"")}</span><span class="search-hit-n">${r.n}</span>${escapeHtml(r.m)} <span class="search-hit-sep">›</span> ${escapeHtml(r.h)}</span>
+              <span class="search-hit-text">${excerpt(r.t, terms)}</span>
+            </a>
+          </li>`
+        )
+        .join('');
+      empty.hidden = results.length > 0;
+    }
+
+    function run() {
+      const q = input.value.trim().toLowerCase();
+      if (!q || !index) {
+        list.innerHTML = '';
+        empty.hidden = true;
+        return;
+      }
+      const terms = q.split(/\s+/).filter(Boolean);
+      const results = index
+        .map((r) => ({ r, s: score(r, terms) }))
+        .filter((x) => x.s > 0)
+        .sort((a, b) => b.s - a.s || a.r.n - b.r.n)
+        .slice(0, 12)
+        .map((x) => x.r);
+      render(results, terms);
+    }
+
+    function move(delta) {
+      const hits = list.querySelectorAll('[data-hit]');
+      if (!hits.length) return;
+      hits[active]?.classList.remove('is-active');
+      active = (active + delta + hits.length) % hits.length;
+      hits[active].classList.add('is-active');
+      hits[active].scrollIntoView({ block: 'nearest' });
+    }
+
+    input.addEventListener('input', () => {
+      load().then(run);
+      run();
+    });
+
+    overlay.querySelector('[data-search-close]').addEventListener('click', close);
+
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        move(1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        move(-1);
+      } else if (e.key === 'Enter') {
+        const hit = list.querySelectorAll('[data-hit]')[active];
+        if (hit) {
+          e.preventDefault();
+          window.location.href = hit.getAttribute('href');
+        }
+      }
+    });
+
+    document.querySelectorAll('[data-search-open]').forEach((b) =>
+      b.addEventListener('click', open)
+    );
+
+    window.__openSearch = open;
+  })();
+})();</script><script>(function(){const base = "/blog";
+
+      (() => {
+        const root = document.documentElement;
+
+        /* ---- theme ---------------------------------------------------- */
+        document.querySelector('[data-theme-toggle]')?.addEventListener('click', () => {
+          const light = root.classList.toggle('light');
+          try {
+            localStorage.setItem('refresher:theme', light ? 'light' : 'dark');
+          } catch (e) {}
+        });
+
+        /* ---- progress (localStorage) ---------------------------------- */
+        const KEY = 'refresher:progress';
+        const readSet = () => {
+          try {
+            return new Set(JSON.parse(localStorage.getItem(KEY) || '[]'));
+          } catch (e) {
+            return new Set();
+          }
+        };
+        const writeSet = (s) => {
+          try {
+            localStorage.setItem(KEY, JSON.stringify([...s]));
+          } catch (e) {}
+        };
+
+        function paintProgress() {
+          const done = readSet();
+          const ticks = document.querySelectorAll('[data-tick]');
+          // A module can own more than one tick (rail + contents card), so
+          // count distinct module ids rather than elements.
+          const ids = new Set();
+          ticks.forEach((t) => {
+            const id = t.getAttribute('data-tick');
+            ids.add(id);
+            if (done.has(id)) t.setAttribute('data-read', '');
+            else t.removeAttribute('data-read');
+          });
+          const n = [...ids].filter((id) => done.has(id)).length;
+          const total = ids.size || 1;
+          const fill = document.querySelector('[data-progress-fill]');
+          if (fill) fill.style.width = `${(n / total) * 100}%`;
+          const count = document.querySelector('[data-progress-count]');
+          if (count) count.textContent = String(n);
+          document.querySelectorAll('[data-mark]').forEach((btn) => {
+            const id = btn.getAttribute('data-mark');
+            const on = done.has(id);
+            btn.setAttribute('aria-pressed', String(on));
+            btn.textContent = on ? '✓ Reviewed' : 'Mark as reviewed';
+          });
+        }
+
+        document.querySelectorAll('[data-mark]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-mark');
+            const s = readSet();
+            s.has(id) ? s.delete(id) : s.add(id);
+            writeSet(s);
+            paintProgress();
+          });
+        });
+
+        paintProgress();
+
+        /* ---- scrollspy over h2s, mirrored into the rail --------------- */
+        const article = document.querySelector('[data-article]');
+        const heads = article ? [...article.querySelectorAll('h2[id]')] : [];
+        const subLinks = new Map(
+          [...document.querySelectorAll('[data-toc]')].map((a) => [
+            a.getAttribute('data-toc'),
+            a,
+          ])
+        );
+
+        if (heads.length && subLinks.size) {
+          let currentId = null;
+          const spy = () => {
+            let found = heads[0].id;
+            for (const h of heads) {
+              if (h.getBoundingClientRect().top <= 96) found = h.id;
+              else break;
+            }
+            if (found === currentId) return;
+            subLinks.get(currentId)?.classList.remove('is-current');
+            currentId = found;
+            const el = subLinks.get(currentId);
+            if (el) {
+              el.classList.add('is-current');
+              el.scrollIntoView({ block: 'nearest' });
+            }
+          };
+          spy();
+          addEventListener('scroll', spy, { passive: true });
+        }
+
+        /* ---- keyboard ------------------------------------------------- */
+        const stops = article
+          ? [...article.querySelectorAll('h2[id], h3[id]')]
+          : [];
+
+        function jump(delta) {
+          if (!stops.length) return;
+          // The heading we are "in": the last one scrolled past the threshold.
+          let cur = -1;
+          for (let i = 0; i < stops.length; i++) {
+            if (stops[i].getBoundingClientRect().top <= 100) cur = i;
+            else break;
+          }
+          const target = cur + delta;
+          if (target < 0) return scrollTo({ top: 0, behavior: 'smooth' });
+          if (target >= stops.length) return;
+          stops[target].scrollIntoView({ block: 'start' });
+        }
+
+        addEventListener('keydown', (e) => {
+          const tag = (e.target.tagName || '').toLowerCase();
+          if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+          if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+          if (e.key === '/') {
+            e.preventDefault();
+            window.__openSearch?.();
+          } else if (e.key === 'j') {
+            e.preventDefault();
+            jump(1);
+          } else if (e.key === 'k') {
+            e.preventDefault();
+            jump(-1);
+          } else if (e.key === '[' || e.key === ']') {
+            const sel = e.key === '[' ? '[data-prev]' : '[data-next]';
+            const a = document.querySelector(sel);
+            if (a) {
+              e.preventDefault();
+              window.location.href = a.getAttribute('href');
+            }
+          }
+        });
+
+        /* ---- narrow-screen rail --------------------------------------- */
+        const rail = document.querySelector('[data-rail]');
+        document.querySelector('[data-rail-toggle]')?.addEventListener('click', () => {
+          rail.classList.toggle('is-open');
+        });
+        rail?.addEventListener('click', (e) => {
+          if (e.target.closest('a')) rail.classList.remove('is-open');
+        });
+      })();
+    })();</script></body></html>

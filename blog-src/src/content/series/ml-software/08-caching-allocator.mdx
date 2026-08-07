@@ -1,0 +1,309 @@
+---
+n: 8
+title: 'The caching allocator'
+blurb: 'cudaMalloc synchronises the device, so PyTorch calls it as rarely as possible. The design that follows — pools, splitting, stream ownership — explains almost every confusing OOM you will ever see.'
+part: 'L'
+minutes: 18
+draft: false
+tags: ['caching allocator', 'fragmentation', 'expandable_segments', 'OOM', 'memory snapshot', 'streams', 'cudaMalloc', 'memory pool']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+`cudaMalloc` is not malloc. It modifies the device's page tables and **synchronises**, so it costs
+tens to hundreds of microseconds and blocks the CPU while pending work drains. At Module 2's rate of
+thousands of tensor allocations per step, calling it directly would make PyTorch unusable. So
+PyTorch never really frees: it calls `cudaMalloc` to obtain large **segments**, carves tensors out of
+them, and on `free` returns the block to its own pool for immediate reuse. Steady-state training does
+essentially zero `cudaMalloc` calls, which is the whole point.
+
+The structure that follows is a size-segregated free-list allocator. Requests are rounded and split
+into a **small pool** (blocks under 1 MB, carved from 2 MB segments) and a **large pool** (2 MB
+segments, or exactly-sized ones above ~20 MB). A free block larger than the request may be **split**,
+leaving a remainder; adjacent free blocks within the same segment are **coalesced**. Blocks are
+**stream-owned**: a block freed on one stream cannot be handed to another without a recorded event,
+because the GPU work using it may still be in flight — which is why multi-stream code has memory
+behaviour single-stream code does not.
+
+The failure mode this design creates is **fragmentation**, and it produces the single most
+confusing message in PyTorch: an OOM that reports far more free memory than the amount requested.
+The allocator is holding plenty of bytes, but not contiguously *within one segment*, and a tensor
+needs contiguous device memory. Reserved memory stays high while allocated memory is low, and the
+gap is unusable. The classic trigger is a workload that alternates between two size classes — varying
+sequence lengths, varying batch sizes — repeatedly splitting large blocks into remainders too small
+for the next big request. This is the deep reason dynamic shapes (Module 10) are a memory problem as
+well as a compilation problem.
+
+<Callout type="bridge" title="the same trade as everything else in this series">
+  XLA plans memory at compile time because it has the whole program. PyTorch allocates dynamically
+  because it does not. Module 6 showed Inductor recovering compile-time planning *within* a graph;
+  the allocator handles everything between graphs. Neither replaces the other.
+</Callout>
+
+## Numbers worth memorizing
+
+| Operation                        | Cost                                    |
+| -------------------------------- | --------------------------------------- |
+| `cudaMalloc`                     | 10s–100s of µs, **synchronises**         |
+| `cudaFree`                       | similar, also synchronises               |
+| Caching-allocator hit            | ~0.3–1 µs, no device interaction         |
+| `torch.cuda.empty_cache()`       | `cudaFree`s everything unused — expensive, and usually the wrong reflex |
+
+| Structure            | Value                                                |
+| -------------------- | ---------------------------------------------------- |
+| Small pool threshold | 1 MB requests, carved from 2 MB segments              |
+| Large pool           | 2 MB segments; exact-size segments above ~20 MB       |
+| Rounding             | to 512 B                                              |
+| Split policy         | large blocks split; remainder returned to the pool     |
+| Coalescing           | adjacent free blocks, within a segment only            |
+| Ownership            | per-stream; cross-stream reuse needs a recorded event  |
+
+The three numbers to read when diagnosing:
+
+| Metric                         | Meaning                                        |
+| ------------------------------ | ---------------------------------------------- |
+| `memory_allocated()`           | bytes in live tensors                           |
+| `memory_reserved()`            | bytes held by the allocator from the driver     |
+| **reserved − allocated**       | **cached but unused — fragmentation lives here** |
+
+```python
+torch.cuda.memory_allocated() / 1e9
+torch.cuda.memory_reserved() / 1e9
+print(torch.cuda.memory_summary())              # per-pool breakdown
+
+torch.cuda.memory._record_memory_history()      # then reproduce the OOM
+torch.cuda.memory._dump_snapshot("snap.pickle") # view at pytorch.org/memory_viz
+```
+
+Environment knobs that actually matter:
+
+| Setting                                             | Effect                                        |
+| --------------------------------------------------- | --------------------------------------------- |
+| `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`  | virtual-memory-backed growable segments — **the fragmentation fix** |
+| `max_split_size_mb:N`                               | forbid splitting blocks above N MB             |
+| `roundup_power2_divisions:N`                        | round sizes up to reduce size-class diversity  |
+| `garbage_collection_threshold:0.8`                  | proactively release cached blocks above a fraction |
+
+<Callout type="trap" title="reaching for empty_cache()">
+  It returns cached blocks to the driver with synchronising `cudaFree` calls, so the next steps
+  re-`cudaMalloc` everything and you have added latency without fixing anything. It helps in exactly
+  one situation: handing memory to a *different* process or library in the same address space.
+  Fragmentation is better addressed with `expandable_segments`.
+</Callout>
+
+## Critical thinking
+
+<Probe q="You OOM asking for 2 GB with 8 GB free. Explain precisely what happened.">
+
+The allocator is holding 8 GB of *reserved* memory, but no single **contiguous run of 2 GB inside one
+segment** is free. Device allocations must be contiguous, so the request fails despite the total.
+
+How you get there: the allocator obtained segments over time and split them into blocks of the sizes
+you asked for. Free those blocks and they coalesce — but only with neighbours *inside the same
+segment*. Two 1 GB holes in different segments cannot serve a 2 GB request. A workload alternating
+between size classes accelerates this: request 1.5 GB, split a 2 GB block, leave a 0.5 GB remainder;
+free it; request 1.8 GB, which does not fit the 0.5 GB remainder, so take a new segment. Repeat, and
+reserved memory climbs while usable contiguity falls.
+
+The diagnostic sequence:
+
+1. **Check `reserved − allocated`.** A large gap is fragmentation; a small gap means you genuinely
+   need more memory and no allocator setting will help.
+2. **Record a snapshot** with `_record_memory_history()`, reproduce, `_dump_snapshot()`, and view it.
+   The timeline shows segments, the blocks inside them, and the allocation call stacks — it makes
+   the holes literally visible.
+3. **Look for size-class churn** in the trace: many distinct sizes is the signature.
+
+The fixes, in order:
+
+- **`expandable_segments:True`.** This is the real answer and it is nearly free — see the next probe.
+- **Reduce shape diversity.** Bucket sequence lengths, pad to multiples, fix the batch size. This
+  helps compilation too (Module 10), which is not a coincidence.
+- **`max_split_size_mb`** to stop large blocks being carved into unusable remainders.
+- **`empty_cache()`** only as a last resort, and understand you are paying synchronisation to
+  reset the pool.
+
+</Probe>
+
+<Probe q="What are expandable segments, and why do they fix fragmentation so directly?">
+
+They separate **virtual** address reservation from **physical** memory backing, using CUDA's virtual
+memory management API rather than plain `cudaMalloc`.
+
+A classic segment is a fixed slab of physical memory at a fixed size. To grow past it you allocate a
+*new* segment, and the two are not adjacent, so their free space cannot merge — that
+non-adjacency is fragmentation's root cause.
+
+An expandable segment reserves a large *virtual* address range up front and maps physical pages into
+it on demand. Because the virtual range is contiguous and reserved, the allocator can grow the
+segment by mapping more pages at the end, and shrink it by unmapping. There is effectively **one
+growable region per pool per stream** instead of many fixed islands, so a large request can almost
+always be satisfied by extending rather than by needing a pre-existing hole of the right size.
+
+Why it is not simply the default everywhere: it relies on the driver's VMM API, interacts with
+features that assume stable physical mappings (some IPC and peer-access paths), and adds
+`cuMemMap`/`cuMemUnmap` calls on growth. In practice it is a large win for varying-shape workloads
+and roughly neutral for fixed-shape ones, and it has been becoming the recommended default.
+
+The conceptual point worth keeping: fragmentation is a *contiguity* problem, not a capacity problem,
+and virtual memory is the general solution to contiguity problems. CPU allocators have used this for
+decades; PyTorch's allocator predates the CUDA API that makes it possible on device.
+
+</Probe>
+
+<Probe q="Why are allocator blocks owned by a stream, and what goes wrong if you ignore it?">
+
+Because freeing a tensor is a **CPU-side** event and the GPU work using it may not have run yet.
+
+`del x` drops the refcount and returns the block to the pool immediately, on the CPU. But the kernel
+reading `x` was enqueued asynchronously and may still be pending. If the allocator handed that block
+to another allocation whose kernel runs on a *different* stream, the two kernels could execute
+concurrently and one would overwrite memory the other is reading. A race, producing wrong numbers
+non-deterministically.
+
+The allocator's rule: a block freed on stream A is reusable on stream A without ceremony, because
+stream A is ordered with respect to itself. To reuse it on stream B, the allocator must record an
+event on A and make B wait on it. PyTorch does this only when you tell it to, via
+`tensor.record_stream(s)` — and forgetting that call in multi-stream code is a classic source of
+rare, load-dependent corruption.
+
+The practical consequences:
+
+- **Multi-stream code needs `record_stream`** anywhere a tensor allocated on one stream is consumed
+  on another, which includes many overlapped-communication patterns.
+- **Per-stream pools cost memory.** Blocks freed on a busy stream are unavailable to others, so
+  effective capacity falls as you add streams.
+- **`torch.cuda.Stream` is not free.** Overlapping compute and copy has a real memory cost that is
+  invisible until you OOM at higher concurrency.
+
+The general shape: PyTorch's allocator is fast because it makes decisions synchronously on the CPU
+about memory used asynchronously on the GPU, and every hazard in this module comes from that gap.
+
+</Probe>
+
+<Probe q="What does the memory snapshot show you that the summary does not?">
+
+`memory_summary()` gives aggregates — allocated, reserved, per-pool counts, peak. It tells you *that*
+you have fragmentation. It cannot tell you *what caused it*.
+
+The snapshot records every allocation and free with its **Python stack trace and timestamp**, plus
+the segment and offset. Loaded into the viewer at `pytorch.org/memory_viz` you get two things that
+change the investigation:
+
+- **The segment view**, showing each segment as a bar with its blocks laid out by address. Holes are
+  visible directly, and you can see which allocations are pinning a segment open — very often a
+  single long-lived small tensor sitting in the middle of an otherwise-free large segment, which
+  aggregates can never reveal.
+- **The timeline**, showing allocated memory over the step with each event attributed to a stack
+  frame. Peaks become attributable: you can see the exact line whose activation caused the maximum,
+  which is usually somewhere you did not expect.
+
+The workflow that resolves most real cases:
+
+```python
+torch.cuda.memory._record_memory_history(max_entries=100_000)
+run_until_it_ooms()
+torch.cuda.memory._dump_snapshot("snap.pickle")
+```
+
+Then look for: a long-lived allocation inside a large segment (move it, or allocate it first during
+warm-up so it lands at the bottom); many distinct size classes (bucket your shapes); and whether the
+peak comes from activations, from the optimiser state, or from a cached-but-unused gap.
+
+The habit worth building: **peak memory is a property of a schedule, not of a model.** The snapshot
+is the only tool that shows you the schedule.
+
+</Probe>
+
+<Probe q="Why does PyTorch not just plan memory ahead of time like XLA?">
+
+Because planning requires knowing the whole program in advance, and eager mode's entire premise is
+that it does not.
+
+XLA compiles a complete graph with static shapes, so it can compute exact buffer lifetimes, solve
+for a near-optimal assignment, and emit code that indexes into one preallocated arena with no
+allocator at run time at all. That is strictly better — when it applies. It requires static shapes,
+no data-dependent control flow, and a complete graph, which is the TF1 bargain from Module 1.
+
+PyTorch's allocator is what you build when the next allocation is genuinely unknown: fast enough to
+call thousands of times per step, adaptive to any sequence of requests, and correct under arbitrary
+Python. It gives up optimality for generality, and the fragmentation in this module is precisely the
+price.
+
+The interesting part is that the two are converging rather than competing. Inductor plans within a
+compiled region (Module 6). CUDA Graphs use a **private memory pool** whose addresses are baked into
+the replay, so a captured graph has statically-assigned memory (Module 9). vLLM preallocates the KV
+cache as one arena and manages it itself with paging (Module 14) — reinventing planned allocation
+where it can prove the shapes.
+
+So the answer to "why not plan" is: PyTorch plans exactly where it can prove it is safe, and the
+scope of that proof has been growing for three years. The allocator remains for everything outside
+it, which is still most of a real program.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="Why does PyTorch cache device memory at all?">
+
+Because `cudaMalloc` modifies device page tables and **synchronises**, costing tens to hundreds of
+microseconds and blocking the CPU while pending work drains. At thousands of allocations per step
+that is unusable. The allocator obtains large segments, carves tensors from them, and on free returns
+blocks to its own pool — so steady-state training performs essentially zero `cudaMalloc` calls, at
+roughly 0.3–1 µs per allocation.
+
+</SelfCheck>
+
+<SelfCheck q="Explain an OOM that reports more free memory than it requested.">
+
+Reserved memory is held but not **contiguous within a single segment**, and device allocations must
+be contiguous. Free blocks coalesce only with neighbours inside the same segment, so two 1 GB holes
+in different segments cannot serve a 2 GB request. Workloads alternating between size classes drive
+this by repeatedly splitting blocks and leaving unusable remainders. Diagnose via
+`reserved − allocated`; fix with `expandable_segments:True` and by reducing shape diversity.
+
+</SelfCheck>
+
+<SelfCheck q="How do expandable segments work, and why is fragmentation the right problem for them?">
+
+They reserve a large **virtual** address range and map physical pages into it on demand via CUDA's
+VMM API, so one growable region replaces many fixed islands and a large request is satisfied by
+extending rather than by finding a pre-existing hole. Fragmentation is a *contiguity* problem rather
+than a capacity problem, and virtual memory is the general solution to contiguity — CPU allocators
+have done this for decades; PyTorch's allocator predates the device-side API.
+
+</SelfCheck>
+
+<SelfCheck q="Why are blocks stream-owned, and what must multi-stream code do?">
+
+Because `del` frees on the **CPU** while the kernel using the tensor may still be pending on the GPU.
+Reusing that block on another stream could let two kernels touch it concurrently — a race producing
+non-deterministic wrong numbers. Reuse on the same stream is safe by stream ordering; cross-stream
+reuse requires a recorded event, which you request with `tensor.record_stream(s)`. Per-stream pools
+also reduce effective capacity, so added streams cost memory.
+
+</SelfCheck>
+
+<SelfCheck q="What does a memory snapshot reveal that memory_summary cannot?">
+
+Per-allocation Python stack traces and timestamps plus segment and offset, so the viewer shows the
+**segment layout** — holes and, critically, which long-lived small allocation is pinning a large
+segment open — and an attributed **timeline** showing which line caused the peak. Aggregates tell you
+that fragmentation exists; the snapshot tells you what caused it. Peak memory is a property of a
+schedule, and this is the only view of the schedule.
+
+</SelfCheck>
+
+<SelfCheck q="Why not plan memory ahead of time like XLA, and where has PyTorch partly done so?">
+
+Planning needs the whole program with static shapes and no data-dependent control flow — the TF1
+bargain eager mode rejects. PyTorch's allocator trades optimality for generality. But it now plans
+wherever it can prove safety: Inductor within a compiled region, CUDA Graphs via a private pool with
+addresses baked into the replay, and serving frameworks preallocating the KV cache as a paged arena.
+The allocator covers everything outside those proofs.
+
+</SelfCheck>

@@ -1,0 +1,272 @@
+---
+n: 5
+title: 'The IR ladder, and the MLIR fork in the road'
+blurb: 'ATen to Prims, functionalization, and AOTAutograd. Then the other lowering universe — MLIR dialects, torch-mlir, StableHLO — and why the CUDA path never goes there.'
+part: 'K'
+minutes: 17
+draft: false
+tags: ['ATen', 'Prims', 'functionalization', 'AOTAutograd', 'FakeTensor', 'MLIR', 'torch-mlir', 'StableHLO', 'IREE', 'XLA']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+Dynamo hands you an FX graph of roughly the operators you wrote, which is far too high-level to
+compile. PyTorch has ~2000 operators, many with overloads, in-place variants, views and mutation.
+So the graph descends a **ladder**, and each rung removes one class of difficulty. First
+**decomposition**: ATen's large surface is rewritten into progressively smaller sets — a
+`torch.nn.functional.gelu` becomes `erf`, multiplies and adds — with **Prims** at the bottom as a
+few dozen primitives with precise semantics. A backend can then implement a small set instead of
+two thousand. Second **functionalization**: in-place ops and views are rewritten into pure
+out-of-place forms, so `x.add_(1)` becomes a new tensor. Aliasing and mutation are what make
+reordering and fusion unsound, and removing them is what makes the graph optimisable at all.
+
+Third, and the piece that surprises people, **AOTAutograd**. Eager builds the backward tape at run
+time (Module 2), which would leave backward uncompiled. AOTAutograd instead traces *both* directions
+ahead of time into a **joint graph**, then partitions it into a forward and a backward, choosing
+which intermediates to save and which to recompute. That partitioning decision is real optimisation:
+saving a tensor costs memory, recomputing it costs FLOPs, and the min-cut over the joint graph is
+how activation checkpointing stops being something you hand-annotate. All of this runs on
+**FakeTensor** — tensors with shape, dtype, device and strides but no storage — so the entire trace
+executes the real operator semantics without allocating or computing anything.
+
+Then the ladder forks. The default path continues into **Inductor**, which generates Triton
+(Modules 6–7). The other path leaves for **MLIR**, and it is worth being precise about the lineage
+because the naming obscures it. MLIR was built at Google by Chris Lattner's team and donated to
+LLVM; its central idea is *dialects with progressive lowering* — many coexisting IRs at different
+abstraction levels in one framework, rather than one fixed IR. **torch-mlir** (an LLVM incubator
+project, not a Google one) adopts that style: it lowers PyTorch into a `torch` dialect and then into
+`linalg`, `tosa` or **StableHLO** — and StableHLO is itself the descendant of XLA's HLO, also
+Google. So the MLIR route is substantially Google-lineage in *design*, while torch-mlir itself is
+community and vendor work, and it exists mainly to reach hardware that has no CUDA backend.
+
+<Callout type="bridge" title="progressive lowering is the LLVM idea, generalised">
+  LLVM's insight was one IR that many frontends target and many backends consume. MLIR's is that one
+  IR is the wrong number: you want a *ladder* of them, each preserving the structure the next
+  optimisation needs, with a shared infrastructure for defining and lowering between them. PyTorch's
+  ATen → Prims descent is the same idea, built ad hoc for one framework.
+</Callout>
+
+## Numbers worth memorizing
+
+The default path, end to end:
+
+```
+Python bytecode
+  └─ TorchDynamo ──────────────► FX graph (torch ops) + guards
+       └─ AOTAutograd ─────────► joint fwd+bwd graph, on FakeTensor
+            └─ functionalize ──► no mutation, no aliasing
+                 └─ decompose ─► ATen → Prims (~250 core, ~2000 total ops)
+                      └─ partition ► forward graph | backward graph
+                           └─ Inductor ► Triton kernels ► PTX ► SASS
+```
+
+| Layer          | Ops   | Purpose                                    |
+| -------------- | ----- | ------------------------------------------ |
+| `torch` / FX   | ~2000 | what you wrote                             |
+| ATen           | ~2000 | the dispatcher's operator set              |
+| Core ATen      | ~250  | the backend-implementable subset           |
+| Prims          | ~70   | minimal, precise, easy to compile          |
+
+The MLIR path:
+
+```
+FX graph (via torch.export or Dynamo)
+  └─ torch-mlir ──► `torch` dialect
+       └─ lower ──► linalg  |  tosa  |  stablehlo
+            └─ IREE / vendor compiler ──► accelerator binary
+```
+
+| | Default (Inductor) | MLIR (torch-mlir → IREE) |
+| --- | --- | --- |
+| Target | NVIDIA/AMD GPU, CPU | TPU-like, NPUs, custom silicon |
+| Codegen | Triton → PTX | linalg/StableHLO → vendor |
+| Origin | Meta / PyTorch | MLIR from Google, torch-mlir from LLVM incubator |
+| Status | default in PyTorch 2.x | not in any official LLVM release |
+| Used by | everyone with a GPU | IREE, Tenstorrent, AMD, various NPU vendors |
+
+| Concept        | One line                                                     |
+| -------------- | ------------------------------------------------------------ |
+| FakeTensor     | metadata-only tensor — shape, dtype, device, strides, no storage |
+| Functionalization | rewrites mutation and views into pure operations           |
+| Joint graph    | forward and backward traced together before partitioning      |
+| Min-cut partition | chooses save-vs-recompute — automatic activation checkpointing |
+| StableHLO      | versioned, stable successor to XLA HLO                        |
+
+<Callout type="trap" title="“PyTorch compiles through MLIR”">
+  It does not, on the path essentially everyone uses. `torch.compile` on an NVIDIA GPU is Dynamo →
+  AOTAutograd → Inductor → Triton, with no MLIR anywhere. torch-mlir is the bridge you take when the
+  target has no CUDA backend. Both are real; conflating them makes the stack impossible to reason
+  about.
+</Callout>
+
+## Critical thinking
+
+<Probe q="Why decompose 2000 operators down to ~70 primitives? What is lost?">
+
+Because $N$ operators times $M$ backends is a maintenance disaster, and because large operators hide
+the structure an optimiser needs.
+
+**Gained.** A new backend implements ~70 Prims (or ~250 core ATen) rather than 2000 ATen ops with
+their overloads and in-place variants — the difference between a feasible project and an impossible
+one. Optimisation also gets easier: a fused `gelu` is opaque, while `erf`, multiplies and adds are
+things a fusion scheduler can reason about, reorder and combine with neighbours. And precise Prims
+semantics remove the ambiguity that accumulated across two thousand hand-written operators.
+
+**Lost, and it is real.** Decomposing destroys the knowledge that this cluster of primitives *was* a
+`gelu` or a `softmax`, and hand-written kernels for those patterns are often far better than anything
+a scheduler reconstructs. Worse, a decomposition can be numerically different: computing softmax
+naively from its primitive parts loses the max-subtraction trick unless the decomposition encodes it.
+
+So the ladder is not uniformly downward. Inductor keeps **pattern matching** to recognise
+decomposed structures and swap in a library kernel — recovering `scaled_dot_product_attention` and
+routing it to FlashAttention rather than emitting the quadratic materialised form. And some
+operators are deliberately *not* decomposed, staying as opaque calls into cuBLAS or cuDNN, because
+nothing generated will beat them.
+
+The general principle: decompose to expose structure to the optimiser, then pattern-match to
+recover the cases where a human already solved it better. Both directions are necessary.
+
+</Probe>
+
+<Probe q="What does functionalization buy, and why can you not optimize without it?">
+
+It removes mutation and aliasing, which are precisely the two things that make reordering unsound.
+
+With mutation, the meaning of a graph depends on execution order in a way the dataflow edges do not
+express:
+
+```python
+y = x.view(-1)     # y aliases x
+x.add_(1)          # mutates both
+z = y.sum()        # depends on the add — but no dataflow edge says so
+```
+
+A scheduler looking at dataflow sees `z` depending on `y` depending on `x`, and is free to move the
+`add_` after the `sum`. That is wrong, and to avoid it the compiler would need full alias analysis —
+which is expensive, conservative, and in the presence of arbitrary views not reliably decidable.
+
+Functionalization rewrites this into pure form: `x_1 = x_0 + 1`, and `y` becomes a view of the
+appropriate version. Now every dependency is a dataflow edge, so **anything that respects dataflow
+is legal**. Fusion, reordering, dead-code elimination, buffer reuse and recomputation all become
+straightforward local decisions.
+
+Two practical notes. Functionalization can appear to increase memory, since in-place became
+out-of-place — but the buffer *reuse* pass afterwards recovers it, now safely, because it has exact
+lifetimes rather than a guess. And mutations visible to the caller (an updated parameter, a modified
+input) must be reapplied at the graph boundary, which is why the compiled artifact has an epilogue
+copying results back.
+
+This is the same argument SSA form makes in a classical compiler, and for the same reason.
+
+</Probe>
+
+<Probe q="Why trace a joint forward-backward graph instead of compiling them separately?">
+
+Because the interesting optimisation lives *between* them, and separate compilation cannot see it.
+
+The decision is which forward intermediates to **save** for backward and which to **recompute**.
+Saving costs memory and a write plus a read; recomputing costs FLOPs. Given the joint graph, that is
+a min-cut problem: cut the graph so the total size of tensors crossing the boundary is minimised
+subject to the recompute cost. AOTAutograd's partitioner solves exactly this.
+
+What that yields:
+
+- **Activation checkpointing, automatically.** The thing people hand-annotate with
+  `torch.utils.checkpoint` falls out of the partition. Recomputing a cheap elementwise chain instead
+  of storing it is almost always right, and a human rarely annotates at that granularity.
+- **Fusion across the boundary.** A backward op can fuse with a recomputed forward op, which is
+  impossible if the two graphs were compiled independently.
+- **Correct handling of decompositions in backward.** Backward for a decomposed op is derived from
+  the decomposition, so you do not need a hand-written backward for every operator.
+
+The cost is that you must trace backward ahead of time, which requires knowing the graph is fixed —
+so anything that breaks capture (Module 4) or varies (Module 10) affects backward too. And there is
+a subtlety worth knowing: the partitioner optimises a proxy for memory and runtime, so its choices
+are occasionally worse than a knowledgeable human's on unusual models, which is why manual
+checkpointing still exists.
+
+</Probe>
+
+<Probe q="When would you take the MLIR path, and what do you give up?">
+
+Take it when your target is **not a GPU with a mature CUDA backend**.
+
+Concretely: TPU-like accelerators, NPUs in phones and laptops, and custom silicon where the vendor
+has an MLIR-based compiler and no realistic path to supporting Triton. That is why IREE uses
+torch-mlir as its PyTorch frontend and why vendors maintain forks. It is also the right path when
+you want an **ahead-of-time, serialisable artifact** — StableHLO is versioned with compatibility
+guarantees, so you can compile now and deploy later, which Inductor's Triton output is not designed
+for.
+
+What you give up:
+
+- **Dynamism.** The MLIR/StableHLO route is fundamentally an export-then-compile flow, closer to
+  TF1's model. `torch.export` requires a whole graph, so Module 4's graph breaks become hard errors
+  and Part M's dynamism becomes a much bigger problem.
+- **The ecosystem's default path.** Inductor gets the tuning, the bug reports and the kernel
+  coverage, because that is where the users are.
+- **Triton's escape hatch.** On the default path you can hand-write a Triton kernel and drop it in.
+  On the MLIR path you are writing dialect passes.
+
+The honest summary: these are not competitors so much as different destinations. Inductor optimises
+for *the GPU everyone has, with Python-level dynamism intact*. The MLIR route optimises for
+*heterogeneous hardware and stable deployable artifacts*, and it inherits both the strengths and the
+rigidity of the Google compiler lineage — XLA's fusion quality and StableHLO's stability, along with
+XLA's longstanding difficulty with shapes that are not known in advance.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="Name the four transformations between Dynamo's FX graph and Inductor.">
+
+**AOTAutograd** traces forward and backward into a joint graph on FakeTensor; **functionalization**
+removes mutation and aliasing; **decomposition** rewrites ~2000 ATen ops down toward ~250 core ATen
+and ~70 Prims; and **partitioning** min-cuts the joint graph into forward and backward, choosing
+save-versus-recompute. Only then does Inductor generate code.
+
+</SelfCheck>
+
+<SelfCheck q="What does decomposition cost, and how is it recovered?">
+
+It destroys the knowledge that a cluster of primitives was a `gelu` or a `softmax`, where a
+hand-written kernel usually beats anything a scheduler rebuilds — and a naive decomposition can be
+numerically worse (softmax without max-subtraction). Recovered by **pattern matching** in Inductor,
+which recognises decomposed structures and swaps in library kernels such as FlashAttention, plus
+deliberately leaving some ops opaque so they call cuBLAS/cuDNN.
+
+</SelfCheck>
+
+<SelfCheck q="Why is functionalization a prerequisite for optimization?">
+
+Because mutation and aliasing create dependencies that dataflow edges do not express — a scheduler
+can legally move an `add_` past a `sum` that reads an aliasing view. Avoiding that would need full
+alias analysis, which is expensive and unreliable with arbitrary views. After functionalization every
+dependency is a dataflow edge, so anything respecting dataflow is legal, and fusion, reordering, DCE
+and buffer reuse become local decisions. The same argument as SSA in a classical compiler.
+
+</SelfCheck>
+
+<SelfCheck q="What does the joint graph enable that separate compilation cannot?">
+
+The save-versus-recompute min-cut, which is activation checkpointing derived automatically rather
+than hand-annotated; fusion between backward ops and recomputed forward ops; and backward derived
+from decompositions instead of requiring a hand-written backward per operator. The cost is that
+backward must be traced ahead of time, so graph breaks and dynamism affect it too.
+
+</SelfCheck>
+
+<SelfCheck q="State the MLIR lineage accurately, and when you would take that path.">
+
+MLIR was built at Google (Lattner's team) and donated to LLVM; its idea is dialects with progressive
+lowering. **torch-mlir** is an LLVM incubator project — not Google's — that adopts that style,
+lowering PyTorch into a `torch` dialect and then to `linalg`/`tosa`/**StableHLO**, itself the
+descendant of Google's XLA HLO. Take it for accelerators with no CUDA backend, or when you need a
+versioned ahead-of-time artifact. You give up Python-level dynamism, the default path's tuning and
+coverage, and Triton as an escape hatch.
+
+</SelfCheck>

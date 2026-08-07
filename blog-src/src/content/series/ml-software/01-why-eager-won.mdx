@@ -1,0 +1,254 @@
+---
+n: 1
+title: 'Why eager won'
+blurb: 'TensorFlow 1 made the right performance bet and lost anyway. The interesting question is why JAX later made the same bet and won.'
+part: 'J'
+minutes: 15
+draft: false
+tags: ['TensorFlow', 'define-then-run', 'eager', 'JAX', 'tf.function', 'retracing', 'XLA', 'developer velocity']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+TensorFlow 1 was *right* about the machine and wrong about the human. Its bet was define-then-run:
+you build a symbolic graph, hand it to a session, and the runtime gets a complete, static,
+analysable program before a single number moves. That is genuinely the best thing you can hand a
+compiler. It knows every shape, every dependency, every buffer lifetime — so it can fuse, plan
+memory to the byte, place ops across devices, and target something as unforgiving as a TPU. Every
+performance argument for graph mode in this series was already true in 2016, and TensorFlow already
+had it.
+
+What it cost was the ability to *think in Python*. Your model was not a program that ran; it was a
+program that **built** a program. `print(x)` gave you `Tensor("add:0", shape=(?, 128))` rather than
+numbers. A shape error surfaced at graph-construction time with a stack trace pointing into
+framework internals, or worse, at session-run time with no trace at all. Control flow could not use
+`if` and `while`, because Python's control flow executes at build time — you needed `tf.cond` and
+`tf.while_loop`, which take *lambdas for both branches*, evaluate both, and demand that the two
+branches produce identical shapes and dtypes. Debugging meant `tf.Print` nodes wired into the graph
+as data dependencies, hoping they'd be scheduled where you wanted. The framework had made the
+compiler's job easy by making the researcher's job hard, and researchers are the ones who choose
+frameworks.
+
+PyTorch inverted it. Define-by-run means the graph is a side effect of ordinary Python execution:
+every op runs immediately, `print` prints numbers, `pdb` works, `if` is `if`, and the autograd tape
+is built as you go. The cost is that the framework never sees more than one operation at a time and
+so cannot optimise across them — which is exactly the ground the rest of this series covers. But
+the trade was decisively correct, because **iteration speed is a performance feature**: a
+researcher who can try five ideas a day beats one who can try one, and the gap compounds far faster
+than a 30% kernel win. By the time TensorFlow 2 made eager the default in 2019, the ecosystem —
+papers, tutorials, pretrained weights, Stack Overflow answers — had already moved, and eager
+execution alone was no longer a differentiator.
+
+<Callout type="probe" title="the question worth sitting with">
+  JAX makes essentially the *same* bet as TF1 — trace your function, compile it with XLA, run the
+  compiled artifact — and it succeeded in exactly the research community that rejected TF1. If
+  define-then-run were the fatal flaw, JAX should have failed too. So it was not the flaw. The next
+  section is what actually was.
+</Callout>
+
+## Numbers worth memorizing
+
+| Milestone                          | When      | What it signalled                          |
+| ---------------------------------- | --------- | ------------------------------------------ |
+| TensorFlow 1.0                     | Feb 2017  | define-then-run as the default             |
+| PyTorch 0.1                        | Jan 2017  | define-by-run, released the same season     |
+| TF eager as an option              | Oct 2017  | the retreat begins                          |
+| TensorFlow 2.0 (eager by default)  | Sep 2019  | ~2.5 years late                             |
+| JAX first public release           | Dec 2018  | define-then-run again, and it worked        |
+| PyTorch 2.0 / `torch.compile`      | Mar 2023  | graph mode returns, on eager's terms        |
+
+Where the ecosystem actually went — research papers with code, by framework:
+
+| Year | PyTorch | TensorFlow |
+| ---- | ------- | ---------- |
+| 2017 | ~10%    | ~60%       |
+| 2019 | ~50%    | ~35%       |
+| 2021 | ~75%    | ~15%       |
+| 2024+ | ~90%+  | single digits |
+
+Treat these as the shape of the curve rather than exact figures — the point is that the crossover
+happened in **2019**, the same year TF2 shipped, which is the definition of too late.
+
+<Callout type="trap" title="“TF1 lost because static graphs are slow”">
+  Backwards. Static graphs were and are *faster* — that was TF1's entire advantage, and XLA on TPU
+  proved it. It lost on debuggability, error messages, and control flow ergonomics. Confusing the
+  two leads people to conclude that graph mode is a dead end, when the actual lesson is that graph
+  mode has to be opt-in and escapable.
+</Callout>
+
+## Critical thinking
+
+<Probe q="JAX made the same define-then-run bet as TF1 and succeeded. What was actually different?">
+
+Five differences, and they compound. None of them is "static versus dynamic".
+
+1. **Tracing runs your real Python.** JAX's `jit` traces the function by executing it with abstract
+   values, so you write ordinary Python and get a graph as a *result*. TF1 made you write graph
+   *construction* code — a different language wearing Python's syntax. In JAX, `if` on a traced
+   value fails with a clear error telling you to use `lax.cond`; in TF1, `if` silently baked in the
+   build-time branch.
+2. **It is opt-in and removable.** Delete `@jit` and the function still runs, eagerly, as normal
+   NumPy-ish code. You debug in eager, then re-add the decorator. TF1 had no such mode — there was
+   no "just run it" to fall back to.
+3. **Functional purity is enforced, not requested.** JAX requires explicit PRNG keys and forbids
+   in-place mutation of traced values, so the tracing model has no hidden state to get wrong.
+   TF1's variables, collections and control dependencies were a large mutable global namespace
+   whose semantics were genuinely hard to hold in your head.
+4. **`vmap` and `grad` compose.** JAX gave something eager mode could not: automatic vectorisation
+   and arbitrary-order differentiation as composable transforms. That is a capability, not just a
+   speed-up — a reason to accept the constraint rather than a tax on ignoring it.
+5. **It arrived after the war, into a niche.** JAX targeted researchers who already accepted
+   compilation for TPUs, at a point when nobody expected it to be the default framework.
+
+The general lesson: the constraint was never the problem. The problem was making the constraint
+**mandatory, invisible, and inescapable**. `torch.compile` (Module 4) learned exactly this — opt-in
+decorator, silent fallback to eager, your real Python.
+
+</Probe>
+
+<Probe q="Walk through why control flow was so painful in TF1, precisely.">
+
+Because Python's `if` runs when the graph is *built*, and the graph must encode a decision made
+when it is *run*. Those are different times, and TF1 gave you no syntax that spanned them.
+
+```python
+# Silently wrong: the branch is chosen once, at build time.
+if tf.reduce_mean(x) > 0:      # a Tensor, always truthy
+    y = f(x)
+else:
+    y = g(x)                    # dead code, never in the graph
+```
+
+The correct form:
+
+```python
+y = tf.cond(tf.reduce_mean(x) > 0, lambda: f(x), lambda: g(x))
+```
+
+which brings four real costs. **Both branches are traced**, so both must be constructible even on
+inputs they will never see. **Shapes and dtypes must match exactly** across branches, so a branch
+returning a different sequence length simply cannot be expressed. **Closures capture confusingly**,
+since the lambdas execute at build time and the enclosing Python scope is not what you'd guess. And
+`tf.while_loop` needs `loop_vars` with **invariant shapes**, so a growing accumulator requires a
+`TensorArray` and explicit `shape_invariants`.
+
+Now compare a Python `while` in eager mode, which is just a `while`.
+
+The deeper point is that this is not TF being badly designed — **it is what capturing a graph
+fundamentally requires**. Module 4 shows Dynamo hitting the identical wall and choosing differently:
+rather than forcing you into `tf.cond`, it *breaks the graph* at the branch, runs that part in
+Python, and compiles the pieces on either side. Same constraint; the difference is who absorbs it.
+
+</Probe>
+
+<Probe q="TF2 added tf.function to get graphs back. Why did it reproduce TF1's problems?">
+
+Because it was a leaky abstraction over the same gap, and the leaks showed up as *silent* bugs
+rather than errors.
+
+`tf.function` traces your Python once per input signature and caches the result. That means:
+
+- **Python side effects run only during tracing.** A `print()` fires on the first call and never
+  again; a counter increments once. The function silently means something different from what it
+  says.
+- **Retracing is invisible and expensive.** Every new input shape or dtype, or any Python-valued
+  argument, triggers a fresh trace. Pass a Python `int` that varies and you retrace on every call,
+  turning an optimisation into a large slowdown with no error and no warning.
+- **AutoGraph rewrote your source.** It parsed your Python and converted `if`/`while` into
+  `tf.cond`/`tf.while_loop` automatically — which worked until it did not, and then you were
+  debugging generated code you never wrote.
+- **The same shape constraints returned**, now hidden inside a decorator that promised they were
+  handled.
+
+So TF2 had eager mode *and* a graph mode that recreated the original ergonomic problems whenever
+you used it. Users got a framework that was slow by default and confusing when made fast.
+
+Note carefully that retracing is *not* a TF-specific mistake — `torch.compile` has exactly the same
+failure mode, called recompilation, covered in Module 10. What differs is the handling: PyTorch
+gives you `TORCH_LOGS=recompiles` to see it, a cache-size limit that warns and falls back to eager
+rather than degrading silently, and `mark_dynamic` to declare intent. **The problem is inherent;
+the observability is the product.**
+
+</Probe>
+
+<Probe q="If iteration speed beats kernel speed, why did anyone build torch.compile at all?">
+
+Because the argument is about *where you are on the curve*, not a blanket ordering, and the industry
+moved along that curve.
+
+In 2017 the binding constraint was research throughput. Models were small enough to train on a few
+GPUs, nobody knew which architectures would matter, and the cost of a bad framework choice was
+measured in graduate-student weeks. Iteration dominated by a wide margin.
+
+By 2023 the picture inverted for a large slice of work. Architectures converged on the transformer,
+so exploration matters less. Training runs cost millions, so a 30% speed-up is a line item on a
+budget. Inference runs continuously at scale, so it is pure marginal cost. And model size grew past
+the point where per-op Python overhead is negligible — at batch 1 decode (Module 3), launch
+overhead is a large fraction of the step.
+
+So the correct design is not "eager" or "graph". It is **eager by default with graph mode
+available, opt-in, and escapable**, which is precisely `torch.compile`: one decorator, silent
+fallback when capture fails, and your real Python underneath.
+
+The framing worth keeping for the rest of the series: TF1 chose the endpoint that was right for the
+machine, PyTorch chose the one right for the human, and everything since has been an attempt to
+travel between them without giving up either. Every subsequent module is a piece of that
+machinery — and Parts M is where the travel is still incomplete.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="What did TensorFlow 1 get right, and what did it actually lose on?">
+
+It was right about the machine: a complete static graph is the best possible input to a compiler,
+enabling fusion, exact memory planning, device placement and TPU targeting. It lost on ergonomics —
+symbolic tensors that could not be printed, errors surfacing at build or session-run time far from
+their cause, and control flow that required `tf.cond`/`tf.while_loop` instead of Python's own. Not
+on performance.
+
+</SelfCheck>
+
+<SelfCheck q="Why did JAX succeed with define-then-run where TF1 failed?">
+
+Tracing executes your real Python instead of making you write graph-construction code; `jit` is
+opt-in and removable, so eager debugging is always available; functional purity with explicit PRNG
+keys removes hidden state; `vmap`/`grad` compose into capabilities eager cannot offer; and it
+arrived into a niche that already accepted compilation. The constraint was never fatal — making it
+mandatory, invisible and inescapable was.
+
+</SelfCheck>
+
+<SelfCheck q="Give the four concrete costs of tf.cond.">
+
+Both branches are traced, so both must be constructible for inputs they never see. Shapes and
+dtypes must match exactly across branches, so branch-dependent sequence lengths cannot be
+expressed. Closures capture at build time, with surprising scoping. And `tf.while_loop` needs
+shape-invariant `loop_vars`, forcing `TensorArray` and explicit `shape_invariants` for anything
+that grows.
+
+</SelfCheck>
+
+<SelfCheck q="Name the failure mode tf.function shares with torch.compile, and what distinguishes the handling.">
+
+Retracing, called recompilation in PyTorch: a new input shape, dtype or Python-valued argument
+triggers a fresh trace, so an optimisation can silently become a slowdown. The problem is inherent
+to caching a compiled artifact keyed on properties of the input. What differs is observability —
+`TORCH_LOGS=recompiles`, a cache-size limit that warns and falls back to eager rather than degrading
+quietly, and `mark_dynamic` to declare intent.
+
+</SelfCheck>
+
+<SelfCheck q="Why is “iteration speed beats kernel speed” a claim about a moment rather than a law?">
+
+Because it depends where you sit on the curve. In 2017, architectures were unknown, models were
+small, and research throughput was the binding constraint. By 2023 architectures had converged,
+training runs cost millions, inference is a continuous marginal cost, and per-op overhead is a real
+fraction of a batch-1 step. Hence eager by default *with* graph mode opt-in and escapable, rather
+than a choice between them.
+
+</SelfCheck>

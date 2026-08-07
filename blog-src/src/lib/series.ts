@@ -51,6 +51,21 @@ export const SERIES: Series[] = [
       { id: 'I', title: 'In practice', note: 'Latents, distillation, and cost.' },
     ],
   },
+  {
+    id: 'ml-software',
+    title: 'ML Software & Compilers',
+    subtitle: 'How PyTorch becomes kernels',
+    description:
+      'Fourteen modules on the stack between model code and the GPU. Why eager execution won and what it costs per op, how torch.compile captures Python at runtime, what Inductor and Triton actually generate, how the caching allocator and CUDA Graphs attack the two runtime overheads, and the three places where none of it works cleanly yet: dynamic shapes, MoE routing, and top-k.',
+    unit: 'Module',
+    parts: [
+      { id: 'J', title: 'The fault line', note: 'Why the stack looks like this.' },
+      { id: 'K', title: 'Capture', note: 'From Python bytecode to kernels.' },
+      { id: 'L', title: 'Runtime', note: 'Memory and launch.' },
+      { id: 'M', title: 'Where it breaks', note: 'Dynamism the compiler cannot see.' },
+      { id: 'N', title: 'Synthesis', note: 'Choosing, and serving.' },
+    ],
+  },
 ];
 
 export function getSeries(id: string): Series {
