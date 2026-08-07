@@ -1,7 +1,7 @@
 ---
 n: 1
 title: 'Why eager won'
-blurb: 'TensorFlow 1 made the right performance bet and lost anyway. The interesting question is why JAX later made the same bet and won.'
+blurb: 'TensorFlow 1 made the right performance bet and lost anyway. JAX made the same bet and won the argument without winning the market — and the gap between those two is the whole story.'
 part: 'J'
 minutes: 15
 draft: false
@@ -45,9 +45,10 @@ execution alone was no longer a differentiator.
 
 <Callout type="probe" title="the question worth sitting with">
   JAX makes essentially the *same* bet as TF1 — trace your function, compile it with XLA, run the
-  compiled artifact — and it succeeded in exactly the research community that rejected TF1. If
-  define-then-run were the fatal flaw, JAX should have failed too. So it was not the flaw. The next
-  section is what actually was.
+  compiled artifact — and it was adopted, without complaint, by exactly the research community that
+  rejected TF1. If define-then-run were the fatal flaw, JAX should have failed the same way. It did
+  not. So that was not the flaw, and the next section is what actually was — along with the second
+  half of the question, which is why JAX nonetheless never took the ecosystem.
 </Callout>
 
 ## How it actually works
@@ -60,20 +61,28 @@ The timeline, because in this story the dates are the argument:
 | PyTorch 0.1                        | Jan 2017  | define-by-run, released the same season     |
 | TF eager as an option              | Oct 2017  | the retreat begins                          |
 | TensorFlow 2.0 (eager by default)  | Sep 2019  | ~2.5 years late                             |
-| JAX first public release           | Dec 2018  | define-then-run again, and it worked        |
+| JAX first public release           | Dec 2018  | define-then-run again — and this time accepted |
 | PyTorch 2.0 / `torch.compile`      | Mar 2023  | graph mode returns, on eager's terms        |
 
 Where the ecosystem actually went — research papers with code, by framework:
 
-| Year | PyTorch | TensorFlow |
-| ---- | ------- | ---------- |
-| 2017 | ~10%    | ~60%       |
-| 2019 | ~50%    | ~35%       |
-| 2021 | ~75%    | ~15%       |
-| 2024+ | ~90%+  | single digits |
+| Year  | PyTorch | TensorFlow    | JAX        |
+| ----- | ------- | ------------- | ---------- |
+| 2017  | ~10%    | ~60%          | —          |
+| 2019  | ~50%    | ~35%          | &lt;1%     |
+| 2021  | ~75%    | ~15%          | ~2%        |
+| 2024+ | ~90%+   | single digits | ~3–5%      |
 
 Treat these as the shape of the curve rather than exact figures — the point is that the crossover
 happened in **2019**, the same year TF2 shipped, which is the definition of too late.
+
+The JAX column is the one worth staring at, because it says something the other two do not. JAX
+**won the argument and lost the market**: it demonstrated conclusively that define-then-run was not
+the fatal flaw, and it has been used for some of the largest training runs ever performed and a
+great deal of influential work — while never exceeding a few percent of published code. Its
+influence is wildly out of proportion to its share, which is a pattern worth recognising in its own
+right. So the honest reading is not "eager beat graphs" but that **PyTorch beat both of them, and
+for two different reasons**: it beat TF1 on ergonomics, and it beat JAX on distribution.
 
 <Callout type="trap" title="“TF1 lost because static graphs are slow”">
   Backwards. Static graphs were and are *faster* — that was TF1's entire advantage, and XLA on TPU
@@ -84,9 +93,12 @@ happened in **2019**, the same year TF2 shipped, which is the definition of too 
 
 ## Critical thinking
 
-<Probe q="JAX made the same define-then-run bet as TF1 and succeeded. What was actually different?">
+<Probe q="JAX made the same define-then-run bet as TF1. Why did it not fail the same way — and why did it still not win?">
 
-Five differences, and they compound. None of them is "static versus dynamic".
+Two questions, and separating them is the point.
+
+**Why it did not fail like TF1**: five differences, which compound. None of them is "static versus
+dynamic".
 
 1. **Tracing runs your real Python.** JAX's `jit` traces the function by executing it with abstract
    values, so you write ordinary Python and get a graph as a *result*. TF1 made you write graph
@@ -106,9 +118,19 @@ Five differences, and they compound. None of them is "static versus dynamic".
 5. **It arrived after the war, into a niche.** JAX targeted researchers who already accepted
    compilation for TPUs, at a point when nobody expected it to be the default framework.
 
-The general lesson: the constraint was never the problem. The problem was making the constraint
-**mandatory, invisible, and inescapable**. `torch.compile` (Module 4) learned exactly this — opt-in
-decorator, silent fallback to eager, your real Python.
+**Why it still did not win**: because by 2018 the question had stopped being about design. PyTorch
+already had the pretrained weights, the tutorials, the answered questions, and the papers whose code
+you wanted to run. A framework's value is mostly the work already written in it, and that is a
+quantity you cannot out-design. JAX also asked for a genuine concession — functional purity, no
+in-place mutation, explicit PRNG keys — which is a fine trade for a team that wants `vmap` and
+`pjit`, and a poor one for someone porting a repo.
+
+So the two answers together give the lesson. **The constraint was never the problem** — making it
+mandatory, invisible and inescapable was, which is what TF1 did and JAX did not. **And being right
+is not sufficient** once network effects have settled, which is why JAX sits at a few percent while
+having demonstrably won the technical argument. `torch.compile` (Module 4) is what you build when
+you have absorbed both halves: the good idea, delivered as an opt-in decorator with a silent
+fallback, inside the ecosystem people are already in.
 
 </Probe>
 
@@ -215,13 +237,19 @@ on performance.
 
 </SelfCheck>
 
-<SelfCheck q="Why did JAX succeed with define-then-run where TF1 failed?">
+<SelfCheck q="Why did JAX not fail the way TF1 did — and why did it still never exceed a few percent?">
 
-Tracing executes your real Python instead of making you write graph-construction code; `jit` is
+**Not failing:** tracing executes your real Python instead of graph-construction code; `jit` is
 opt-in and removable, so eager debugging is always available; functional purity with explicit PRNG
 keys removes hidden state; `vmap`/`grad` compose into capabilities eager cannot offer; and it
 arrived into a niche that already accepted compilation. The constraint was never fatal — making it
 mandatory, invisible and inescapable was.
+
+**Not winning:** by 2018 the decision had moved from design to distribution. A framework's value is
+mostly the work already written in it — weights, tutorials, papers — and that cannot be out-designed.
+JAX also asks a real concession (functional purity, no in-place mutation), which is cheap for a team
+that wants `vmap` and expensive for someone porting a repo. Being right is not sufficient once
+network effects have settled.
 
 </SelfCheck>
 
