@@ -73,14 +73,26 @@ import Callout from '../../../components/Callout.astro';
 ```
 
 Each module follows four beats, and the `##` headings are what the sidebar and
-search index key off:
+search index key off. Beats 1, 3 and 4 are identical across series; **beat 2 is
+named for what that series' second section actually contains**, because a
+generic label over comparison tables, code listings and pipeline diagrams reads
+as an appendix rather than as part of the argument:
 
 ```
 ## The core mental model
-## Numbers worth memorizing
+## <beat 2 — see below>
 ## Critical thinking      (<Probe q="...">answer</Probe>)
 ## Self-check             (<SelfCheck q="...">answer</SelfCheck>)
 ```
+
+| Series      | Beat 2                          | Because it holds            |
+| ----------- | ------------------------------- | --------------------------- |
+| ml-hardware | `Numbers worth memorizing`      | latency ladders, ridge points — genuine recall targets |
+| diffusion   | `The formulas and the numbers`  | conversions, schedules, parameter values |
+| ml-software | `How it actually works`         | pipelines, kernels, costs, commands |
+
+Every table in beat 2 opens with a sentence saying what it is for. A section
+that starts on a bare `|` reads as a dump; the lead-in is what makes it a beat.
 
 ## Gotchas
 
