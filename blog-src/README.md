@@ -61,7 +61,7 @@ public/fonts/                     latin-subset variable woff2, self-hosted
 
 Part ids must be unique across the whole collection, since one collection backs
 every series — ML Hardware uses A-E, Diffusion F-I, ML Software J-N, and
-HW/SW Codesign O-R.
+HW/SW Codesign O-R, Serving Kimi K3 S-V.
 
 ## Adding a module
 
@@ -92,6 +92,7 @@ as an appendix rather than as part of the argument:
 | diffusion   | `The formulas and the numbers`  | conversions, schedules, parameter values |
 | ml-software | `How it actually works`         | pipelines, kernels, costs, commands |
 | hw-sw-codesign | `The design space, quantified` | energy/bandwidth ladders, loop-nest notation, architecture comparisons |
+| serving-k3  | `What the reports actually measured` | cited figures, cluster shapes, engine configs, flags |
 
 Every table in beat 2 opens with a sentence saying what it is for. A section
 that starts on a bare `|` reads as a dump; the lead-in is what makes it a beat.
@@ -101,6 +102,10 @@ that starts on a bare `|` reads as a dump; the lead-in is what makes it a beat.
 - `/.nojekyll` at the repo root is required — Jekyll would strip `_astro/`.
 - A bare `<` followed by a digit or letter in MDX is parsed as a JSX tag. Write
   `under 100` or `&lt;100`, never `<100`.
+- Math in a component prop (`<Probe q="... $x$ ...">`) is **not** processed by
+  remark-math and renders as literal TeX. Keep `q=` text plain.
+- Inline `<code>` is `white-space: nowrap`, so a long literal overflows the page
+  at 375px. Split it into several short code spans.
 - A `|` inside `$math$` inside a markdown table splits the cell. Use `\lvert`.
 - Font URLs in `global.css` are absolute (`/blog/fonts/...`) and must be updated
   if `base` ever changes.

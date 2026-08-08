@@ -1,0 +1,296 @@
+---
+n: 9
+title: 'Disaggregation and cache-aware routing'
+blurb: 'Prefill and decode want opposite hardware and opposite parallelism, so both engines separate them. What crosses the boundary, why K3 makes the transfer harder than usual, and why the router has to know what is cached where.'
+part: 'U'
+minutes: 17
+draft: false
+tags: ['disaggregation', 'prefill decode', 'NIXL', 'Mooncake', 'llm-d', 'cache-aware routing', 'EPP', 'TTFT', 'PP8', 'DCP']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+Prefill and decode are the same mathematics in opposite resource regimes, and Module 7 showed how
+differently they behave under load: prefill is compute-bound with enormous arithmetic intensity, while
+decode is memory-bound at an intensity roughly equal to the batch size. They also want opposite
+parallelism. SGLang's measurements make this concrete — **PP8×TP1 chunked pipeline for prefill,
+reported at 1.7× the ceiling of TEP8**, and **DCP8 for decode, reported at 7.9× logical KV capacity**.
+Those two configurations cannot coexist in one engine instance. So if you want both, you must run two
+pools and move requests between them, which is disaggregation. vLLM's equivalent arrangement is
+**TEP8 prefill routed to DEP16 decode**, and SGLang's headline aggregate figure — **2,808 tok/s per
+GPU** — is quoted for a disaggregated PP8-prefill-plus-TP8-decode configuration rather than for a
+unified one.
+
+What crosses the boundary is where K3 differs from a normal disaggregated deployment. On a
+conventional model you transfer the KV cache: a contiguous, position-indexed, immutable set of pages,
+which is a well-understood bulk transfer. On K3 you transfer **two objects with different
+granularities** — vLLM describes the NIXL connector as treating the shared page as "token-level MLA
+cache and request-level KDA state, including convolution and recurrent state". The MLA portion is
+pages; the KDA portion is 69 layers' worth of whole recurrent state that must arrive intact and
+correct, because the decode worker will continue updating it in place. That transfer sits directly on
+the critical path of TTFT, and it is pure overhead that a unified deployment does not pay — which is
+why disaggregation only wins when the efficiency gain from specialised parallelism exceeds it.
+
+The third piece is routing, and it is the part teams most often bolt on too late. Once you have
+multiple decode replicas and a KV cache that may live in several places, *which* replica you send a
+request to determines whether it hits cache. llm-d pairs offloading with a Router whose **Exact Prefix
+Predictor** selects replicas that can reuse cached blocks. Without that, a request with a 50 K-token
+shared prefix lands on a random replica, misses, and prefills the whole thing — while the replica that
+had it cached sits idle. Cache-aware routing is not an optimisation on top of caching; on a multi-
+replica deployment it is what makes caching work at all, and its absence is invisible except as
+unexplained cost.
+
+<Callout type="bridge" title="the codesign series called this two modules early">
+  Module 12 of the codesign series argued that prefill and decode are two points in the resource space
+  with identical mathematics, and that serving them on one machine means one of the two is always
+  misprovisioned. K3 is that argument arriving as a product decision: two engines independently
+  concluded that the only way to get both PP8-class prefill and DCP8-class decode capacity is to stop
+  pretending they are one system.
+</Callout>
+
+## What the reports actually measured
+
+The two phases, and what each wants:
+
+| | Prefill | Decode |
+| --- | --- | --- |
+| Bound by | compute | memory bandwidth + capacity |
+| Arithmetic intensity | high (∝ sequence) | ≈ batch size |
+| Best parallelism (SGLang) | **PP8 × TP1**, chunked | **DCP8** / TP8 |
+| Best parallelism (vLLM) | **TEP8** | **DEP16** |
+| Reported gain | **1.7× TEP8's ceiling** | **7.9× logical KV** |
+| SLO | TTFT | inter-token latency |
+| Measured on K3/H200 | 0.37–0.54 s TTFT, warm, short prompts | 16.8 → 2.7 tok/s per user |
+
+Disaggregated aggregate throughput, from [SGLang](https://www.lmsys.org/blog/2026-07-27-kimi-k3-day0-support/):
+
+| Configuration | Result |
+| ------------- | ------ |
+| PP8 prefill + TP8 decode, disaggregated | **2,808 tok/s per GPU** |
+| DCP8, long-context agents | 541 tok/s across 48 sessions at 100 K |
+
+What crosses the prefill→decode boundary on K3:
+
+| Object | Granularity | Layers | Difficulty |
+| ------ | ----------- | ------ | ---------- |
+| MLA KV cache | token-level pages | 24 | conventional bulk transfer |
+| **KDA state** | **request-level whole object** | **69** | includes convolution + recurrent state |
+| Transport | NIXL (vLLM), Mooncake transfer engine (SGLang) | — | on the TTFT critical path |
+
+Routing, per [llm-d](https://llm-d.ai/docs/0.7/architecture/advanced/kv-management/kv-offloader):
+
+| Mechanism | Purpose |
+| --------- | ------- |
+| Router with **Exact Prefix Predictor (EPP)** | select replicas that can reuse cached blocks |
+| Partial-hit reconciliation (vLLM) | compare reusable token lengths from local GPU and remote tiers, take the longer prefix |
+| Contiguous memory layout (vLLM ≥ 0.12.0) | **4–5×** CPU transfer throughput |
+
+## Critical thinking
+
+<Probe q="When does disaggregation actually pay, given it adds a transfer to TTFT?">
+
+When the efficiency gain from letting each phase use its preferred parallelism exceeds the transfer
+cost — which on K3 is a lower bar than usual, because the parallelism gains are unusually large.
+
+**The cost side.** Every request now moves its MLA KV and its 69 layers of KDA state from a prefill
+worker to a decode worker before generation starts. That is bytes on the wire, added directly to TTFT,
+plus a scheduling handoff and a second admission decision. On a short prompt it may dominate; on a
+long one it is amortised over a large prefill.
+
+**The gain side, which is where K3 is unusual.** The published deltas are not marginal. Prefill in
+PP8×TP1 rather than TEP8 is **1.7×**. Decode with DCP8 gets **7.9× logical KV capacity**, which
+translates into far higher achievable concurrency and therefore far better aggregate throughput. You
+cannot have both in one instance. So the comparison is not "unified versus disaggregated with a
+transfer tax" — it is "one phase running well and the other compromised, versus both running well
+minus a transfer".
+
+**The conditions that favour disaggregation:**
+
+- **Long prompts**, because the transfer amortises over a large prefill and because prefill's
+  parallelism advantage grows with sequence length.
+- **A prefill/decode ratio that is not 1:1.** Agentic workloads with big contexts and short outputs
+  need much more prefill capacity per unit of decode; chat with short prompts and long answers needs
+  the reverse. Disaggregation lets you scale the two independently, which is arguably a bigger
+  operational win than the throughput number.
+- **A fast interconnect between the pools.** The transfer is on the critical path, so it wants RDMA or
+  NVLink — the same requirement vLLM states for multi-node EP/DP.
+
+**The conditions that favour staying unified:**
+
+- **Short prompts with long generations**, where the transfer is a large fraction of a small prefill.
+- **Small deployments.** Two pools means two sets of replicas, each needing enough capacity to hold
+  1.56 TB of weights (Module 3). At 8–16 GPUs total you cannot meaningfully split.
+- **Operational simplicity**, which is not nothing when a cold start is 13 minutes and you now have
+  two failure domains, a transfer path, and a router that must know about both.
+
+**My reading of the evidence:** the aggregate figure both engines highlight is a disaggregated one, and
+neither publishes a comparable unified aggregate number — which suggests disaggregation is where the
+throughput is, but also that we are not being shown the controlled comparison. Treat "disaggregate" as
+the direction of travel at scale and as unnecessary complexity below roughly a few dozen GPUs.
+
+</Probe>
+
+<Probe q="Why is transferring a KDA state harder than transferring a KV cache?">
+
+Because it is a different kind of object, and every property that makes a KV transfer easy is absent.
+
+**A KV transfer is easy for specific reasons.** The pages are immutable once written, so the source can
+keep serving while the transfer runs and there is no consistency question. They are position-indexed,
+so a partial transfer is meaningful and can be pipelined — start sending page 0 while page 500 is
+still being computed. They are uniform, so the transfer is a bulk contiguous copy, which is what NIXL
+and RDMA are good at. And if something goes wrong, recomputing a page is cheap and local.
+
+**A KDA state has none of that.** It is one object per request per layer, mutable, with no internal
+position structure. Specifically:
+
+- **It must arrive complete and exact.** The decode worker will continue updating it in place, and a
+  state that is subtly wrong produces subtly wrong output forever after — with no error, no
+  divergence signal, and nothing that a health check would catch. This is the same correctness
+  requirement that made ReplaySSM's bit-identical guarantee necessary (Module 5).
+- **It cannot be pipelined against prefill.** There is no partial KDA state to send early; the state
+  for token $n$ only exists once token $n$ has been processed. So the KDA portion of the transfer
+  begins only when prefill finishes, whereas MLA pages can stream as they are produced.
+- **It is 69 layers' worth**, plus convolution state. vLLM is explicit that the request-level view
+  includes "convolution and recurrent state" — there is more than one tensor per layer to move.
+- **You cannot fall back to recompute cheaply.** Recomputing a lost KV page means redoing one
+  position; recomputing a lost KDA state means replaying from the last checkpoint, potentially tens of
+  thousands of tokens (Module 2).
+
+**What follows for a deployment**: the prefill→decode handoff on K3 is a stricter operation than on a
+conventional model, it has a serial component that cannot overlap prefill, and its failure mode is
+silent corruption rather than a retry. That argues for keeping the two pools close — same fabric, low
+latency, RDMA — and for treating the transfer path as a correctness-critical component rather than a
+performance one. It is also a good example of the pattern running through this whole series: the
+hybrid architecture that made 1M context affordable moved cost into the serving stack in a form that
+did not exist before.
+
+</Probe>
+
+<Probe q="Why is cache-aware routing necessary rather than nice to have?">
+
+Because with $N$ replicas and no routing intelligence, your effective cache hit rate falls by roughly
+a factor of $N$, and the failure is completely silent.
+
+**The arithmetic.** A shared prefix — a system prompt, a document, a repository context — is cached on
+whichever replica first computed it. A new request carrying that prefix arrives and the load balancer
+picks a replica by round-robin or least-connections. The probability it picks the one holding the
+cache is $1/N$. With 8 replicas, seven out of eight requests prefill a prefix that already exists
+elsewhere in your cluster. You pay 8× the prefill compute and hold 8 copies of the same blocks, and
+every metric you normally watch — error rate, throughput, GPU utilisation — looks fine. Utilisation
+looks *great*, in fact, because you are doing a great deal of unnecessary work.
+
+**What the fix does.** llm-d's Router uses an **Exact Prefix Predictor** to select replicas that can
+reuse cached blocks — routing by content rather than by load. Two things make this more than a hash
+ring:
+
+- **It must trade cache affinity against load.** Always sending a popular prefix to the replica
+  holding it creates a hotspot. The router needs to know both what is cached where and how loaded each
+  replica is, and pick a point on that trade.
+- **It composes with a shared store.** With Mooncake's cross-instance cache (Module 8), a miss on the
+  local replica can still hit the distributed store, so routing becomes an optimisation over transfer
+  cost rather than a hard requirement. The two mechanisms substitute for each other partially: perfect
+  routing reduces the need for a shared store, and a fast shared store reduces the need for perfect
+  routing.
+
+**And the K3-specific wrinkle.** Because prefix hits on this model must establish both reusable MLA
+pages *and* a valid KDA checkpoint (Module 2), a "hit" is a pair of lengths rather than one number.
+vLLM describes reconciling this: when a local GPU hit conflicts with a remote cache result, the
+scheduler compares the exact reusable token lengths from both tiers and selects the longer prefix. So
+the router's model of what is cached where is more complicated than a prefix hash, and a checkpoint
+interval that does not align with your workload's shared prefixes reduces the value of routing as well
+as the value of caching.
+
+**The operational advice**, which is short: instrument prefix cache hit rate per replica, and compare
+it against what a perfect router would achieve given your traffic's prefix distribution. That gap is
+the value of cache-aware routing, expressed in the only units that matter. Almost nobody measures it,
+and on multi-replica deployments with shared prefixes it is frequently the largest single inefficiency
+in the system.
+
+</Probe>
+
+<Probe q="How would you stage a K3 deployment from simple to fully disaggregated?">
+
+In four stages, each one justified by a measurement from the previous — because every stage adds a
+failure domain and a 13-minute restart to something.
+
+**Stage 1 — one pool, prefix caching on.** Single unified deployment, `--enable-prefix-caching`
+explicitly on (Module 4), the parallelism that fits your hardware. Measure: the token pool from the
+startup log, aggregate throughput and per-user rate across a concurrency sweep, TTFT and ITL
+separately, and prefix cache hit rate. This is your baseline and most deployments should stop here
+until something in it is unacceptable.
+
+**Stage 2 — add capacity where you are bound.** From Module 7's three ceilings: if capacity-bound at
+long context, enable DCP; if bound by cross-request recompute with a low hit rate, add `native` CPU
+offloading. Both are single-system changes with no new distributed component. Re-measure the same
+things.
+
+**Stage 3 — disaggregate prefill and decode.** Justified when your prefill/decode ratio is
+lopsided enough that one pool is idling while the other saturates, or when you want PP8-class prefill
+*and* DCP8-class decode capacity simultaneously. Requires a fast fabric between pools, a NIXL or
+Mooncake transfer path, and acceptance that the transfer is correctness-critical. Measure the transfer
+cost as a component of TTFT explicitly, because that is the thing you are paying.
+
+**Stage 4 — multi-replica with cache-aware routing and a shared store.** Justified when you have
+enough replicas that the $1/N$ hit-rate problem is real, and enough shared prefix traffic for it to
+matter. Adds a router with prefix awareness and, if the store is cross-instance, a distributed stateful
+system with its own operations. Measure hit rate per replica against the achievable ceiling.
+
+**What I would resist at every stage**: adding a component because the reports mention it. Every
+number in this series comes from a day-0 post on hardware that is probably not yours, and the
+techniques described — DCP, disaggregation, distributed KV — each solve a specific bottleneck that you
+may not have. The sequence above is designed so that each stage produces the measurement that tells
+you whether the next one is warranted, and the most common good outcome is stopping at stage 2.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="Why must prefill and decode be disaggregated to get both engines' best numbers?">
+
+They want opposite parallelism and cannot coexist in one instance. SGLang: **PP8×TP1 chunked prefill
+at 1.7× TEP8's ceiling**, **DCP8 decode at 7.9× logical KV**. vLLM: **TEP8 prefill → DEP16 decode**.
+SGLang's headline **2,808 tok/s per GPU** is quoted for a disaggregated PP8+TP8 configuration. It also
+lets you scale the two pools independently, which matters because agentic workloads (big context,
+short output) and chat (short prompt, long output) have opposite ratios.
+
+</SelfCheck>
+
+<SelfCheck q="What crosses the prefill→decode boundary on K3, and why is it harder than usual?">
+
+Two objects at two granularities: **token-level MLA KV pages (24 layers)** and **request-level KDA
+state including convolution and recurrent state (69 layers)**. KV pages are immutable, position-indexed,
+uniform and pipelineable — you can stream page 0 while page 500 computes. The KDA state is mutable,
+has no internal position structure, only exists once prefill *finishes* (so it cannot overlap), must
+arrive **exactly** because the decode worker continues updating it in place, and cannot be cheaply
+recomputed — a loss means replaying from the last checkpoint. Its failure mode is silent corruption,
+not a retry.
+
+</SelfCheck>
+
+<SelfCheck q="Why is cache-aware routing necessary rather than optional?">
+
+With $N$ replicas and load-based balancing, the chance of landing on the replica holding a shared
+prefix is $1/N$ — so at 8 replicas, seven of eight requests re-prefill a prefix that already exists in
+the cluster, paying 8× the compute and holding 8 copies. The failure is **silent**: error rate,
+throughput and utilisation all look fine (utilisation looks better). llm-d's **Exact Prefix Predictor**
+routes by content, trading cache affinity against load to avoid hotspots, and it substitutes partially
+with a cross-instance store. On K3 a "hit" is a *pair* of lengths — reusable MLA pages and a valid KDA
+checkpoint — which vLLM reconciles by taking the longer prefix across tiers.
+
+</SelfCheck>
+
+<SelfCheck q="Give the four-stage deployment sequence and its stopping rule.">
+
+(1) **One pool, prefix caching explicitly on** — measure pool size, the concurrency sweep, TTFT and ITL
+separately, and hit rate. (2) **Add capacity where you are bound** — DCP if capacity-bound at long
+context, `native` CPU offload if recompute-bound with a low hit rate; both single-system. (3)
+**Disaggregate** when the prefill/decode ratio is lopsided or you need PP8-class prefill and DCP8-class
+decode together; measure the transfer as a component of TTFT. (4) **Multi-replica with cache-aware
+routing and a shared store** when $1/N$ hit-rate loss is real. Stopping rule: each stage produces the
+measurement that justifies the next, and **the most common good outcome is stopping at stage 2**.
+
+</SelfCheck>

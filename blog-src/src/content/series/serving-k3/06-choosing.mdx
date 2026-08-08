@@ -1,0 +1,299 @@
+---
+n: 6
+title: "Choosing, and why the numbers don't compare"
+blurb: 'vLLM says 370 tok/s, SGLang says 423, and a community report on H200 measured 16.8. All three are honest. What actually separates the engines, and the one head-to-head data point that exists.'
+part: 'T'
+minutes: 16
+draft: false
+tags: ['vLLM', 'SGLang', 'benchmarking', 'comparison', 'H200', 'GB300', 'Marlin', 'FlashInfer', 'methodology', 'day-0']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+Three numbers are in circulation for K3 decode: vLLM's **370 tok/s**, SGLang's **~423 tok/s**, and a
+community deployment's **16.8 tok/s**. They differ by 25× and all three are honest, because they are
+measurements of different things on different hardware. The first two are single-user decode with
+speculative decoding on Blackwell-class parts — GB300 NVL72 for vLLM, GB300 for SGLang — where MXFP4
+runs natively. The third is single-request throughput on
+[16×H200 with SGLang](https://huggingface.co/moonshotai/Kimi-K3/discussions/136), where MXFP4 goes
+through Marlin's dequantizing W4A16 path, the interconnect is InfiniBand between two nodes rather
+than an NVLink domain, and the report does not indicate speculative decoding was enabled. Nothing is
+wrong with any of them; they are simply not comparable, and the coverage that places them side by side
+is producing a comparison that does not exist.
+
+What that means practically is that **you cannot choose an engine from the published numbers**, and
+you should be suspicious of anyone who says you can. Both engines were developed in collaboration
+with Moonshot and NVIDIA, both landed day-0 support, both attack the same bottlenecks — fused KDA
+decode, custom collectives, MoE fusion, speculative decoding with KDA state management — and both
+report similar single-user decode before speculation (111–118 versus ~113). The convergence is not a
+coincidence: they are optimising the same model against the same hardware with overlapping vendor
+support, so the kernel-level ceiling is roughly the same and they are both near it.
+
+The real differences are architectural and operational, and they are visible in what each engine
+*chose to build* rather than in what it benchmarked. SGLang went further on memory (one pool from both
+ends versus one manager over two block types) and further on parallelism (chunked pipeline prefill and
+decode context parallelism, neither of which vLLM uses for this model). vLLM has the broader
+production ecosystem — llm-d, KV connector plugins, a larger deployment surface — and publishes its
+limitations more explicitly. If you want the most aggressive long-context capacity, SGLang's DCP is
+the differentiated feature. If you want to plug into an existing KV-offloading and routing stack,
+vLLM's connector ecosystem is the differentiated feature. That is a more useful basis for choosing
+than any tok/s figure.
+
+<Callout type="trap" title="reading a 25× spread as an engine difference">
+  The spread between 423 and 16.8 tok/s is almost entirely **hardware and precision path**: native
+  MXFP4 on Blackwell versus Marlin dequantization on Hopper, an NVLink domain versus two nodes over
+  InfiniBand, with and without speculation. The same engine produced numbers at both ends. Before
+  attributing a performance difference to an engine, check the GPU, the MoE backend, whether
+  speculation was on, and the batch size — on this model any one of those moves the number by more
+  than the engines differ from each other.
+</Callout>
+
+## What the reports actually measured
+
+The three numbers, with their conditions attached:
+
+| Reported | Engine | Hardware | Speculation | MoE path | What it measures |
+| -------- | ------ | -------- | ----------- | -------- | ---------------- |
+| 111 / 118 tok/s | vLLM | GB300 NVL72, TP8 / TP16 | no | TRT-LLM-Gen | single-user decode |
+| **370 tok/s** | vLLM | GB300 NVL72, TP16 | **DSpark** | TRT-LLM-Gen | single-user decode |
+| ~113 tok/s | SGLang | GB300 | no | native MXFP4 | single-user decode |
+| **~423 tok/s** | SGLang | GB300 | **DSpark** | native MXFP4 | single-user decode |
+| **2,808 tok/s per GPU** | SGLang | disaggregated PP8+TP8 | — | — | **aggregate throughput** |
+| 541 tok/s | SGLang | DCP8 | — | — | 48 sessions at 100 K context |
+| **16.8 tok/s** | SGLang | **16×H200**, TP16+EP16 | not indicated | **Marlin W4A16** | single request |
+| 146.9 tok/s | SGLang | 16×H200 | not indicated | Marlin | **54 concurrent, aggregate** |
+| 62 tok/s | — | [Artificial Analysis](https://artificialanalysis.ai/models/kimi-k3/providers), hosted API | — | — | median across providers |
+
+What actually differs between the engines:
+
+| Dimension | vLLM | SGLang |
+| --------- | ---- | ------ |
+| Hybrid memory | one manager, two block types | **one pool, allocated from both ends** |
+| Prefill parallelism | TEP8 | **PP8×TP1 chunked pipeline (1.7× TEP8)** |
+| Decode capacity | TP/EP | **DCP8 (7.9× logical KV)** |
+| Speculation | DSpark + TorchSpec parity | DSpark + **ReplaySSM** + confidence scheduling |
+| Disaggregation transport | NIXL connector | Mooncake transfer engine |
+| KV offloading ecosystem | **native, LMCache, Mooncake, NIXL, 3FS** | Mooncake |
+| Published limitations | explicit list | explicit list |
+| Vision | DP fallback for 12-head encoder | supported |
+
+The one genuine head-to-head data point, from the
+[16×H200 report](https://huggingface.co/moonshotai/Kimi-K3/discussions/136):
+
+| Engine | Outcome on 16×H200 |
+| ------ | ------------------ |
+| SGLang, TP16+EP16, Marlin, FlashMLA | **worked** — 102.75 GB/GPU weights, 7.95 GB KV pool |
+| vLLM, `kimi-k3` branch | **failed** — weight-loading memory bug inflated per-GPU use to ~130 GB, leaving no room for KV, at any parallelism |
+
+That bug is reported as since addressed upstream. It is a snapshot of day-0, not a standing
+property — which is itself the lesson.
+
+## Critical thinking
+
+<Probe q="Why do the two engines converge on nearly the same single-user number?">
+
+Because they are solving an identical, tightly-constrained optimisation problem with overlapping help,
+and the problem has a ceiling that both are near.
+
+**The problem is the same.** 93 sequential layers, 69 of them recurrent updates that cannot be
+parallelised across the sequence at decode; one expert-parallel all-to-all per MoE layer; AttnRes
+reads across depth; a fixed amount of weight traffic for ~104 B active parameters. At batch 1 there is
+no batching to exploit and nothing to overlap collectives against. The step time is essentially the
+sum of unavoidable serial work plus synchronisation, and both engines attacked exactly that.
+
+**The attacks are the same, in the same order.** Compare the two lists and they are nearly
+interchangeable: fused KDA decode kernel folding convolution, recurrent update and normalisation into
+one launch; custom all-reduce beating NCCL at small message sizes; MoE fusion in the expert-combine
+tail; metadata preparation overhead removed; overlap of gate projection with attention. Two teams,
+independently, with the same vendor engineers available, found the same bottlenecks — which is what
+you expect when the bottlenecks are structural rather than implementation-specific.
+
+**Why that is reassuring rather than boring.** It means 111–118 versus ~113 tok/s is close to *the
+model's* batch-1 decode speed on that hardware, not an artefact of either implementation. You can plan
+against it. It also means further gains have to come from somewhere other than kernel work — which is
+exactly what both engines did next: speculation (3.14× and ~3.7×), and disaggregated parallelism for
+aggregate throughput.
+
+**Where they diverge is where the problem is *not* constrained**, and that is the useful signal.
+Memory layout has genuine design freedom, and SGLang took a more aggressive position. Parallelism
+strategy has genuine design freedom, and SGLang built two strategies vLLM did not use here. Ecosystem
+integration has genuine design freedom, and vLLM has more of it. Divergence appears exactly where
+choice exists, which is a decent heuristic for reading any two systems solving one problem.
+
+</Probe>
+
+<Probe q="How much of the H200-versus-GB300 gap is hardware, and how much is configuration?">
+
+Mostly hardware and precision path, with configuration and measurement definition accounting for the
+rest — but the honest answer is that the published data does not let you decompose it cleanly.
+
+**What is clearly hardware:**
+
+- **MXFP4 native versus dequantizing.** On Blackwell, the FlashInfer MXFP4 runner executes 4-bit
+  weights natively. On H200 the Marlin W4A16 path dequantizes to 16-bit before the MAC. You keep the
+  memory win — which is what makes the model fit — and lose the arithmetic win. Per the codesign
+  series' Module 10, this is the emulated-format case, and at decode the memory win is most of the
+  benefit, so this is a smaller factor than it sounds but not zero.
+- **Interconnect.** GB300 NVL72 is a large NVLink domain with a symmetric-memory fabric that vLLM's
+  and SGLang's custom collectives target specifically. Two H200 nodes are joined by InfiniBand, and
+  the report needed explicit NIC pinning via `NCCL_SOCKET_IFNAME` and `GLOO_SOCKET_IFNAME` to work at
+  all. Given SGLang's own waterfall attributes **+27.6 tok/s to communication fusion** on the fast
+  fabric, an inter-node fabric plausibly gives much of that back.
+- **Memory capacity.** 141 GB versus 288 GB per GPU, producing a 7.95 GB KV pool. That limits batch,
+  and batch is where throughput comes from.
+
+**What is configuration or definition:**
+
+- **Speculation.** The report does not indicate DSpark was enabled. Speculation is worth ~3.1–3.7× on
+  the vendor benchmarks. If it was off, that alone accounts for a large share of the gap, and it is
+  the first thing I would check.
+- **What is being counted.** 16.8 tok/s is single-request throughput in a run where p50 latency was
+  28.3 s; the vendor figures are steady-state decode rate at batch 1. A number that includes prefill
+  and queueing is not the same measurement as tokens-per-second-during-decode.
+
+**What this means for you.** Do not attempt to derive an expected number for your hardware from these.
+The publishable version of the finding is directional and still useful: **Blackwell with native MXFP4
+inside one NVLink domain is a materially different machine for this model than Hopper across two
+nodes**, and the difference is larger than any engine choice. If your hardware is the latter, plan
+from the community report and measure early; if it is the former, the vendor numbers are achievable
+but only under their conditions.
+
+</Probe>
+
+<Probe q="How should you actually choose between vLLM and SGLang for K3?">
+
+On operational fit and on which differentiated feature matches your workload — not on throughput,
+because the throughput difference is smaller than the noise in your own deployment.
+
+**Choose SGLang if:**
+
+- **Long context is your workload.** DCP8's reported **7.9× logical KV capacity** is the single
+  largest capacity lever published for this model, and vLLM does not offer an equivalent for K3. If
+  you are serving agents at 100 K+ context, this is decisive — their 48-session-at-100 K benchmark is
+  literally that workload.
+- **Prefill throughput matters.** Chunked pipeline prefill at **1.7× TEP8's ceiling** is a real
+  advantage for long-prompt workloads.
+- **You are on Hopper.** The one head-to-head data point has SGLang working on 16×H200 where vLLM's
+  branch did not, and while that specific bug is reported fixed, it suggests SGLang's non-Blackwell
+  path had more early attention.
+
+**Choose vLLM if:**
+
+- **You need the KV offloading and routing ecosystem.** vLLM's connector interface supports `native`,
+  `lmcache`, `mooncake`, `3fs` and `nixl` backends, and llm-d's cache-aware routing is built on it.
+  If your architecture depends on multi-tier or cross-instance KV reuse, this is where the options
+  are. Module 8.
+- **You are already running vLLM.** Operational familiarity, existing tooling, existing monitoring and
+  existing on-call knowledge are worth more than a 10% throughput difference, and this is the reason
+  most teams should stop reading here.
+- **You want explicit limitation disclosure.** Both publish, but vLLM's list — prefix caching default,
+  vision TP incompatibility, RDMA requirement, tool-call parser — is unusually direct and maps onto
+  real day-one failures.
+
+**Run both if** you are at a scale where the answer matters. They are both open, both support the
+model, and a week of benchmarking your workload on your hardware produces better information than
+every published number combined. Given that the numbers span 25× and none of them are yours, that is
+not a hedge — it is the only method that answers the question.
+
+**And revisit the decision.** These are day-0 implementations of a model released in July 2026. The
+gap between them at any moment is smaller than the change in either over a quarter.
+
+</Probe>
+
+<Probe q="What should you distrust in the published benchmarks, including the ones cited here?">
+
+Five things, in rough order of how much they distort.
+
+**Vendor-published numbers on vendor-optimal hardware.** Both engine posts are collaborations with
+Moonshot and NVIDIA, benchmarked on GB300-class parts. That is not dishonest — it is where the model
+is meant to run — but it is the best case, chosen by people with an interest in it looking good, and
+the community H200 report is the corrective.
+
+**Batch-1 numbers presented near throughput claims.** 370 and 423 tok/s are *latency* measurements
+with a batch of one. They tell you what one user experiences on an idle server. The number that
+determines your cost is aggregate tokens per GPU under load, and the only published figure of that
+kind is SGLang's 2,808 tok/s per GPU on a disaggregated configuration — a different measurement of a
+different system. Module 7 is about how far apart they are.
+
+**Speculative decoding gains quoted as a single multiplier.** vLLM's own data shows acceptance at 4.73
+on coding and 2.61 on creative writing. A "3.14×" is a point on a distribution whose spread is nearly
+2×, and your position on it depends on user behaviour you do not control.
+
+**Optimisations that only apply at one batch size.** SGLang's confidence-scheduled verification is
+**+68% at batch 256** and "break-even to mildly negative below batch size 8". Any single-configuration
+number hides that the same feature helps and hurts depending on load.
+
+**Recency.** Every source in this series was published within days of the weights, on 27 July 2026.
+The vLLM weight-loading bug that broke the H200 deployment is already reported fixed. Kernel work
+continues on both engines. Numbers from a day-0 post age faster than anything else in this series, and
+the appropriate use for all of them is to size a first deployment you will measure — a point Module 11
+returns to.
+
+**What I would trust most**, for what it is worth: the *structural* claims, which do not depend on
+tuning. 69/24 layer split. 2.78 T weights at ~1.56 TB. 896 experts at top-16. The 7.95 GB pool
+supporting ~308,608 tokens on a named configuration. DCP's mechanism, whatever the exact multiplier.
+Those will still be true when the throughput numbers have all moved.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="Why are 370, 423 and 16.8 tok/s all honest, and what separates them?">
+
+Different measurements on different machines. 370 (vLLM) and ~423 (SGLang) are **batch-1 decode with
+speculation on GB300-class hardware** with native MXFP4 and a large NVLink domain. 16.8 is
+**single-request throughput on 16×H200** where MXFP4 goes through Marlin's dequantizing W4A16 path,
+the fabric is InfiniBand across two nodes needing explicit NIC pinning, and speculation is not
+indicated. The dominant factors are hardware, precision path, and whether speculation was on — each of
+which moves the number more than the engines differ from each other.
+
+</SelfCheck>
+
+<SelfCheck q="Why do the engines converge on ~113–118 tok/s before speculation?">
+
+Because the problem is structurally constrained and both are near its ceiling: 93 sequential layers
+including 69 recurrent updates, one expert all-to-all per MoE layer, AttnRes reads across depth, ~104 B
+of active-weight traffic, and nothing to overlap collectives against at batch 1. Both teams
+independently found the same bottlenecks and fixed them the same ways. That convergence means the
+figure is close to *the model's* batch-1 speed on that hardware and can be planned against — and that
+further gains had to come from speculation and disaggregated parallelism instead. They diverge exactly
+where genuine design freedom exists: memory layout, parallelism strategy, ecosystem.
+
+</SelfCheck>
+
+<SelfCheck q="What is the one genuine head-to-head data point, and how much weight does it carry?">
+
+On 16×H200, SGLang (TP16+EP16, Marlin, FlashMLA) worked — 102.75 GB/GPU weights, 7.95 GB KV pool —
+while vLLM's `kimi-k3` branch failed with a weight-loading memory bug inflating per-GPU use to ~130 GB,
+leaving no room for KV at any parallelism. It carries limited weight: the bug is reported fixed
+upstream. It is a day-0 snapshot, and its real lesson is that day-0 snapshots expire.
+
+</SelfCheck>
+
+<SelfCheck q="Give the decision criteria for each engine.">
+
+**SGLang** for long context (DCP8's 7.9× logical KV is the largest published capacity lever, with no
+vLLM equivalent for K3), for prefill-heavy workloads (chunked pipeline at 1.7× TEP8), and on Hopper
+where its non-Blackwell path had more early attention. **vLLM** for the KV offloading and routing
+ecosystem (`native`/`lmcache`/`mooncake`/`3fs`/`nixl` connectors, llm-d cache-aware routing), for
+explicit limitation disclosure, and — the reason most teams should stop there — if you already run it,
+since operational familiarity beats a 10% throughput difference. At meaningful scale, benchmark both
+on your own workload; given a 25× spread among published numbers and none of them yours, that is the
+only method that answers the question.
+
+</SelfCheck>
+
+<SelfCheck q="What should you distrust in these benchmarks, and what should you trust?">
+
+Distrust: vendor numbers on vendor-optimal hardware; batch-1 latency figures placed near throughput
+claims; speculation quoted as one multiplier when acceptance spans 2.61–4.73 by workload;
+optimisations valid at one batch size only (+68% at 256, negative below 8); and recency, since every
+source is days old and one cited bug is already fixed. Trust the **structural** claims: the 69/24
+layer split, 2.78 T at ~1.56 TB, 896 experts top-16, the 7.95 GB pool at ~308,608 tokens on a named
+config, and DCP's mechanism regardless of its exact multiplier.
+
+</SelfCheck>

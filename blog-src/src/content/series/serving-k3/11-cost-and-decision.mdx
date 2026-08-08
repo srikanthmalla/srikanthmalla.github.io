@@ -1,0 +1,317 @@
+---
+n: 11
+title: 'Cost, break-even, and what to actually do'
+blurb: 'Published break-even points span 2 billion to 24 billion tokens a month, and the spread is mostly assumptions rather than disagreement. The decision procedure, and an honest account of what these day-0 numbers are worth.'
+part: 'V'
+minutes: 17
+draft: false
+tags: ['cost', 'break-even', 'self-hosting', 'TCO', 'GPU pricing', 'utilization', 'decision', 'synthesis', 'day-0']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+The published break-even analyses for self-hosting K3 disagree by more than an order of magnitude —
+one puts it above **2 billion output tokens a month** on an 8×B200 node, another at roughly **23.6
+billion tokens a month** on 64×H200 at serverless rates. That spread is not a factual dispute. It is
+the compounding of four independent assumptions: which hardware, at what price (owned, reserved, or
+on-demand), against which API price point, and — the one that dominates and that almost nobody states
+— **at what utilisation**. A cluster costs the same whether it is saturated or idle, so the break-even
+volume scales inversely with how full you keep it, and a deployment running at 20% utilisation needs
+five times the token volume of one running at 100%.
+
+The utilisation assumption is where Module 7 comes back and settles the economics. Aggregate
+throughput is what you are buying, and on K3 it scales strongly sublinearly with concurrency while
+per-user latency degrades roughly linearly. So the utilisation you can actually run at is capped by
+your latency SLO, not by your hardware. If your product needs 10 tokens per second per user and the
+[16×H200 measurement](https://huggingface.co/moonshotai/Kimi-K3/discussions/136) shows 2.7 tok/s at
+54 concurrent requests, then your usable operating point is well below that concurrency — and every
+break-even calculation that assumes a saturated cluster is describing a service nobody would use.
+Cost per token and quality of service are the same dial, and the published analyses generally pick one
+end of it silently.
+
+Which produces the actual decision rule, and it is not primarily financial. **Self-hosting K3 is
+justified by control, not by cost** — data residency, latency floors you cannot get from an API,
+custom fine-tuning, or capacity guarantees — unless your volume is very large and very steady. The
+cost case requires high sustained utilisation, and high sustained utilisation requires predictable
+traffic, because you cannot autoscale a deployment with a 13-minute cold start (Module 3). Bursty
+traffic against a fixed cluster is the worst case for this model: you provision for peak, run at
+average, and pay the difference. If that describes you, the API is cheaper and it is not close.
+
+<Callout type="trap" title="break-even calculated at 100% utilisation">
+  Every published break-even figure I found is effectively a saturated-cluster calculation. Real
+  deployments run well below saturation, because concurrency is capped by latency SLOs and because
+  traffic is not flat. Divide any published break-even token volume by your realistic utilisation
+  before using it. At 30% utilisation — not unusual for a service with daily traffic peaks — a
+  "2 billion tokens a month" break-even is really closer to 7 billion.
+</Callout>
+
+## What the reports actually measured
+
+Published hardware and pricing figures:
+
+| Item | Figure | Source |
+| ---- | ------ | ------ |
+| 8×B200 server, purchase | \$395,048.50; 14.227 kW max draw | [Cult of Coders](https://www.cultofcoders.com/blog/article/kimi-k3-self-hosting-engineering-gates) |
+| 8×B300 node, on-demand | \$59.12/hr (Runpod), \$62.80/hr (Nebius), 27 July 2026 | same |
+| 8×B200 at ~\$5.50/GPU-hr | ~\$32,000/month | [Northflank](https://northflank.com/blog/what-is-kimi-k3-self-hosting) |
+| 64×H200, serverless, 24/7 | ~\$212,109/month | [DigitalOcean](https://www.digitalocean.com/community/conceptual-articles/self-hosting-kimi-k3) |
+
+Published break-even points, with their assumptions:
+
+| Break-even | Hardware | API price assumed | Source |
+| ---------- | -------- | ----------------- | ------ |
+| **> 2 B output tokens/mo** | 8×B200 at ~\$5.50/GPU-hr | \$15/M output | Northflank |
+| **~23.6 B tokens/mo** | 64×H200 serverless | \$9.00/M blended 50:50 | DigitalOcean |
+
+Why they differ by ~12×, decomposed:
+
+| Factor | Effect |
+| ------ | ------ |
+| 8 GPUs vs 64 | ~8× more infrastructure cost |
+| \$5.50/GPU-hr vs serverless rate | serverless carries a premium |
+| \$15/M output vs \$9/M blended | ~1.7× on the value side |
+| **Utilisation assumed** | **unstated in both** |
+
+Throughput inputs to any cost model, and their spread (Module 6):
+
+| Measurement | Value | Conditions |
+| ----------- | ----- | ---------- |
+| Aggregate, disaggregated | **2,808 tok/s per GPU** | SGLang, PP8 prefill + TP8 decode |
+| Aggregate, 54 concurrent | 146.9 tok/s **total** | 16×H200, ~9.2 tok/s per GPU |
+| Long-context agents | 541 tok/s across 48 sessions | DCP8, 100 K context |
+
+Those first two differ by roughly 300× per GPU. Any cost-per-token figure is dominated by which one
+you believe applies to you, which is why Module 6 insists on measuring your own.
+
+## Critical thinking
+
+<Probe q="Why do the published break-evens differ by 12×, and which is right for you?">
+
+Neither, without your numbers — but the decomposition is instructive because three of the four factors
+are knowable and the fourth is the one that matters.
+
+**Factor 1: cluster size.** 8 GPUs versus 64 is roughly 8× the cost. Both are legitimate: 8×B300 is
+the published minimum that holds the weights, and 64+ is Moonshot's own production recommendation for
+efficient expert parallelism (Module 3). They are answering different questions — "what is the
+cheapest thing that runs it" versus "what should I run in production" — and the 8× gap between them
+is the single largest term.
+
+**Factor 2: procurement model.** \$395,048 to buy an 8×B200 server, ~\$59–63/hr for an 8×B300 node
+on-demand, ~\$5.50/GPU-hr as a mid-market rate, and serverless above that. Owned hardware amortised
+over three years is dramatically cheaper per hour than on-demand, *if* you keep it busy — which
+reintroduces utilisation. On-demand is more expensive per hour and lets you stop paying, except that
+a 13-minute cold start means you largely cannot.
+
+**Factor 3: the API price you are comparing against.** \$15/M output versus \$9/M blended 50:50 is 1.7×,
+and the choice between them depends on your input/output ratio. An agentic workload with 50 K-token
+contexts and 500-token answers is almost all input; a chat workload is more balanced. Since input
+tokens are far cheaper on most API pricing, a heavily input-weighted workload makes the API look
+better and pushes break-even up.
+
+**Factor 4: utilisation, which neither states and which dominates.** Break-even volume scales
+inversely with utilisation. At 100% the published numbers apply; at 30% they triple. And Module 7's
+concurrency curve says your achievable utilisation is capped by your latency SLO — the 16×H200
+deployment reached 146.9 tok/s aggregate only by degrading users to 2.7 tok/s each. If your SLO
+forbids that, your real throughput is a fraction of the benchmark and your real break-even is a
+multiple of the published one.
+
+**How to compute yours**, which takes an afternoon and beats any published figure:
+
+1. Measure aggregate tokens/s at your *acceptable* per-user latency, on your hardware, with your
+   context distribution. Not at saturation.
+2. Multiply by your realistic duty cycle across a week, including nights and weekends.
+3. That is your monthly token capacity. Divide your monthly infrastructure cost by it for cost per
+   token.
+4. Compare against your actual API spend at your actual input/output mix.
+5. Add the operational cost — on-call, upgrades, the 13-minute restarts, the conformance testing of
+   Module 10 — which none of the published analyses include and which is not small for a system of
+   this complexity.
+
+</Probe>
+
+<Probe q="What makes K3 economically harder to self-host than a smaller model?">
+
+Four things compound, and they all push the same direction: the minimum viable deployment is large and
+inflexible.
+
+**The floor is high.** You cannot run a small K3. 1.56 TB of weights means a minimum of 8 Blackwell-
+class GPUs or 16–32 older ones (Module 3), and Moonshot recommends 64+ for efficient production
+serving. There is no equivalent of running a 7 B model on one card to serve modest traffic. Your first
+increment of capacity is a very large one, so low-volume self-hosting is not merely inefficient, it is
+unavailable.
+
+**You cannot scale elastically.** A 13-minute cold start — 11.2 minutes of it loading 1.56 TB —
+effectively rules out autoscaling. So you provision for peak and pay for peak. A service with a 3:1
+peak-to-average ratio is paying three times its average cost, and that factor lands directly on
+break-even.
+
+**Utilisation is capped by latency.** Module 7's curve is the binding constraint: aggregate throughput
+rises sublinearly while per-user latency degrades roughly linearly, so the operating point that
+maximises tokens per dollar is not one your users will accept. Smaller dense models have a much
+friendlier curve here, because batching amortises their weights properly and K3's routed experts do
+not (Module 7).
+
+**The variance in achievable throughput is enormous.** 2,808 tok/s per GPU on a tuned disaggregated
+Blackwell deployment against roughly 9 tok/s per GPU on the 16×H200 measurement at 54 concurrent
+requests. Whether you land near the top or the bottom of that range depends on hardware, engine
+configuration, parallelism, speculation, prefix hit rate and workload shape — and you find out by
+building it. That is risk, and risk has a cost that no spreadsheet in the published analyses carries.
+
+**The upside case, to be fair**, because there is one: if you have high, steady, predictable volume and
+you can keep a large cluster busy at an acceptable latency, the per-token cost of owned hardware is
+genuinely far below API pricing, and the gap widens with scale. The conditions are demanding, but
+organisations that meet them exist and self-hosting is straightforwardly correct for them. The error is
+assuming you are one of them before measuring your duty cycle.
+
+</Probe>
+
+<Probe q="Given everything in this series, what is the decision procedure?">
+
+Six questions in order, and most people stop at the second.
+
+**1. Do you need to self-host at all?** Self-hosting is justified by *control* — data residency,
+regulatory constraints, a latency floor an API cannot meet, custom fine-tuning, guaranteed capacity —
+or by very large steady volume. If none of those apply, use the API. This eliminates most cases and
+the rest of the procedure is for the ones it does not.
+
+**2. Is your traffic steady and predictable?** If it is bursty, you provision for peak, cannot
+autoscale, and the economics do not work. Bursty plus self-hosted is the worst combination available
+for this model.
+
+**3. What hardware can you actually get?** Blackwell-class with native MXFP4 in one NVLink domain is a
+materially different machine for K3 than Hopper across two nodes (Module 6) — different precision
+path, different collective performance, different capacity. If Hopper is what you have, plan from the
+community 16×H200 report rather than from the vendor posts, and expect the lower end of every range.
+
+**4. Which engine?** Not from the published tok/s figures, which span 25× on hardware differences
+(Module 6). SGLang if long context is your workload — DCP8's reported 7.9× logical KV is the largest
+published capacity lever, with no vLLM equivalent for K3 — or if you want chunked pipeline prefill.
+vLLM if you need the KV offloading and routing ecosystem, or if you already run it, which for most
+teams is the deciding factor.
+
+**5. What is your binding ceiling?** From Module 7: capacity (concurrency × context exceeds the pool),
+the running-request cap, or per-user latency. They have different fixes — DCP or offloading, more
+replicas, or lowering concurrency — and spending on the wrong one buys nothing. Diagnose it by
+sweeping concurrency and watching the p50-to-max latency spread.
+
+**6. Then stage the deployment.** Module 9's sequence: one pool with prefix caching explicitly on;
+then capacity where you are bound; then disaggregate if your prefill/decode ratio is lopsided; then
+multi-replica with cache-aware routing. Each stage produces the measurement justifying the next, and
+stopping at stage 2 is the most common good outcome.
+
+**And running underneath all six**: run KVV before you build on it (Module 10), because the API
+surface is the least-hardened layer and its failures are quiet.
+
+</Probe>
+
+<Probe q="How much should anyone trust this series?">
+
+The structural claims, considerably. The numbers, as a starting point for measurement and nothing
+more — and the distinction is worth being explicit about because it applies unevenly.
+
+**What I would rely on**, because it does not depend on tuning, hardware or a benchmark
+configuration:
+
+- The architecture: 2.78 T total, ~104 B active, 93 layers split 69 KDA / 24 gated MLA, 896 experts at
+  top-16 in a 3,584-dim latent, native MXFP4 with MXFP8 activations.
+- The mechanisms: why a recurrent state breaks prefix caching, offloading and speculation, and that the
+  answer each time is checkpoint-and-replay with an exactness guarantee. Why DCP works and why KDA
+  cannot use it. Why prefill and decode want opposite parallelism. Why an empty `tool_calls` is not a
+  decision.
+- The shapes: that batching returns less on a routed-expert model than on a dense one; that concurrency
+  and context length spend one budget; that TTFT and inter-token latency are limited by different
+  resources.
+
+**What I would treat as provisional:**
+
+- Every throughput figure. They come from day-0 posts published within days of the 27 July 2026
+  weight release, on hardware ranging from 16×H200 to GB300 NVL72, with different engines,
+  configurations, and definitions of what is being counted. They span 25× and are not comparable to
+  each other.
+- The 7.95 GB / 308,608-token pool, which is one engine on one hardware at one `mem-fraction-static`.
+  It is the best measurement available and it is still one measurement.
+- Anything about relative engine quality. The one head-to-head data point — vLLM's branch failing on
+  H200 where SGLang worked — is already reported fixed upstream.
+- The cost analyses, which are third-party estimates with unstated utilisation assumptions.
+
+**What I know is missing**, and would want before running this in production: per-token KV bytes for
+the MLA layers and per-request bytes for the KDA state, which neither engine publishes and which every
+capacity plan needs; the realised expert load-imbalance factor under Quantile Balancing; a controlled
+unified-versus-disaggregated comparison on the same hardware; guidance on setting the KDA checkpoint
+interval against a workload's prefix distribution; and any published per-backend parallelism
+compatibility matrix for KV offloading (Module 8), which does not appear to exist.
+
+**The honest summary**: this is a snapshot of a fast-moving situation, assembled from sources with
+about two weeks of history, several of which have an interest in the numbers looking good. The
+reasoning should hold up; the figures will move; and the correct use of the whole thing is to size a
+first deployment that you then measure yourself.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="Why do published break-evens span 2 B to 23.6 B tokens a month?">
+
+Four compounding assumptions: **cluster size** (8 GPUs vs 64 — the largest term, and both are
+defensible since 8 is the published minimum and 64+ is Moonshot's production recommendation);
+**procurement** (\$395 K purchase vs ~\$59–63/hr on-demand vs serverless); **the API price compared
+against** (\$15/M output vs \$9/M blended, ~1.7×, depending on your input/output ratio); and
+**utilisation**, which neither states and which dominates, since break-even scales inversely with it.
+
+</SelfCheck>
+
+<SelfCheck q="Why is utilisation the dominant term, and what caps it?">
+
+A cluster costs the same idle or saturated, so break-even volume scales inversely with utilisation —
+at 30%, a "2 billion tokens/month" figure is really ~7 billion. It is capped not by hardware but by
+your **latency SLO**: Module 7's curve shows aggregate throughput rising sublinearly while per-user
+latency degrades roughly linearly, so the 16×H200 deployment reached 146.9 tok/s aggregate only by
+degrading users to 2.7 tok/s each. Cost per token and quality of service are one dial, and published
+analyses silently pick the saturated end.
+
+</SelfCheck>
+
+<SelfCheck q="What four things make K3 harder to self-host economically than a smaller model?">
+
+**A high floor** — 1.56 TB means a minimum of 8 Blackwell-class GPUs, so the first increment of
+capacity is very large and low-volume self-hosting is unavailable. **No elastic scaling** — a
+13-minute cold start means provisioning for peak, so a 3:1 peak-to-average ratio triples your cost.
+**Utilisation capped by latency** — routed experts don't amortise under batching the way dense weights
+do, so the curve is unfriendlier than a dense model's. **Enormous throughput variance** — 2,808 tok/s
+per GPU tuned on Blackwell versus ~9 tok/s per GPU at 54 concurrent on 16×H200, and you find out which
+by building it, which is unpriced risk.
+
+</SelfCheck>
+
+<SelfCheck q="Give the six-question decision procedure.">
+
+(1) **Do you need to self-host?** — justified by control (residency, latency floor, fine-tuning,
+guaranteed capacity) or very large steady volume; otherwise use the API. (2) **Is traffic steady?** —
+bursty plus self-hosted is the worst combination, since you cannot autoscale. (3) **What hardware can
+you get?** — Blackwell with native MXFP4 in one NVLink domain is a different machine from Hopper across
+two nodes; plan from the matching report. (4) **Which engine?** — not from tok/s figures spanning 25×;
+SGLang for long context (DCP8) or prefill-heavy work, vLLM for the offloading/routing ecosystem or
+because you already run it. (5) **What is your binding ceiling?** — capacity, running-request cap, or
+latency; each has a different fix. (6) **Stage the deployment** per Module 9, and run KVV underneath
+all of it.
+
+</SelfCheck>
+
+<SelfCheck q="What in this series is reliable, and what is provisional?">
+
+**Reliable** — the architecture (2.78 T / ~104 B active, 69 KDA + 24 MLA of 93, 896 experts top-16 at
+3,584 latent, native MXFP4/MXFP8) and the mechanisms (why a recurrent state breaks prefix caching,
+offloading and speculation, and why the answer is always checkpoint-and-replay with an exactness
+guarantee; why DCP works and excludes KDA; why prefill and decode want opposite parallelism; why
+batching returns less on routed experts; why concurrency and context spend one budget).
+**Provisional** — every throughput figure (day-0, spanning 25×, different hardware and definitions),
+the 308,608-token pool (one config), relative engine quality (the one head-to-head is already fixed),
+and the cost analyses. **Missing entirely** — per-token MLA KV bytes and per-request KDA bytes, the
+realised load-imbalance factor, a controlled unified-vs-disaggregated comparison, checkpoint-interval
+guidance, and any per-backend parallelism compatibility matrix for offloading.
+
+</SelfCheck>

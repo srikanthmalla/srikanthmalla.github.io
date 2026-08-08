@@ -1,0 +1,602 @@
+<!DOCTYPE html><html lang="en" data-astro-cid-z4jru4n3><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>7. The concurrency collapse — Serving Kimi K3</title><meta name="description" content="16.8 tok/s at one request, 146.9 aggregate at fifty-four — 8.7× more total throughput for a 6.2× drop per user. Why long context and many users are the same budget, and what actually sets the ceiling."><link rel="icon" href="data:,"><script>
+      (() => {
+        try {
+          const t = localStorage.getItem('refresher:theme');
+          if (t === 'light') document.documentElement.classList.add('light');
+        } catch (e) {}
+      })();
+    </script><link rel="stylesheet" href="/blog/_astro/BaseLayout.BNp-sd5V.css"><style>.wrap[data-astro-cid-5x65ok44]{max-width:68ch;margin-inline:auto;padding:3rem 1.25rem 6rem}@media (width>=1024px){.wrap[data-astro-cid-5x65ok44]{max-width:calc(68ch + 6rem);padding-inline:3rem}}.mhead[data-astro-cid-5x65ok44]{border-block-end:1px solid var(--rule);margin-block-end:.5rem;padding-block-end:1.75rem}.mhead-kicker[data-astro-cid-5x65ok44]{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint);margin:0 0 .85rem;font-size:.6875rem;font-weight:500}.mhead-n[data-astro-cid-5x65ok44]{color:var(--accent);font-weight:640}.mhead-dot[data-astro-cid-5x65ok44]{opacity:.5;padding-inline:.35rem}.mhead-title[data-astro-cid-5x65ok44]{font-family:var(--font-sans);letter-spacing:-.027em;color:var(--ink-strong);text-wrap:balance;margin:0;font-size:clamp(1.75rem,1.3rem + 1.9vw,2.375rem);font-weight:660;line-height:1.12}.mhead-blurb[data-astro-cid-5x65ok44]{color:var(--ink-muted);max-width:58ch;margin:.85rem 0 0;font-size:1.0625rem;line-height:1.6}.mfoot[data-astro-cid-5x65ok44]{border-block-start:1px solid var(--rule);margin-block-start:4rem;padding-block-start:1.75rem}.mark[data-astro-cid-5x65ok44]{font-family:var(--font-sans);border:1px solid var(--rule);background:var(--bg-raised);color:var(--ink-muted);cursor:pointer;border-radius:5px;padding:.4rem .85rem;font-size:.75rem;font-weight:550}.mark[data-astro-cid-5x65ok44]:hover{color:var(--ink-strong);border-color:var(--ink-faint)}.mark[data-astro-cid-5x65ok44][aria-pressed=true]{color:var(--bridge);border-color:color-mix(in oklab, var(--bridge) 45%, var(--rule))}.pager[data-astro-cid-5x65ok44]{grid-template-columns:1fr 1fr;gap:1rem;margin-block-start:2rem;display:grid}.pager-link[data-astro-cid-5x65ok44]{border:1px solid var(--rule);font-family:var(--font-sans);border-radius:6px;flex-direction:column;gap:.25rem;padding:.75rem .9rem;text-decoration:none;display:flex}.pager-link[data-astro-cid-5x65ok44]:hover{border-color:var(--ink-faint);background:var(--bg-raised)}.pager-link[data-astro-cid-5x65ok44].is-next{text-align:end}.pager-dir[data-astro-cid-5x65ok44]{text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);font-size:.6875rem}.pager-title[data-astro-cid-5x65ok44]{color:var(--ink-strong);font-size:.8125rem;font-weight:550;line-height:1.35}
+</style><style>.callout{border:1px solid var(--rule);border-inline-start-width:2px;border-radius:5px;margin-block:1.75rem;padding:.9rem 1.1rem 1rem;font-size:.9375rem;line-height:1.65}.callout-probe{border-inline-start-color:var(--probe);background:var(--probe-bg)}.callout-trap{border-inline-start-color:var(--trap);background:var(--trap-bg)}.callout-bridge{border-inline-start-color:var(--bridge);background:var(--bridge-bg)}.callout-label{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;align-items:center;gap:.45rem;margin:0 0 .5rem;font-size:.6875rem;font-weight:620;display:flex}.callout-probe .callout-label{color:var(--probe)}.callout-trap .callout-label{color:var(--trap)}.callout-bridge .callout-label{color:var(--bridge)}.callout-mark{background:currentColor;border-radius:50%;flex:none;width:5px;height:5px}.callout-title{text-transform:none;letter-spacing:0;color:var(--ink-muted);font-weight:500}.callout-body>:first-child{margin-block-start:0}.callout-body>:last-child{margin-block-end:0}.callout-body>*+*{margin-block-start:.75em}.probe{margin-block:1.75rem}.prose .probe-q{font-family:var(--font-sans);letter-spacing:-.01em;color:var(--ink-strong);margin:0 0 .6rem;padding-inline-start:1.15rem;font-size:1rem;font-weight:600;line-height:1.45;position:relative}.prose .probe-q:before{content:"›";color:var(--accent);font-weight:700;position:absolute;inset-inline-start:0}.probe-a{border-inline-start:1px solid var(--rule);margin-inline-start:.1rem;padding-inline-start:1.15rem}.probe-a>*+*{margin-block-start:1.15em}.probe-a>:first-child{margin-block-start:0}.probe-a>:last-child{margin-block-end:0}.selfcheck{border-block-start:1px solid var(--rule-soft)}.selfcheck:last-of-type{border-block-end:1px solid var(--rule-soft)}.prose>.selfcheck+.selfcheck{margin-block-start:0}.selfcheck>summary{cursor:pointer;color:var(--ink);align-items:baseline;gap:1rem;padding:.7rem .2rem;list-style:none;display:flex}.selfcheck>summary::-webkit-details-marker{display:none}.selfcheck>summary:hover{color:var(--ink-strong)}.selfcheck-q{flex:1}.selfcheck-q code{white-space:nowrap}.selfcheck-cue{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);flex:none;padding-block-start:.15rem;font-size:.6875rem;font-weight:600}.selfcheck>summary:hover .selfcheck-cue{color:var(--accent)}.selfcheck-cue-hide,.selfcheck[open] .selfcheck-cue-show{display:none}.selfcheck[open] .selfcheck-cue-hide{display:inline}.selfcheck-a{color:var(--ink-muted);border-inline-start:2px solid var(--rule);margin-block-end:.9rem;margin-inline-start:.2rem;padding:.15rem .2rem 1.05rem;padding-inline-start:1rem;font-size:.9375rem}.selfcheck-a>:first-child{margin-block-start:0}.selfcheck-a>:last-child{margin-block-end:0}.selfcheck-a>*+*{margin-block-start:.7em}.selfcheck-a strong{color:var(--ink)}
+</style></head><body data-astro-cid-z4jru4n3><a href="#content" class="skip" data-astro-cid-z4jru4n3>Skip to content</a><div class="shell" data-astro-cid-z4jru4n3><aside class="rail" data-rail data-astro-cid-z4jru4n3><nav class="rail-nav" aria-label="Serving Kimi K3 contents" data-astro-cid-wv7whodv><div class="rail-head" data-astro-cid-wv7whodv><a href="/blog/" class="rail-up" data-astro-cid-wv7whodv>All series</a><a href="/blog/serving-k3/" class="rail-home" data-astro-cid-wv7whodv><span class="rail-home-title" data-astro-cid-wv7whodv>Serving Kimi K3</span><span class="rail-home-sub" data-astro-cid-wv7whodv>A 2.8T hybrid-attention MoE, and what it takes to keep it fed</span></a><p class="rail-progress" data-astro-cid-wv7whodv><span class="rail-progress-bar" data-astro-cid-wv7whodv><span data-progress-fill data-astro-cid-wv7whodv></span></span><span class="rail-progress-text" data-astro-cid-wv7whodv><span data-progress-count data-astro-cid-wv7whodv>0</span>/11 reviewed</span></p></div><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part S</span>The model</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/01-architecture/" class="rail-link" title="2.78T total, 104B active, 896 experts at top-16, 93 layers split 69 KDA to 24 gated MLA, native MXFP4. The numbers that matter for serving, and the one that most write-ups get wrong." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>1</span><span class="rail-title" data-astro-cid-wv7whodv>What K3 actually is</span><span class="rail-tick" data-tick="serving-k3/01-architecture" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/02-kda-and-the-kv-cache/" class="rail-link" title="69 of 93 layers keep a fixed-size recurrent state instead of a growing KV cache. That is what makes a million tokens affordable — and it creates the hardest engineering problem in the stack." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>2</span><span class="rail-title" data-astro-cid-wv7whodv>KDA, AttnRes, and the two-state problem</span><span class="rail-tick" data-tick="serving-k3/02-kda-and-the-kv-cache" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/03-the-memory-budget/" class="rail-link" title="1.56 TB of weights before a single token. What that leaves for KV on each cluster shape, why the published minimum is 8 GPUs and the production recommendation is 64, and the one measured pool size everyone should start from." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>3</span><span class="rail-title" data-astro-cid-wv7whodv>The memory budget</span><span class="rail-tick" data-tick="serving-k3/03-the-memory-budget" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part T</span>The engines</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/04-vllm/" class="rail-link" title="One hybrid KV manager, DSpark speculative decoding at 3.14×, custom collectives at 1.7–4.5× over NCCL — and three limitations they publish that will bite you on day one." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>4</span><span class="rail-title" data-astro-cid-wv7whodv>vLLM&#39;s path</span><span class="rail-tick" data-tick="serving-k3/04-vllm" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/05-sglang/" class="rail-link" title="One unified pool allocated from both ends, chunked pipeline prefill at 1.7× the tensor-parallel ceiling, decode context parallelism for 7.9× logical KV — and 2,808 tok/s per GPU when prefill and decode are pulled apart." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>5</span><span class="rail-title" data-astro-cid-wv7whodv>SGLang&#39;s path</span><span class="rail-tick" data-tick="serving-k3/05-sglang" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/06-choosing/" class="rail-link" title="vLLM says 370 tok/s, SGLang says 423, and a community report on H200 measured 16.8. All three are honest. What actually separates the engines, and the one head-to-head data point that exists." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>6</span><span class="rail-title" data-astro-cid-wv7whodv>Choosing, and why the numbers don&#39;t compare</span><span class="rail-tick" data-tick="serving-k3/06-choosing" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part U</span>Where it falls over</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/07-concurrency-collapse/" class="rail-link is-active" aria-current="page" title="16.8 tok/s at one request, 146.9 aggregate at fifty-four — 8.7× more total throughput for a 6.2× drop per user. Why long context and many users are the same budget, and what actually sets the ceiling." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>7</span><span class="rail-title" data-astro-cid-wv7whodv>The concurrency collapse</span><span class="rail-tick" data-tick="serving-k3/07-concurrency-collapse" aria-hidden="true" data-astro-cid-wv7whodv></span></a><ul class="rail-sub" data-rail-sub data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="#the-core-mental-model" class="rail-sub-link" data-toc="the-core-mental-model" data-astro-cid-wv7whodv>The core mental model</a></li><li data-astro-cid-wv7whodv><a href="#what-the-reports-actually-measured" class="rail-sub-link" data-toc="what-the-reports-actually-measured" data-astro-cid-wv7whodv>What the reports actually measured</a></li><li data-astro-cid-wv7whodv><a href="#critical-thinking" class="rail-sub-link" data-toc="critical-thinking" data-astro-cid-wv7whodv>Critical thinking</a></li><li data-astro-cid-wv7whodv><a href="#self-check" class="rail-sub-link" data-toc="self-check" data-astro-cid-wv7whodv>Self-check</a></li></ul></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/08-kv-offloading/" class="rail-link" title="Five backends behind one vLLM connector interface — native, LMCache, Mooncake, 3FS, NIXL — three storage tiers, and the constraint nobody documents: which of them work with which parallelism, and what a recurrent state does to all of it." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>8</span><span class="rail-title" data-astro-cid-wv7whodv>Multi-node KV offloading</span><span class="rail-tick" data-tick="serving-k3/08-kv-offloading" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/09-disaggregation/" class="rail-link" title="Prefill and decode want opposite hardware and opposite parallelism, so both engines separate them. What crosses the boundary, why K3 makes the transfer harder than usual, and why the router has to know what is cached where." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>9</span><span class="rail-title" data-astro-cid-wv7whodv>Disaggregation and cache-aware routing</span><span class="rail-tick" data-tick="serving-k3/09-disaggregation" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part V</span>Operating it</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/10-tool-calling/" class="rail-link" title="The model can be running perfectly and your agents still fail. Reasoning and tool-call parsers, grammar-constrained decoding, the empty-tool_calls failure, and a vendor conformance suite where 26 of 30 failures were one missing feature." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>10</span><span class="rail-title" data-astro-cid-wv7whodv>Tool calling and the API surface</span><span class="rail-tick" data-tick="serving-k3/10-tool-calling" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/11-cost-and-decision/" class="rail-link" title="Published break-even points span 2 billion to 24 billion tokens a month, and the spread is mostly assumptions rather than disagreement. The decision procedure, and an honest account of what these day-0 numbers are worth." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>11</span><span class="rail-title" data-astro-cid-wv7whodv>Cost, break-even, and what to actually do</span><span class="rail-tick" data-tick="serving-k3/11-cost-and-decision" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-other" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv>Other series</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>ML Hardware &amp; Low-Latency Systems</span></a></li><li data-astro-cid-wv7whodv><a href="/blog/diffusion/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>Diffusion</span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>ML Software &amp; Compilers</span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>ML Hardware/Software Codesign</span></a></li></ul></section><div class="rail-foot" data-astro-cid-wv7whodv><p data-astro-cid-wv7whodv><kbd data-astro-cid-wv7whodv>j</kbd> <kbd data-astro-cid-wv7whodv>k</kbd> section · <kbd data-astro-cid-wv7whodv>/</kbd> search · <kbd data-astro-cid-wv7whodv>[</kbd><kbd data-astro-cid-wv7whodv>]</kbd> module</p></div></nav></aside><div class="col" data-astro-cid-z4jru4n3><header class="topbar" data-astro-cid-z4jru4n3><button class="icon-btn only-narrow" data-rail-toggle aria-label="Toggle contents" data-astro-cid-z4jru4n3><svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M1.5 3.5h12M1.5 7.5h12M1.5 11.5h12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg></button><p class="crumb" data-astro-cid-z4jru4n3>Part U · Where it falls over › The concurrency collapse</p><div class="topbar-actions" data-astro-cid-z4jru4n3><button class="search-btn" data-search-open aria-label="Search" data-astro-cid-z4jru4n3><span aria-hidden="true" data-astro-cid-z4jru4n3>⌕</span><span class="search-btn-label" data-astro-cid-z4jru4n3>Search</span><kbd data-astro-cid-z4jru4n3>/</kbd></button><button class="icon-btn" data-theme-toggle aria-label="Toggle theme" data-astro-cid-z4jru4n3><svg class="i-sun" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><circle cx="7.5" cy="7.5" r="3" stroke="currentColor" stroke-width="1.2" data-astro-cid-z4jru4n3></circle><path d="M7.5 .8v1.7M7.5 12.5v1.7M14.2 7.5h-1.7M2.5 7.5H.8M12.24 2.76l-1.2 1.2M3.96 11.04l-1.2 1.2M12.24 12.24l-1.2-1.2M3.96 3.96l-1.2-1.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg><svg class="i-moon" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M13 9.3A5.8 5.8 0 0 1 5.7 2 5.9 5.9 0 1 0 13 9.3Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" data-astro-cid-z4jru4n3></path></svg></button><a class="site-link" href="/" data-astro-cid-z4jru4n3>srikanthmalla.com</a></div></header><main id="content" data-astro-cid-z4jru4n3><article class="wrap" data-article data-astro-cid-5x65ok44><header class="mhead" data-astro-cid-5x65ok44><p class="mhead-kicker" data-astro-cid-5x65ok44><span class="mhead-n" data-astro-cid-5x65ok44>Module 7</span><span class="mhead-dot" data-astro-cid-5x65ok44>·</span>Part U — Where it falls over<span class="mhead-dot" data-astro-cid-5x65ok44>·</span>18 min</p><h1 class="mhead-title" data-astro-cid-5x65ok44>The concurrency collapse</h1><p class="mhead-blurb" data-astro-cid-5x65ok44>16.8 tok/s at one request, 146.9 aggregate at fifty-four — 8.7× more total throughput for a 6.2× drop per user. Why long context and many users are the same budget, and what actually sets the ceiling.</p></header><div class="prose" data-astro-cid-5x65ok44><h2 id="the-core-mental-model">The core mental model<a class="anchor" href="#the-core-mental-model" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>The most useful concurrency measurement published for K3 comes from the
+<a href="https://huggingface.co/moonshotai/Kimi-K3/discussions/136">16×H200 community deployment</a>: <strong>one
+request yields 16.8 tok/s; fifty-four concurrent requests yield 146.9 tok/s in aggregate</strong>. Aggregate
+throughput rose 8.7×, and per-user speed fell from 16.8 to about <strong>2.7 tok/s — a 6.2× drop</strong>. Both
+halves of that are the expected behaviour of a batched autoregressive server and neither is a bug, but
+the shape matters: throughput scales strongly sublinearly with concurrency while per-user latency
+degrades roughly linearly, so there is a concurrency level beyond which you are trading a great deal
+of user experience for very little capacity. Finding it is the main operational task of running this
+model, and it is much lower than on the dense models most people’s intuitions come from.</p>
+<p>The reason it is lower is that K3’s decode step is dominated by costs that batching does <em>not</em>
+amortise as well as usual. On a dense model, batching is nearly free throughput: you read the weights
+once and use them for every sequence in the batch, so doubling the batch nearly doubles tokens per
+second until you hit compute. On K3, each token routes to 16 of 896 experts, and <em>different tokens in
+the batch route to different experts</em>. So batching does not amortise expert weight reads the way it
+amortises dense weight reads — a larger batch touches more distinct experts, up to the point where
+the batch activates most of them and you are reading a large fraction of 2.78 T parameters per step.
+Add an all-to-all whose sizes are data-dependent, and load imbalance where the step ends when the
+slowest rank finishes, and MoE batching has a much weaker return than the dense intuition predicts.</p>
+<p>The second constraint is capacity, and it is the harder one. Module 3’s measured pool holds about
+<strong>308,608 tokens</strong> of hybrid state on that configuration. Concurrency multiplied by context length
+cannot exceed it. Fifty-four concurrent requests at 4 K context each is 216 K tokens and fits;
+fifty-four at 32 K is 1.7 M and does not. <strong>Long context and high concurrency are not two features you
+tune separately — they are two ways of spending the same budget</strong>, and this is the single most
+important thing to internalise about serving K3. SGLang’s DCP8, at a reported 7.9× logical KV
+capacity, is the one technique that changes the budget by an order of magnitude rather than a few
+percent, and even it only helps the context axis.</p>
+<aside class="callout callout-trap"><p class="callout-label"><span class="callout-mark" aria-hidden="true"></span>Common trap<span class="callout-title"> · benchmarking at batch 1 and planning at batch 64</span></p><div class="callout-body"><p>The published 370 and 423 tok/s figures are batch-1 decode with speculation on an idle machine. The
+16.8 → 2.7 tok/s per-user curve is what your users experience on a loaded one. These are both real
+and they describe different servers. Any capacity plan built from a batch-1 number will overestimate
+by roughly the concurrency you intend to run at, and speculative decoding — which contributes much
+of the batch-1 figure — is precisely the feature whose benefit shrinks as the machine fills.</p></div></aside>
+<h2 id="what-the-reports-actually-measured">What the reports actually measured<a class="anchor" href="#what-the-reports-actually-measured" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>The concurrency curve, from the <a href="https://huggingface.co/moonshotai/Kimi-K3/discussions/136">16×H200 report</a>:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Concurrency</th><th>Aggregate tok/s</th><th>Per user</th><th>Latency p50 / max</th></tr></thead><tbody><tr><td>1</td><td>16.8</td><td>16.8</td><td>28.3 s</td></tr><tr><td><strong>54</strong></td><td><strong>146.9</strong></td><td><strong>~2.7</strong></td><td>60 s / 102 s</td></tr><tr><td>Scaling</td><td><strong>8.7×</strong></td><td><strong>÷6.2</strong></td><td>~2.1× p50</td></tr></tbody></table></div>
+<p>TTFT on the same deployment was 0.37–0.54 s for short prompts on a warm server — which is worth
+noticing, because TTFT held up far better than inter-token latency did.</p>
+<p>Long-context concurrency, from <a href="https://www.lmsys.org/blog/2026-07-27-kimi-k3-day0-support/">SGLang</a>:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Configuration</th><th>Sessions</th><th>Context</th><th>Aggregate</th><th>Per session</th></tr></thead><tbody><tr><td>DCP8</td><td>48</td><td>100 K</td><td>541 tok/s</td><td>~11.3 tok/s</td></tr><tr><td>Disaggregated PP8 prefill + TP8 decode</td><td>—</td><td>—</td><td><strong>2,808 tok/s per GPU</strong></td><td>—</td></tr></tbody></table></div>
+<p>The capacity constraint, using Module 3’s measured 308,608-token pool:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Context per request</th><th>Max concurrent (approx.)</th></tr></thead><tbody><tr><td>2 K</td><td>~150</td></tr><tr><td>8 K</td><td>~37</td></tr><tr><td>32 K</td><td>~9</td></tr><tr><td>128 K</td><td>~2</td></tr><tr><td>1 M</td><td><strong>0</strong> — one request does not fit</td></tr></tbody></table></div>
+<p>Why batching returns less on K3 than on a dense model:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Cost per decode step</th><th>Amortised by batching?</th></tr></thead><tbody><tr><td>Dense/shared weight reads</td><td><strong>yes</strong> — read once, used by all</td></tr><tr><td><strong>Routed expert weight reads</strong></td><td><strong>weakly</strong> — more tokens reach more experts</td></tr><tr><td>Expert-parallel all-to-all</td><td>partly; sizes grow with batch</td></tr><tr><td><strong>Load imbalance across ranks</strong></td><td><strong>no</strong> — step ends with the slowest rank</td></tr><tr><td>93 sequential layer traversals</td><td>yes — one traversal per step</td></tr><tr><td>KDA recurrent state updates</td><td>per request, so scales with batch</td></tr><tr><td>Speculative verification compute</td><td><strong>negatively</strong> — competes for compute under load</td></tr></tbody></table></div>
+<h2 id="critical-thinking">Critical thinking<a class="anchor" href="#critical-thinking" aria-hidden="true" tabindex="-1">#</a></h2>
+<section class="probe"><h3 class="probe-q">Decompose the 16.8 → 2.7 tok/s per-user drop. What is actually causing it?</h3><div class="probe-a"><p>Four mechanisms, and only the first is the benign one everybody expects.</p><p><strong>1. Ordinary batched-decode sharing, the expected part.</strong> In any batched autoregressive server, one
+decode step produces one token for every sequence, so per-user token rate is (steps per second), and
+steps get slower as the batch grows. If step time scaled perfectly, 54 concurrent users would each get
+<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>16.8</mn><mi mathvariant="normal">/</mi><mn>1</mn><mo>=</mo><mn>16.8</mn></mrow><annotation encoding="application/x-tex">16.8 / 1 = 16.8</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord">16.8/1</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">16.8</span></span></span></span> tok/s only if step time were unchanged; in reality more work per step means slower
+steps. A perfectly-amortising dense model would show aggregate throughput scaling nearly linearly, so
+per-user rate would fall roughly as <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>1</mn><mi mathvariant="normal">/</mi><mi>N</mi></mrow><annotation encoding="application/x-tex">1/N</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord">1/</span><span class="mord mathnormal" style="margin-right:0.109em">N</span></span></span></span> only once compute saturates. Here aggregate scaled 8.7× for
+54× the requests, which is far from linear — so most of the degradation is <em>not</em> this.</p><p><strong>2. Expert weight traffic that does not amortise.</strong> This is the K3-specific term. A dense model reads
+its weights once per step regardless of batch. K3 reads the weights of every expert that any token in
+the batch routed to. At batch 1 that is 16 experts; at batch 54 with random routing it approaches the
+number of distinct experts touched by 54×16 = 864 draws from 896 — which is most of them. So the
+weight traffic per step grows substantially with batch while the tokens produced grow linearly, and
+the ratio worsens. This is why MoE serving has a fundamentally different batching curve from dense
+serving, and it is the main reason the aggregate scaling is 8.7× rather than something closer to 54×.</p><p><strong>3. Load imbalance, which is a tail effect.</strong> All ranks run their experts in parallel and the step
+ends when the slowest finishes. With uneven routing, one rank holds the hot experts and everyone waits
+for it. Quantile Balancing (Module 1) is designed to attack exactly this, and Moonshot does not publish
+the resulting imbalance factor — which is the number that would let you predict this term.</p><p><strong>4. Capacity-driven queueing, which shows up as latency rather than throughput.</strong> p50 latency went
+from 28.3 s to 60 s and max to 102 s. The spread between p50 and max is the signature of requests
+waiting for pool space rather than for compute. With a 308,608-token pool, admission is gated, and a
+request that cannot be admitted contributes latency without contributing throughput.</p><p><strong>What this decomposition tells you to do</strong>, in order: batch enough to get the aggregate scaling that
+does exist (the jump from 1 to 54 was still worth 8.7×), but expect the curve to flatten early;
+measure where it flattens on <em>your</em> context distribution rather than assuming; and treat p50-to-max
+spread as the signal that you have hit capacity rather than compute, because the fix for those two is
+different — more GPUs for the first, DCP or offloading for the second.</p></div></section>
+<section class="probe"><h3 class="probe-q">Why does TTFT hold up (0.37–0.54 s) while inter-token latency collapses?</h3><div class="probe-a"><p>Because they are limited by different resources, and only one of them is contended in the same way.</p><p><strong>TTFT is a prefill measurement</strong>, and prefill is compute-bound with high arithmetic intensity: a long
+prompt processes many tokens in parallel, so weights are read once and used for thousands of
+positions. It parallelises well, it batches well, and on a warm server with prefix caching it may skip
+most of the work entirely. Chunked pipeline prefill (Module 5) makes it better still. The 0.37–0.54 s
+figure is for <em>short</em> prompts on a <em>warm</em> server, which is close to a best case — but the structural
+point holds: prefill has reuse to exploit and decode does not.</p><p><strong>Inter-token latency is a decode measurement</strong>, and decode is memory-bound at an arithmetic
+intensity roughly equal to the batch size (codesign series, Module 12). Every step reads expert
+weights, crosses the all-to-all, and traverses 93 layers, to produce one token per sequence. There is
+no reuse to find. Adding users adds expert traffic and synchronisation without adding reuse, so the
+step time grows and everyone’s tokens slow down together.</p><p><strong>The operational consequences are significant</strong> and are why the disaggregation of Module 9 exists:</p><ul>
+<li><strong>Your two SLOs are limited by different things</strong>, so they should be provisioned separately. TTFT
+wants prefill capacity and prefix cache hit rate; ITL wants decode capacity and pool headroom.
+DigitalOcean’s write-up describes exactly this — “staggered TTFT targets by prompt length” with
+“separate inter-token latency SLAs for chat versus agentic workloads”.</li>
+<li><strong>A user perceives them differently.</strong> A 500 ms TTFT with 2.7 tok/s afterwards feels responsive then
+agonising. Most users would prefer 1.5 s TTFT and 8 tok/s. Since the two are separately tunable —
+chiefly by choosing your concurrency ceiling — this is a product decision that a systems team is
+usually making implicitly.</li>
+<li><strong>Prefix caching helps only one of them.</strong> It cuts prefill work, so it improves TTFT and total
+capacity, and does nothing for the decode step rate. On agentic workloads with large shared prefixes
+it is the single highest-leverage feature — which is why vLLM’s default of leaving it off (Module 4)
+is worth checking first.</li>
+</ul></div></section>
+<section class="probe"><h3 class="probe-q">What is the actual ceiling on concurrency, and how do you find yours?</h3><div class="probe-a"><p>There are three candidate ceilings and the binding one depends on your context distribution — so the
+answer is a procedure rather than a number.</p><p><strong>Ceiling 1: KV/state capacity.</strong> Concurrency × context ≤ pool. With the measured 308,608-token pool,
+that is ~150 requests at 2 K, ~37 at 8 K, ~9 at 32 K. This binds for long-context workloads and is the
+one DCP attacks: SGLang’s reported <strong>7.9× logical KV with DCP8</strong> moves a 308 K pool to a 2.4 M-class
+one, which turns ~9 concurrent 32 K requests into ~70.</p><p><strong>Ceiling 2: the running-request cap.</strong> SGLang states this directly as a limitation — <em>“after DCP
+lifts MLA capacity, the running-request cap becomes the binding limit.”</em> Once you solve capacity, a
+scheduler parameter is next, and it exists because per-request overheads (KDA state, metadata,
+scheduling) do not shrink. This is the ceiling for short-context high-concurrency workloads.</p><p><strong>Ceiling 3: acceptable per-user latency.</strong> Usually the real one. If your product needs 10 tok/s per
+user and you measure 2.7 at concurrency 54, your ceiling is wherever the curve crosses 10 —
+somewhere well below 54 on that hardware. This is a business constraint wearing a systems costume, and
+it is almost always tighter than the other two.</p><p><strong>The procedure:</strong></p><ol>
+<li><strong>Characterise your context distribution</strong>, including the tail. Mean context is not enough because
+capacity is consumed by the actual lengths, and a few very long requests can occupy the pool.</li>
+<li><strong>Measure the pool on your configuration.</strong> Do not use 308,608 — that is one engine, one hardware,
+one <code>mem-fraction-static</code>. Get yours from the engine’s startup log.</li>
+<li><strong>Sweep concurrency and plot both curves</strong>: aggregate throughput and per-user token rate. The knee
+in the first and your SLO crossing on the second bracket the answer.</li>
+<li><strong>Watch p50-versus-max latency spread.</strong> Widening spread means queueing for capacity, which tells
+you which ceiling you hit.</li>
+<li><strong>Then decide which ceiling to spend money on.</strong> Capacity-bound → DCP, offloading, or more GPUs.
+Compute-bound → more GPUs or better kernels. Latency-bound → lower your concurrency ceiling and add
+replicas, which is the expensive answer and often the correct one.</li>
+</ol><p><strong>The number I would carry as a prior</strong>, pending your own measurement: on a Hopper-class two-node
+deployment, useful concurrency at moderate context is in the tens, not the hundreds. That is a very
+different operating point from a 70 B dense model, and plans imported from one will not survive.</p></div></section>
+<section class="probe"><h3 class="probe-q">Does speculative decoding help or hurt under concurrency?</h3><div class="probe-a"><p>It helps at low concurrency, stops helping in the middle, and can hurt at high concurrency — and both
+engines have published evidence of the transition.</p><p><strong>Why it helps at batch 1.</strong> The machine is idle. Verification uses compute that would otherwise go
+unused, and each accepted token skips a full step’s worth of expert reads, all-to-all and 93-layer
+traversal. Hence 3.14× (vLLM) and ~3.7× (SGLang).</p><p><strong>Why the benefit shrinks as the batch grows.</strong> Verification is real compute over draft tokens. On a
+loaded server that compute competes directly with producing tokens for other users. The rejected
+drafts are pure waste — you did the work and threw it away. As utilisation rises, the opportunity cost
+of that waste rises with it, and at some point the machine would produce more total tokens by not
+speculating.</p><p><strong>The published evidence.</strong> SGLang’s confidence-scheduled verification — which trims the verification
+window per position using a trained confidence head instead of verifying whole draft blocks uniformly
+— is reported at <strong>+68% throughput at batch 256</strong> with accept length ~2.7, and as <strong>“break-even to
+mildly negative below batch size 8.”</strong> Read that carefully: it is a statement that the <em>optimisation
+to speculation</em> inverts sign with batch size, which strongly implies the underlying trade does too.
+The feature exists because naive speculation at batch 256 was leaving throughput on the table.</p><p><strong>And the workload dependence compounds it.</strong> Acceptance is ~4.73 tokens per step on coding and ~2.61
+on creative writing (vLLM). Low acceptance means more wasted verification per accepted token, so
+high-entropy workloads hit the crossover at lower concurrency than low-entropy ones do.</p><p><strong>What to do about it:</strong></p><ul>
+<li><strong>Treat speculation as a load-dependent setting</strong>, not a global on/off. Enable it aggressively for
+low-concurrency, latency-sensitive paths and back it off as the batch grows — which is what
+confidence scheduling automates.</li>
+<li><strong>Route by workload if you can.</strong> Coding and tool-calling traffic gets more from speculation than
+open-ended generation does.</li>
+<li><strong>Never benchmark capacity with speculation on and quote it as throughput.</strong> It is the single
+easiest way to produce a number your production server will not reproduce.</li>
+</ul></div></section>
+<h2 id="self-check">Self-check<a class="anchor" href="#self-check" aria-hidden="true" tabindex="-1">#</a></h2>
+<details class="selfcheck"><summary><span class="selfcheck-q">State the measured concurrency curve and what each half means.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>On 16×H200: <strong>1 request → 16.8 tok/s; 54 requests → 146.9 tok/s aggregate</strong>, i.e. ~2.7 tok/s per user.
+Aggregate scaled <strong>8.7×</strong> while per-user fell <strong>6.2×</strong>, with p50 latency 28.3 s → 60 s and max 102 s.
+Throughput scales strongly sublinearly while per-user latency degrades roughly linearly, so beyond
+some concurrency you trade a lot of user experience for very little capacity — and on this model that
+point is much lower than dense-model intuitions suggest.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Why does batching return less on K3 than on a dense model?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Because routed expert weight reads do not amortise. A dense model reads its weights once per step
+regardless of batch; K3 reads every expert any token in the batch routed to — at batch 1 that is 16 of
+896, at batch 54 it approaches most of them (54×16 = 864 draws). So weight traffic per step grows with
+batch while tokens produced grow linearly. Add load imbalance (the step ends with the slowest rank, and
+no batching fixes a tail) and an all-to-all whose sizes grow with batch. That is why aggregate scaled
+8.7× rather than near-linearly.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Why does TTFT hold up while inter-token latency collapses?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Different resources. <strong>TTFT is prefill</strong> — compute-bound, high arithmetic intensity (weights read once
+for thousands of positions), parallelises and batches well, and may be skipped entirely by prefix
+caching. <strong>ITL is decode</strong> — memory-bound at intensity ≈ batch size, with no reuse to find; adding
+users adds expert traffic and synchronisation without adding reuse. Consequences: provision the two
+SLOs separately; recognise that 500 ms TTFT with 2.7 tok/s may be worse product-wise than 1.5 s with
+8 tok/s; and note prefix caching improves only TTFT and capacity, never the decode step rate.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Name the three concurrency ceilings and which workloads hit each.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p><strong>KV/state capacity</strong> (concurrency × context ≤ pool; ~9 requests at 32 K on a 308 K pool) — binds
+long-context workloads, and is what DCP8’s 7.9× attacks. <strong>The running-request cap</strong> — SGLang states
+that after DCP lifts MLA capacity this becomes binding; it hits short-context high-concurrency
+workloads because per-request overheads do not shrink. <strong>Acceptable per-user latency</strong> — usually the
+real ceiling, a business constraint in systems clothing, and typically tightest. Diagnose by watching
+p50-versus-max spread: widening spread means queueing for capacity rather than compute.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Does speculative decoding help under load?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>It inverts. At batch 1 verification uses otherwise-idle compute and each accepted token skips a full
+step — hence 3.14×/~3.7×. Under load, verification competes with producing other users’ tokens and
+rejected drafts are pure waste whose opportunity cost rises with utilisation. Evidence: SGLang’s
+confidence-scheduled verification is <strong>+68% at batch 256</strong> but <strong>“break-even to mildly negative below
+batch size 8”</strong> — the optimisation’s sign flips with batch, implying the underlying trade does too.
+Compounded by acceptance varying 2.61–4.73 by workload. So treat it as load-dependent, route
+low-entropy traffic to it preferentially, and never quote a speculation-on benchmark as throughput.</p></div></details></div><footer class="mfoot" data-astro-cid-5x65ok44><button class="mark" data-mark="serving-k3/07-concurrency-collapse" aria-pressed="false" data-astro-cid-5x65ok44>Mark as reviewed</button><nav class="pager" data-astro-cid-5x65ok44><a class="pager-link" href="/blog/serving-k3/06-choosing/" data-prev data-astro-cid-5x65ok44><span class="pager-dir" data-astro-cid-5x65ok44>← Previous</span><span class="pager-title" data-astro-cid-5x65ok44>6. Choosing, and why the numbers don&#39;t compare</span></a><a class="pager-link is-next" href="/blog/serving-k3/08-kv-offloading/" data-next data-astro-cid-5x65ok44><span class="pager-dir" data-astro-cid-5x65ok44>Next →</span><span class="pager-title" data-astro-cid-5x65ok44>8. Multi-node KV offloading</span></a></nav></footer></article></main></div></div><div class="search-overlay" data-search hidden data-astro-cid-ac66eqjo><div class="search-backdrop" data-search-close data-astro-cid-ac66eqjo></div><div class="search-panel" role="dialog" aria-modal="true" aria-label="Search modules" data-astro-cid-ac66eqjo><div class="search-input-row" data-astro-cid-ac66eqjo><span class="search-icon" aria-hidden="true" data-astro-cid-ac66eqjo>⌕</span><input type="text" class="search-input" placeholder="Search all modules…" autocomplete="off" spellcheck="false" data-search-input data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>esc</kbd></div><ul class="search-results" data-search-results data-astro-cid-ac66eqjo></ul><p class="search-empty" data-search-empty hidden data-astro-cid-ac66eqjo>No matches.</p><p class="search-hint" data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>↑</kbd><kbd data-astro-cid-ac66eqjo>↓</kbd> move · <kbd data-astro-cid-ac66eqjo>↵</kbd> open</p></div></div><script>(function(){const indexUrl = "/blog/search.json";
+
+  (() => {
+    const overlay = document.querySelector('[data-search]');
+    if (!overlay) return;
+    const input = overlay.querySelector('[data-search-input]');
+    const list = overlay.querySelector('[data-search-results]');
+    const empty = overlay.querySelector('[data-search-empty]');
+
+    let index = null;
+    let loading = null;
+    let active = 0;
+
+    const load = () => {
+      if (index) return Promise.resolve(index);
+      if (!loading) {
+        loading = fetch(indexUrl)
+          .then((r) => r.json())
+          .then((d) => (index = d))
+          .catch(() => (index = []));
+      }
+      return loading;
+    };
+
+    function open() {
+      overlay.hidden = false;
+      document.documentElement.style.overflow = 'hidden';
+      load().then(() => input.focus());
+      input.focus();
+      input.select();
+    }
+
+    function close() {
+      overlay.hidden = true;
+      document.documentElement.style.overflow = '';
+    }
+
+    function escapeHtml(s) {
+      return s.replace(
+        /[&<>"]/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]
+      );
+    }
+
+    // Excerpt around the first matched term, with the term marked.
+    function excerpt(text, terms) {
+      const lower = text.toLowerCase();
+      let at = -1;
+      for (const t of terms) {
+        const i = lower.indexOf(t);
+        if (i !== -1 && (at === -1 || i < at)) at = i;
+      }
+      if (at === -1) at = 0;
+      const start = Math.max(0, at - 60);
+      let slice = text.slice(start, start + 190);
+      if (start > 0) slice = '…' + slice;
+      if (start + 190 < text.length) slice += '…';
+      let html = escapeHtml(slice);
+      for (const t of terms) {
+        html = html.replace(
+          new RegExp(`(${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'),
+          '<mark>$1</mark>'
+        );
+      }
+      return html;
+    }
+
+    function score(rec, terms) {
+      let s = 0;
+      const hay = (rec.m + ' ' + rec.h + ' ' + (rec.s || '') + ' ' + (rec.k || '')).toLowerCase();
+      const body = rec.t.toLowerCase();
+      for (const t of terms) {
+        if (hay.includes(t)) s += 12;
+        const i = body.indexOf(t);
+        if (i !== -1) s += 4 + Math.max(0, 3 - Math.floor(i / 400));
+        else if (!hay.includes(t)) return 0; // every term must appear
+      }
+      return s;
+    }
+
+    function render(results, terms) {
+      active = 0;
+      list.innerHTML = results
+        .map(
+          (r, i) => `
+          <li>
+            <a href="${r.u}" class="search-hit${i === 0 ? ' is-active' : ''}" data-hit>
+              <span class="search-hit-crumb"><span class="search-hit-series">${escapeHtml(r.s||"")}</span><span class="search-hit-n">${r.n}</span>${escapeHtml(r.m)} <span class="search-hit-sep">›</span> ${escapeHtml(r.h)}</span>
+              <span class="search-hit-text">${excerpt(r.t, terms)}</span>
+            </a>
+          </li>`
+        )
+        .join('');
+      empty.hidden = results.length > 0;
+    }
+
+    function run() {
+      const q = input.value.trim().toLowerCase();
+      if (!q || !index) {
+        list.innerHTML = '';
+        empty.hidden = true;
+        return;
+      }
+      const terms = q.split(/\s+/).filter(Boolean);
+      const results = index
+        .map((r) => ({ r, s: score(r, terms) }))
+        .filter((x) => x.s > 0)
+        .sort((a, b) => b.s - a.s || a.r.n - b.r.n)
+        .slice(0, 12)
+        .map((x) => x.r);
+      render(results, terms);
+    }
+
+    function move(delta) {
+      const hits = list.querySelectorAll('[data-hit]');
+      if (!hits.length) return;
+      hits[active]?.classList.remove('is-active');
+      active = (active + delta + hits.length) % hits.length;
+      hits[active].classList.add('is-active');
+      hits[active].scrollIntoView({ block: 'nearest' });
+    }
+
+    input.addEventListener('input', () => {
+      load().then(run);
+      run();
+    });
+
+    overlay.querySelector('[data-search-close]').addEventListener('click', close);
+
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        move(1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        move(-1);
+      } else if (e.key === 'Enter') {
+        const hit = list.querySelectorAll('[data-hit]')[active];
+        if (hit) {
+          e.preventDefault();
+          window.location.href = hit.getAttribute('href');
+        }
+      }
+    });
+
+    document.querySelectorAll('[data-search-open]').forEach((b) =>
+      b.addEventListener('click', open)
+    );
+
+    window.__openSearch = open;
+  })();
+})();</script><script>(function(){const base = "/blog";
+
+      (() => {
+        const root = document.documentElement;
+
+        /* ---- theme ---------------------------------------------------- */
+        document.querySelector('[data-theme-toggle]')?.addEventListener('click', () => {
+          const light = root.classList.toggle('light');
+          try {
+            localStorage.setItem('refresher:theme', light ? 'light' : 'dark');
+          } catch (e) {}
+        });
+
+        /* ---- progress (localStorage) ---------------------------------- */
+        const KEY = 'refresher:progress';
+        const readSet = () => {
+          try {
+            return new Set(JSON.parse(localStorage.getItem(KEY) || '[]'));
+          } catch (e) {
+            return new Set();
+          }
+        };
+        const writeSet = (s) => {
+          try {
+            localStorage.setItem(KEY, JSON.stringify([...s]));
+          } catch (e) {}
+        };
+
+        function paintProgress() {
+          const done = readSet();
+          const ticks = document.querySelectorAll('[data-tick]');
+          // A module can own more than one tick (rail + contents card), so
+          // count distinct module ids rather than elements.
+          const ids = new Set();
+          ticks.forEach((t) => {
+            const id = t.getAttribute('data-tick');
+            ids.add(id);
+            if (done.has(id)) t.setAttribute('data-read', '');
+            else t.removeAttribute('data-read');
+          });
+          const n = [...ids].filter((id) => done.has(id)).length;
+          const total = ids.size || 1;
+          const fill = document.querySelector('[data-progress-fill]');
+          if (fill) fill.style.width = `${(n / total) * 100}%`;
+          const count = document.querySelector('[data-progress-count]');
+          if (count) count.textContent = String(n);
+          document.querySelectorAll('[data-mark]').forEach((btn) => {
+            const id = btn.getAttribute('data-mark');
+            const on = done.has(id);
+            btn.setAttribute('aria-pressed', String(on));
+            btn.textContent = on ? '✓ Reviewed' : 'Mark as reviewed';
+          });
+        }
+
+        document.querySelectorAll('[data-mark]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-mark');
+            const s = readSet();
+            s.has(id) ? s.delete(id) : s.add(id);
+            writeSet(s);
+            paintProgress();
+          });
+        });
+
+        paintProgress();
+
+        /* ---- scrollspy over h2s, mirrored into the rail --------------- */
+        const article = document.querySelector('[data-article]');
+        const heads = article ? [...article.querySelectorAll('h2[id]')] : [];
+        const subLinks = new Map(
+          [...document.querySelectorAll('[data-toc]')].map((a) => [
+            a.getAttribute('data-toc'),
+            a,
+          ])
+        );
+
+        if (heads.length && subLinks.size) {
+          let currentId = null;
+          const spy = () => {
+            let found = heads[0].id;
+            for (const h of heads) {
+              if (h.getBoundingClientRect().top <= 96) found = h.id;
+              else break;
+            }
+            if (found === currentId) return;
+            subLinks.get(currentId)?.classList.remove('is-current');
+            currentId = found;
+            const el = subLinks.get(currentId);
+            if (el) {
+              el.classList.add('is-current');
+              el.scrollIntoView({ block: 'nearest' });
+            }
+          };
+          spy();
+          addEventListener('scroll', spy, { passive: true });
+        }
+
+        /* ---- keyboard ------------------------------------------------- */
+        const stops = article
+          ? [...article.querySelectorAll('h2[id], h3[id]')]
+          : [];
+
+        function jump(delta) {
+          if (!stops.length) return;
+          // The heading we are "in": the last one scrolled past the threshold.
+          let cur = -1;
+          for (let i = 0; i < stops.length; i++) {
+            if (stops[i].getBoundingClientRect().top <= 100) cur = i;
+            else break;
+          }
+          const target = cur + delta;
+          if (target < 0) return scrollTo({ top: 0, behavior: 'smooth' });
+          if (target >= stops.length) return;
+          stops[target].scrollIntoView({ block: 'start' });
+        }
+
+        addEventListener('keydown', (e) => {
+          const tag = (e.target.tagName || '').toLowerCase();
+          if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+          if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+          if (e.key === '/') {
+            e.preventDefault();
+            window.__openSearch?.();
+          } else if (e.key === 'j') {
+            e.preventDefault();
+            jump(1);
+          } else if (e.key === 'k') {
+            e.preventDefault();
+            jump(-1);
+          } else if (e.key === '[' || e.key === ']') {
+            const sel = e.key === '[' ? '[data-prev]' : '[data-next]';
+            const a = document.querySelector(sel);
+            if (a) {
+              e.preventDefault();
+              window.location.href = a.getAttribute('href');
+            }
+          }
+        });
+
+        /* ---- narrow-screen rail --------------------------------------- */
+        const rail = document.querySelector('[data-rail]');
+        document.querySelector('[data-rail-toggle]')?.addEventListener('click', () => {
+          rail.classList.toggle('is-open');
+        });
+        rail?.addEventListener('click', (e) => {
+          if (e.target.closest('a')) rail.classList.remove('is-open');
+        });
+      })();
+    })();</script></body></html>

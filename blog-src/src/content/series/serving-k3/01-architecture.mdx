@@ -1,0 +1,257 @@
+---
+n: 1
+title: 'What K3 actually is'
+blurb: '2.78T total, 104B active, 896 experts at top-16, 93 layers split 69 KDA to 24 gated MLA, native MXFP4. The numbers that matter for serving, and the one that most write-ups get wrong.'
+part: 'S'
+minutes: 15
+draft: false
+tags: ['Kimi K3', 'Moonshot AI', 'MoE', 'LatentMoE', 'MXFP4', 'architecture', 'active parameters', 'quantile balancing']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+Kimi K3 is Moonshot AI's open-weight flagship, released 16 July 2026 with weights following on 27
+July. It is a natively multimodal mixture-of-experts model with **2.78 trillion total parameters and
+about 104 billion activated per token**, a 1-million-token context window, and — the fact that shapes
+everything about serving it — a hybrid attention stack in which most layers do not maintain a
+conventional KV cache at all. For anyone whose job is to run it, four numbers do almost all the work:
+the total parameter count sets what you must hold, the active count sets your arithmetic per token,
+the expert configuration sets your communication pattern, and the KDA/MLA split sets how memory grows
+with context. Everything downstream in this series is a consequence of those four.
+
+The MoE configuration is unusual and worth understanding rather than memorising. K3 uses what
+Moonshot calls **Stable LatentMoE**: 896 routed experts with 16 active per token, where the router
+first projects each token down to a **latent dimension of 3,584 — half the 7,168 hidden size** —
+before dispatching it to experts. The expert computation happens in that narrower space and the
+combined result is projected back to model width. The point is bandwidth: both the expert weight
+traffic and the all-to-all payload scale with the width you dispatch at, so halving it buys you
+roughly twice the routing multiplicity at similar inference cost. That is why K3 can afford 16 active
+experts where earlier models used 8, and it is the reason the expert-parallel all-to-all is less
+catastrophic here than the raw expert count suggests. Routing balance is handled by **Quantile
+Balancing**, deriving expert allocation from router-score quantiles rather than the heuristic
+auxiliary-loss updates that Module 9 of the codesign series describes.
+
+The last structural fact is that **K3 is natively MXFP4**. The weights are not a post-training
+quantization of a BF16 model — Moonshot applied quantization-aware training from the SFT stage
+onward, with MXFP4 weights and MXFP8 activations. This matters practically in two directions. It
+means the 4-bit weights *are* the model, so you are not choosing between a quality tier and a memory
+tier, and the ~1.4–1.56 TB footprint is simply what K3 weighs. And it means your hardware's MXFP4
+support is a first-order deployment question rather than an optimisation: Blackwell-class parts run
+it natively, while everything older goes through a dequantizing path, which Module 6 shows is exactly
+where one widely-reported deployment fell over.
+
+<Callout type="trap" title="“K3 has 32B active parameters”">
+  This number appears in a lot of secondary coverage and it is **Kimi K2's** figure, carried forward
+  by mistake. K3 activates about **104B per token**. The error matters because active parameters
+  determine your decode arithmetic and your per-token weight traffic, so a 3× error here produces a
+  3× error in every capacity estimate built on it. Moonshot's own launch post is also confusing on
+  this point, referring to a much larger figure; the 104B number is the one consistent with 896
+  experts at top-16 in a 3,584-dim latent space.
+</Callout>
+
+## What the reports actually measured
+
+The architecture, assembled from
+[Moonshot's tech blog](https://www.kimi.com/blog/kimi-k3),
+[vLLM's day-0 post](https://vllm.ai/blog/2026-07-27-k3) and
+[SGLang's](https://www.lmsys.org/blog/2026-07-27-kimi-k3-day0-support/):
+
+| Property                | Value                                    |
+| ----------------------- | ---------------------------------------- |
+| Total parameters        | 2.78 T                                   |
+| Active per token        | ~104 B                                   |
+| Layers                  | 93                                       |
+| — KDA (linear)          | 69                                       |
+| — Gated MLA (full)      | 24                                       |
+| Interleave              | full attention roughly every 4th position |
+| Routed experts          | 896                                      |
+| Active experts          | 16 (top-16), plus shared                 |
+| Hidden size             | 7,168                                    |
+| MoE latent dim          | 3,584                                    |
+| Context window          | 1,000,000 tokens                         |
+| Weight format           | MXFP4 (native, QAT from SFT)             |
+| Activation format       | MXFP8                                    |
+| Vision                  | native, 12-head encoder                  |
+
+What each number governs when you serve it:
+
+| Number             | Governs                                        | Module |
+| ------------------ | ---------------------------------------------- | ------ |
+| 2.78 T total       | weights to hold → minimum cluster size          | 3      |
+| 104 B active       | decode arithmetic and per-token weight traffic  | 3, 7   |
+| 896 experts, top-16 | all-to-all pattern, EP degree, load imbalance   | 4, 5   |
+| 69 KDA / 24 MLA    | how memory grows with context                   | 2      |
+| MXFP4 native       | which hardware runs it without a dequant path   | 6      |
+| 12-head vision     | why TP=8 cannot shard the encoder               | 4      |
+
+Footprint at native precision, as reported:
+
+| Source | Weight footprint | Per GPU |
+| ------ | ---------------- | ------- |
+| [DigitalOcean](https://www.digitalocean.com/blog/serving-kimi-k3-inference-engine) | ~1.56 TB | ~195 GiB on 8×288 GB |
+| [Community 16×H200 report](https://huggingface.co/moonshotai/Kimi-K3/discussions/136) | ~1.56 TB | ~102.75 GB on 16 GPUs |
+| Common secondary estimate | ~1.4 TB | — |
+
+## Critical thinking
+
+<Probe q="Why does LatentMoE's 3,584-dim latent matter more for serving than for quality?">
+
+Because it changes the two quantities that dominate MoE serving cost — expert weight bandwidth and
+all-to-all payload — and it changes them by the same factor.
+
+In a conventional MoE, a token routed to an expert is dispatched at full model width. With $H = 7168$
+and top-$k = 16$, every token's dispatch carries $16 \times 7168$ values across the expert-parallel
+all-to-all, and every active expert's weights must be read at that width. LatentMoE projects the token
+to 3,584 first, so both the dispatched activation and the expert's own weight matrices are half as
+wide. The all-to-all payload halves; the expert weight traffic halves.
+
+Why that is a serving fact rather than a modelling one:
+
+- **Decode is bandwidth-bound**, as the codesign series' Module 12 argues at length. Per-token cost
+  at decode is dominated by reading the active expert weights, so halving that width is close to a
+  direct throughput multiplier on the MoE portion of the step.
+- **The all-to-all is the hardest collective to overlap**, because its sizes are data-dependent
+  (codesign Module 11). Halving its payload halves the exposed time of the one communication you
+  cannot schedule statically.
+- **It buys routing multiplicity you would otherwise not afford.** The design lets K3 use top-16
+  where the same bandwidth budget would have bought top-8 at full width. That is the actual trade —
+  the latent projection is not free in quality terms, and Moonshot spent the savings on activating
+  more experts rather than on being cheaper.
+
+The consequence for capacity planning is that you cannot estimate K3's decode cost from total
+parameters or even from active parameters alone. The 104 B active figure already reflects the latent
+width, but the *traffic* also depends on how much of that 104 B is expert weights read at 3,584
+versus dense components read at 7,168. Any back-of-envelope that treats the model as a uniform 104 B
+dense model will be wrong in a direction that depends on batch size.
+
+</Probe>
+
+<Probe q="What does native MXFP4 change for a deployment, compared with quantizing a BF16 model yourself?">
+
+It moves quantization from a decision you make into a property of the artefact, and that has
+consequences in both directions.
+
+**What it removes.** There is no accuracy-versus-memory tier to choose. With a BF16 model you weigh
+FP8 against INT4 against keeping full precision, run evaluations, and own the result. With K3 the
+4-bit weights are what Moonshot trained and evaluated — quantization-aware from the SFT stage onward,
+with MXFP8 activations — so the published benchmark numbers are the numbers for the weights you are
+running. That is a genuine simplification, and it removes the most common source of "our self-hosted
+model is worse than the API" incidents.
+
+**What it adds.** Your hardware's format support becomes a hard deployment gate rather than a tuning
+choice. The engines handle this by routing to different kernels:
+
+| Hardware | Path | Consequence |
+| -------- | ---- | ----------- |
+| Blackwell (B200/B300/GB300) | FlashInfer MXFP4 runner, native | full speed |
+| Hopper (H100/H200) | Marlin W4A16 dequantizing | extra work per weight read |
+| AMD MI355X | FlyDSL A16W4/A8W4 fused | vendor path |
+
+On a dequantizing path you still get the memory win — the weights occupy 4 bits in HBM, which is what
+makes the model fit at all — but the compute is done after upconversion, so the arithmetic throughput
+advantage of a 4-bit MAC is not available. Per the codesign series' Module 10, that is exactly the
+"emulated format" case, and it is the right trade at decode (where you are bandwidth-bound and the
+memory win is the whole point) and a much weaker one at prefill.
+
+**The subtler cost** is that you cannot go *up*. If you find K3's MXFP4 numerics marginal for some
+workload, there is no BF16 checkpoint to fall back to — the model was trained into this format. The
+[SGLang RL results](https://www.lmsys.org/blog/2026-07-27-kimi-k3-day0-support/) are interesting here:
+they report train/rollout KL sitting flat at a "~2e-3 MXFP4 floor", which is a candid way of saying
+the format imposes a noise floor that further training does not cross. For inference that floor is
+irrelevant; for anyone fine-tuning, it is a real constraint and it is why their recipe uses BF16 LoRA
+deltas over MXFP4 base weights rather than touching the base.
+
+</Probe>
+
+<Probe q="896 experts at top-16 sounds like an expert-parallelism nightmare. Why is it tractable?">
+
+Three reasons, and only one of them is the latent projection.
+
+**The latent width halves the traffic**, as above. That is the first-order effect on the all-to-all.
+
+**Quantile Balancing attacks the variance directly.** The codesign series' Module 9 makes the case
+that MoE's real cost is not the routing but the *imbalance* — all experts run in parallel and the
+step ends when the slowest finishes, so a hot expert with 2–10× the average load sets the latency for
+every device. Deriving expert allocation from router-score quantiles rather than from heuristic
+auxiliary-loss updates targets the tail of the load distribution rather than its mean, which is the
+statistic that actually matters. Moonshot does not publish the resulting imbalance factor, which is
+the number a serving engineer would most want.
+
+**More experts at fixed active count is a memory problem, not a compute problem.** 896 experts means
+a very large weight footprint, which is why K3 needs a large cluster. But per token you still touch
+16 of them. So the expert count drives *capacity* and the expert parallel degree, while the top-$k$
+drives *traffic*. Those are separable, and the design deliberately pushed on the one that hardware is
+better at absorbing — HBM capacity across many GPUs — rather than the one it is not.
+
+**Where it is genuinely hard**, and both engines say so:
+
+- **Expert parallelism becomes mandatory rather than optional.** vLLM notes that EP is essential
+  given "896 routed experts, 16 active per token, plus shared experts", and both engines'
+  best-throughput configurations are expert-parallel rather than purely tensor-parallel.
+- **Multi-node EP requires RDMA or NVLink.** vLLM states this outright for multi-node expert/data
+  parallel deployments. An all-to-all with data-dependent sizes over commodity Ethernet is the case
+  the codesign series' Module 11 argues does not work, and here it is as a deployment requirement.
+- **Small-batch decode does not amortise it.** At batch 1 you are paying all-to-all latency to
+  activate 16 experts for a single token. This is a large part of why single-user decode sits around
+  113–118 tok/s rather than higher, and why speculative decoding matters so much on this model —
+  Module 4.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="Give the four numbers that determine how K3 serves, and what each governs.">
+
+**2.78 T total** — what you must hold, hence minimum cluster size. **~104 B active per token** —
+decode arithmetic and per-token weight traffic. **896 experts at top-16** — the all-to-all pattern,
+EP degree and imbalance exposure. **69 KDA / 24 gated MLA out of 93 layers** — how memory grows with
+context. Everything else in serving K3 is downstream of those four.
+
+</SelfCheck>
+
+<SelfCheck q="What does a lot of coverage get wrong about K3's active parameters?">
+
+It reports **32 B**, which is Kimi **K2's** figure carried forward. K3 activates about **104 B** per
+token. Since active parameters set decode arithmetic and per-token weight traffic, a 3× error there
+propagates into every capacity and throughput estimate built on it.
+
+</SelfCheck>
+
+<SelfCheck q="What is LatentMoE and why is it a serving decision?">
+
+The router projects each token to a **3,584-dim latent — half the 7,168 hidden size** — before
+dispatch; experts compute there and the result is projected back. Both expert weight traffic and
+all-to-all payload scale with dispatch width, so both halve. That matters because decode is
+bandwidth-bound and the all-to-all is the collective hardest to overlap (its sizes are
+data-dependent). Moonshot spent the saving on **top-16 instead of top-8**, so it buys routing
+multiplicity rather than cheapness.
+
+</SelfCheck>
+
+<SelfCheck q="What does native MXFP4 remove, and what does it add?">
+
+Removes the accuracy-versus-memory decision — the 4-bit weights *are* the model, trained
+quantization-aware from SFT onward with MXFP8 activations, so published benchmarks apply to what you
+run. Adds a hardware gate: Blackwell runs it natively via the FlashInfer MXFP4 runner, Hopper goes
+through Marlin W4A16 dequantization (memory win kept, arithmetic win lost — the "emulated format"
+case), AMD via FlyDSL. And you cannot go up: there is no BF16 checkpoint, and SGLang reports a
+"~2e-3 MXFP4 floor" on train/rollout KL, which is why their recipe uses BF16 LoRA deltas over
+untouched MXFP4 base weights.
+
+</SelfCheck>
+
+<SelfCheck q="Why is 896 experts at top-16 tractable, and where is it genuinely hard?">
+
+Tractable because the latent projection halves all-to-all traffic, Quantile Balancing targets the
+*tail* of the load distribution (the statistic that sets step latency) rather than the mean, and
+expert **count** drives capacity while **top-k** drives traffic — so the design pushed on the axis
+hardware absorbs well. Hard because expert parallelism becomes mandatory rather than optional,
+multi-node EP requires RDMA or NVLink, and at batch 1 you pay full all-to-all latency to activate 16
+experts for one token — which is why single-user decode sits near 113–118 tok/s and why speculative
+decoding matters disproportionately on this model.
+
+</SelfCheck>

@@ -1,0 +1,305 @@
+---
+n: 4
+title: "vLLM's path"
+blurb: 'One hybrid KV manager, DSpark speculative decoding at 3.14×, custom collectives at 1.7–4.5× over NCCL — and three limitations they publish that will bite you on day one.'
+part: 'T'
+minutes: 17
+draft: false
+tags: ['vLLM', 'DSpark', 'speculative decoding', 'hybrid KV manager', 'MegaMoE', 'TRT-LLM-Gen', 'sequence parallelism', 'prefix caching', 'NIXL']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+vLLM's [day-0 K3 support](https://vllm.ai/blog/2026-07-27-k3) is organised around one design
+decision: a **single hybrid KV-cache manager** that holds both state types side by side under one
+scheduler — paged KV blocks for the 24 MLA layers, compact recurrent-state blocks for the 69 KDA
+layers. Everything else follows from committing to that rather than running two subsystems. The
+scheduler makes one admission decision per request against one pool; prefix caching consults one
+index; the disaggregation connector treats a shared page as two logical views (a token-level MLA
+cache and a request-level KDA state including convolution and recurrent components). It is the
+conservative architecture, in the good sense: fewer moving parts, and the hybrid-ness is contained
+inside one component rather than smeared across the engine.
+
+The performance story is dominated by **speculative decoding**, and on this model that is not a
+tuning detail. Single-user decode lands at 111 tok/s at TP8 and 118 at TP16 — modest for a frontier
+model, because every token pays a 16-expert all-to-all almost regardless of how many tokens the step
+produces. vLLM's DSpark, a block-diffusion speculator whose draft model is trained with TorchSpec to
+achieve full numerical parity between speculator inference and training, takes that to **370 tok/s, a
+3.14×**. The rest of the gains come from removing per-layer overheads that a 93-layer hybrid stack
+multiplies: a fused KDA decode kernel folding causal convolution, recurrent update and RMSNorm into
+one launch; custom reduce-scatter and all-gather at **1.7–4.5× over NCCL** for prefill-size messages;
+a skinnyGEMM for BF16 at small batch; and LatentMoE tail fusion cutting expert-combine latency ~20%.
+
+The third thing to know is that vLLM publishes its limitations, and they are the kind that turn into
+a bad afternoon rather than a slow benchmark. **Prefix caching is off by default** and must be enabled
+with `--enable-prefix-caching`, which on a model whose whole prefix-cache story required custom
+checkpointing machinery is a surprising default. **The vision encoder's 12-head design is
+incompatible with TP=8 sharding**, so data parallelism is used for it by default. **Multi-node
+expert/data-parallel deployments require RDMA or NVLink.** And tool calling occasionally emits a
+format vLLM's own parser rejects, returning an empty `tool_calls` — Module 10.
+
+<Callout type="trap" title="quoting 370 tok/s as the throughput number">
+  370 tok/s is **single-user decode with speculative decoding on 16 GB300 NVL72 GPUs**. It is a
+  latency figure, not a capacity figure, and it does not survive contact with concurrency: acceptance
+  length falls on high-entropy workloads, and the verification pass costs compute that a loaded server
+  does not have spare. Aggregate throughput per GPU under load is a different measurement entirely,
+  and Module 7 is about the gap.
+</Callout>
+
+## What the reports actually measured
+
+Single-user decode, from [vLLM's day-0 post](https://vllm.ai/blog/2026-07-27-k3):
+
+| Configuration | Tokens/s (batch 1) |
+| ------------- | ------------------ |
+| TP8, no speculation | 111 |
+| TP16, no speculation | 118 |
+| **TP16 + DSpark** | **370 (3.14×)** |
+
+DSpark acceptance, which is where the variance lives:
+
+| Workload | Accepted tokens per step |
+| -------- | ------------------------ |
+| Coding / low-entropy | ~4.73 |
+| Creative writing / high-entropy | ~2.61 |
+
+Kernel and collective work, with reported deltas:
+
+| Optimisation | Reported effect |
+| ------------ | --------------- |
+| Custom reduce-scatter / all-gather vs NCCL | **1.7×–4.5×** on prefill-size messages |
+| Fused KDA decode (conv + recurrent + RMSNorm, one launch) | removes per-layer launch chain |
+| skinnyGEMM (BF16) | 8–100% kernel-level; ~10% end-to-end at small batch |
+| LatentMoE tail fusion | ~20% expert-combine latency; 7–8% end-to-end |
+| Metadata preparation | 870 µs → **34 µs (−96%)** |
+
+Backends and topology:
+
+| Concern | Choice |
+| ------- | ------ |
+| MoE backend, TP > 1 | TRT-LLM-Gen |
+| MoE backend, disaggregated / EP | MegaMoE |
+| Large-scale topology | TEP8 prefill → DEP16 decode |
+| Minimum hardware | 8 × B300 or 8 × MI355X per node |
+| Disaggregation transport | NIXL connector |
+
+Published limitations:
+
+| Limitation | Consequence |
+| ---------- | ----------- |
+| Prefix caching **off by default** | pass `--enable-prefix-caching` or lose it silently |
+| Vision encoder is 12-head | incompatible with TP=8; DP used by default |
+| Multi-node EP/DP | **requires RDMA or NVLink** |
+| Tool-call format | parser occasionally returns empty `tool_calls` |
+
+## Critical thinking
+
+<Probe q="Why does one hybrid KV manager matter, versus running two caches?">
+
+Because the scheduler has to make a single admission decision, and two independent pools cannot
+support one.
+
+Consider what admitting a request requires. You must know whether there is room for its MLA KV *and*
+its KDA state, for its whole expected lifetime, and you must be able to evict something if there is
+not. With two separate pools you have two capacity checks, two eviction policies, and a
+pre-sizing decision — how much memory goes to each pool — that has to be made before you know the
+workload. Get that split wrong and you have MLA pressure with idle KDA memory, or the reverse, and no
+way to rebalance without a restart. On a model where context length varies from 2 K to 1 M, that
+split is not knowable in advance.
+
+One manager fixes the accounting problems but does not make the underlying objects compatible, which
+is why the interesting engineering is in the details:
+
+- **Two block types under one allocator.** Paged KV blocks are uniform and fungible; recurrent-state
+  blocks are per-request and mutable. The allocator has to serve both from one budget.
+- **The prefix index spans both.** A prefix hit must establish both a set of reusable MLA pages *and*
+  a valid KDA state at that position, which is why the checkpointing machinery of Module 2 lives
+  inside this component.
+- **Partial hits need reconciliation.** vLLM describes comparing "the exact reusable token lengths
+  from both tiers" when a local GPU hit conflicts with a remote cache result, and selecting the longer
+  prefix. That comparison only exists because a hit is now a pair of lengths rather than one.
+- **Disaggregation needs two logical views.** The NIXL connector treats the shared page as a
+  token-level MLA cache and a request-level KDA state, including convolution and recurrent
+  components. Transferring a request between prefill and decode workers means transferring both, with
+  different granularities.
+
+**The contrast with SGLang is instructive** and is Module 6's subject: SGLang went further, using a
+single *pool* with KDA blocks allocated from one end and MLA KV from the other, explicitly to
+eliminate "fragmentation and pre-sizing guesses". vLLM's manager unifies the control; SGLang's pool
+unifies the memory as well. Both are reasonable; the second is more aggressive and removes a class of
+tuning that the first still has.
+
+</Probe>
+
+<Probe q="Why is speculative decoding worth this much on K3 specifically?">
+
+Because K3's per-step cost is unusually high and unusually independent of how many tokens the step
+emits, which is exactly the condition speculation exploits.
+
+**The structure of a decode step.** Producing one token requires: reading the active expert weights
+(~104 B active parameters' worth of traffic), an expert-parallel all-to-all to dispatch tokens and
+gather results, 93 layers of sequential work including 69 KDA recurrent updates, and AttnRes reads
+across depth. Almost all of that is *per step*, not *per token*. If a step can validate four tokens
+instead of one, you pay the all-to-all once, read the expert weights once, and walk the 93 layers
+once — for four tokens.
+
+That is why the reported gains are large: **3.14× on vLLM (111/118 → 370)** and **~423 from ~113 on
+[SGLang](https://www.lmsys.org/blog/2026-07-27-kimi-k3-day0-support/)**. On a dense model with cheap
+decode, speculation buys maybe 1.5–2×; here it is the difference between an interactive experience
+and a sluggish one.
+
+**Why DSpark rather than a standard draft model.** Two details in vLLM's description matter. It is
+described as block-diffusion based, which drafts a block of tokens rather than autoregressively —
+appropriate when you want several candidates cheaply. And the draft model is "trained with vLLM using
+TorchSpec to achieve full numerical parity between speculator inference and training". That parity
+requirement is not pedantry: a speculator whose training-time and inference-time numerics differ
+proposes tokens that the target rejects at a higher rate than it should, and acceptance rate is the
+entire economics of speculation.
+
+**Where it stops working**, and both engines are candid about it:
+
+- **High-entropy workloads.** ~2.61 accepted tokens per step on creative writing against ~4.73 on
+  coding. Your speedup is nearly 2× different depending on what users ask for, which makes capacity
+  planning from a single benchmark unreliable.
+- **Under load.** Verification costs compute. At batch 1 the machine is idle and verification is
+  free; at high concurrency it competes with the tokens you would otherwise be producing. SGLang's
+  confidence-scheduled variant addresses this — trimming the verification window per position using a
+  trained confidence head, reported at **+68% throughput at batch 256** — but also reports it is
+  "break-even to mildly negative below batch size 8". There is no single setting that is right for
+  both the single-user and the loaded case.
+- **KDA state management.** Speculation on a recurrent model requires the rewind machinery of Module
+  2, and ReplaySSM's 32× state reduction exists because the naive version was too expensive to ship.
+
+</Probe>
+
+<Probe q="What do the three published limitations actually cost you?">
+
+Different amounts, and the ordering is not what you would guess from how they are worded.
+
+**Prefix caching off by default — potentially the largest, and silent.** For an agentic or chat
+workload with a shared system prompt, prefix caching is often the difference between prefilling
+thousands of tokens per request and prefilling tens. Losing it does not error; it just makes
+everything slower and more expensive, and it will look like the model is simply slow. On K3
+specifically the loss is worse than usual, because the checkpointing machinery of Module 2 means a
+prefix hit also skips replaying KDA state. The mitigation is one flag, `--enable-prefix-caching`, and
+the reason it is worth calling out is that a default which loses a large win silently is the kind of
+thing teams discover months later.
+
+**Multi-node EP/DP requires RDMA or NVLink — a hard gate, but visible.** You find out immediately,
+because it does not work. The cost is in procurement rather than debugging: if your plan was 16 H200s
+across two Ethernet-connected nodes, the plan does not exist. This is the codesign series' Module 11
+argument as a deployment requirement — an all-to-all with data-dependent sizes needs the
+high-bandwidth domain, and there is no software fix.
+
+**The 12-head vision encoder incompatible with TP=8 — narrow, but a good example.** 12 is not
+divisible by 8, so the encoder's heads cannot be sharded across a TP8 group; vLLM falls back to data
+parallelism for it by default. The cost is small — the encoder is a tiny fraction of the model — and
+it only matters if you serve images. But it is a clean illustration of the codesign argument: a model
+architecture choice made for quality reasons (12 heads) collides with a deployment shape everyone
+uses (TP8), and the fix is a special case in the engine forever. Nobody designing the encoder was
+thinking about 8-way sharding, and there is no mechanism by which they would have been.
+
+**The one I would watch most**, though it is not on their list: `--enable-prefix-caching` interacts
+with the checkpoint interval. Module 2 notes that unaligned prefixes replay from the nearest
+checkpoint below, so with a 32 K interval a 40 K shared prefix can replay 8 K tokens. Your realised
+cache benefit therefore depends on a parameter whose right value depends on your workload's prefix
+distribution, and I have not seen anyone publish guidance on setting it.
+
+</Probe>
+
+<Probe q="vLLM reports 1.7–4.5× over NCCL on its own collectives. Is that plausible, and what does it tell you?">
+
+Plausible, for the specific case they scope it to, and it tells you where K3's decode time actually
+goes.
+
+**Why it is plausible.** They scope it to "prefill-size message batches" and to reduce-scatter and
+all-gather under sequence parallelism. NCCL is optimised for large messages on standard collective
+patterns; it carries generality overhead — algorithm selection, protocol selection, topology
+detection, channel setup — that is amortised over big transfers and is pure cost on small ones. A
+hand-written kernel for one message size, one topology and one data type, using symmetric memory and
+multicast primitives directly, can beat it substantially at the small end. SGLang reports the same
+class of win independently, listing "CustomAllReduceV2, multicast, NVLS" as worth **+27.6 tok/s** —
+the largest single line in their kernel waterfall.
+
+**What it tells you, which is the more interesting part.** SGLang states the reason plainly:
+"all-reduce is a synchronization point, so a microsecond saved there converts one-for-one into step
+time." At batch 1 there is no other work to overlap the collective with. Every rank stops, exchanges,
+and resumes, 93 times per token, and the collective's latency is added directly to the step. That is
+why two independent engine teams both wrote custom collectives, and why the wins are on the *latency*
+end of the message-size curve rather than the bandwidth end.
+
+**Three consequences worth carrying:**
+
+- **The single-user number is a collectives benchmark as much as a model benchmark.** 111–118 tok/s
+  on K3 is substantially a measure of how fast 93 layers' worth of synchronisation can be made to go.
+- **It argues for the largest possible high-bandwidth domain**, which is Moonshot's 64+ recommendation
+  from a different direction — not just to spread experts, but because every collective on the
+  critical path is cheaper inside NVLink.
+- **It will not transfer to your hardware.** Kernels tuned for GB300 NVL72's symmetric-memory fabric
+  are not the kernels for two H200 nodes over InfiniBand, and the community H200 report's much lower
+  numbers are partly this. Treat published tok/s as hardware-specific in a stronger sense than usual.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="What is vLLM's central design decision for K3, and what does it buy?">
+
+A **single hybrid KV-cache manager** holding paged KV blocks for the 24 MLA layers and compact
+recurrent-state blocks for the 69 KDA layers, under one scheduler. It buys one admission decision
+against one budget rather than two pools with a pre-sizing split that is unknowable when contexts
+range 2 K–1 M. The hard parts remain in the details: two block types in one allocator, a prefix index
+spanning both, partial-hit reconciliation comparing reusable lengths from both tiers, and a NIXL
+connector treating a page as two logical views for disaggregation.
+
+</SelfCheck>
+
+<SelfCheck q="Give vLLM's headline numbers and what each is a measurement of.">
+
+**111 tok/s at TP8 and 118 at TP16** single-user decode without speculation; **370 tok/s with DSpark,
+a 3.14×**, on 16 GB300 NVL72 GPUs. These are *latency* figures at batch 1, not capacity. Supporting
+numbers: custom reduce-scatter/all-gather at **1.7–4.5× over NCCL** on prefill-size messages, metadata
+prep cut **870 µs → 34 µs**, skinnyGEMM 8–100% at kernel level, LatentMoE tail fusion ~20% on expert
+combine.
+
+</SelfCheck>
+
+<SelfCheck q="Why does speculation pay so much more on K3 than on a dense model?">
+
+Because K3's per-step cost is high and nearly independent of tokens emitted: reading ~104 B active
+parameters, one expert-parallel all-to-all, 93 sequential layers including 69 KDA recurrent updates,
+plus AttnRes reads across depth — all *per step*. Validating four tokens per step pays that once for
+four tokens. Hence 3.14× rather than the 1.5–2× typical of cheap-decode dense models. DSpark uses
+block diffusion and trains the draft with TorchSpec for **numerical parity between speculator
+training and inference**, because mismatched numerics lower acceptance and acceptance is the whole
+economics.
+
+</SelfCheck>
+
+<SelfCheck q="Rank the three published limitations by what they actually cost.">
+
+**Prefix caching off by default** is the largest and it fails *silently* — for shared-system-prompt
+workloads it is the difference between prefilling thousands of tokens and tens, and on K3 a hit also
+skips KDA replay. **Multi-node EP/DP requiring RDMA or NVLink** is a hard gate but visible
+immediately; the cost is procurement, and there is no software fix. **The 12-head vision encoder not
+sharding across TP=8** is narrow (DP fallback, tiny model fraction) but is a clean codesign
+illustration: a quality-driven architecture choice colliding with a universal deployment shape,
+becoming a permanent special case.
+
+</SelfCheck>
+
+<SelfCheck q="What does the 1.7–4.5×-over-NCCL result tell you about where decode time goes?">
+
+That collectives are on the critical path 93 times per token with nothing to overlap them against —
+SGLang puts it as "all-reduce is a synchronization point, so a microsecond saved there converts
+one-for-one into step time", and independently reports CustomAllReduceV2/multicast/NVLS as their
+single largest waterfall line at **+27.6 tok/s**. Consequences: the single-user number is partly a
+collectives benchmark; it argues for the largest high-bandwidth domain; and it will **not** transfer
+to different hardware, since kernels tuned for GB300 NVL72 symmetric memory are not the kernels for
+two H200 nodes over InfiniBand.
+
+</SelfCheck>

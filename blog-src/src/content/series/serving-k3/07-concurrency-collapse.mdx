@@ -1,0 +1,303 @@
+---
+n: 7
+title: 'The concurrency collapse'
+blurb: '16.8 tok/s at one request, 146.9 aggregate at fifty-four — 8.7× more total throughput for a 6.2× drop per user. Why long context and many users are the same budget, and what actually sets the ceiling.'
+part: 'U'
+minutes: 18
+draft: false
+tags: ['concurrency', 'throughput', 'latency', 'long context', 'batching', 'KV capacity', 'load imbalance', 'MoE', 'SLO', 'TTFT']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+The most useful concurrency measurement published for K3 comes from the
+[16×H200 community deployment](https://huggingface.co/moonshotai/Kimi-K3/discussions/136): **one
+request yields 16.8 tok/s; fifty-four concurrent requests yield 146.9 tok/s in aggregate**. Aggregate
+throughput rose 8.7×, and per-user speed fell from 16.8 to about **2.7 tok/s — a 6.2× drop**. Both
+halves of that are the expected behaviour of a batched autoregressive server and neither is a bug, but
+the shape matters: throughput scales strongly sublinearly with concurrency while per-user latency
+degrades roughly linearly, so there is a concurrency level beyond which you are trading a great deal
+of user experience for very little capacity. Finding it is the main operational task of running this
+model, and it is much lower than on the dense models most people's intuitions come from.
+
+The reason it is lower is that K3's decode step is dominated by costs that batching does *not*
+amortise as well as usual. On a dense model, batching is nearly free throughput: you read the weights
+once and use them for every sequence in the batch, so doubling the batch nearly doubles tokens per
+second until you hit compute. On K3, each token routes to 16 of 896 experts, and *different tokens in
+the batch route to different experts*. So batching does not amortise expert weight reads the way it
+amortises dense weight reads — a larger batch touches more distinct experts, up to the point where
+the batch activates most of them and you are reading a large fraction of 2.78 T parameters per step.
+Add an all-to-all whose sizes are data-dependent, and load imbalance where the step ends when the
+slowest rank finishes, and MoE batching has a much weaker return than the dense intuition predicts.
+
+The second constraint is capacity, and it is the harder one. Module 3's measured pool holds about
+**308,608 tokens** of hybrid state on that configuration. Concurrency multiplied by context length
+cannot exceed it. Fifty-four concurrent requests at 4 K context each is 216 K tokens and fits;
+fifty-four at 32 K is 1.7 M and does not. **Long context and high concurrency are not two features you
+tune separately — they are two ways of spending the same budget**, and this is the single most
+important thing to internalise about serving K3. SGLang's DCP8, at a reported 7.9× logical KV
+capacity, is the one technique that changes the budget by an order of magnitude rather than a few
+percent, and even it only helps the context axis.
+
+<Callout type="trap" title="benchmarking at batch 1 and planning at batch 64">
+  The published 370 and 423 tok/s figures are batch-1 decode with speculation on an idle machine. The
+  16.8 → 2.7 tok/s per-user curve is what your users experience on a loaded one. These are both real
+  and they describe different servers. Any capacity plan built from a batch-1 number will overestimate
+  by roughly the concurrency you intend to run at, and speculative decoding — which contributes much
+  of the batch-1 figure — is precisely the feature whose benefit shrinks as the machine fills.
+</Callout>
+
+## What the reports actually measured
+
+The concurrency curve, from the [16×H200 report](https://huggingface.co/moonshotai/Kimi-K3/discussions/136):
+
+| Concurrency | Aggregate tok/s | Per user | Latency p50 / max |
+| ----------- | --------------- | -------- | ----------------- |
+| 1 | 16.8 | 16.8 | 28.3 s |
+| **54** | **146.9** | **~2.7** | 60 s / 102 s |
+| Scaling | **8.7×** | **÷6.2** | ~2.1× p50 |
+
+TTFT on the same deployment was 0.37–0.54 s for short prompts on a warm server — which is worth
+noticing, because TTFT held up far better than inter-token latency did.
+
+Long-context concurrency, from [SGLang](https://www.lmsys.org/blog/2026-07-27-kimi-k3-day0-support/):
+
+| Configuration | Sessions | Context | Aggregate | Per session |
+| ------------- | -------- | ------- | --------- | ----------- |
+| DCP8 | 48 | 100 K | 541 tok/s | ~11.3 tok/s |
+| Disaggregated PP8 prefill + TP8 decode | — | — | **2,808 tok/s per GPU** | — |
+
+The capacity constraint, using Module 3's measured 308,608-token pool:
+
+| Context per request | Max concurrent (approx.) |
+| ------------------- | ------------------------ |
+| 2 K | ~150 |
+| 8 K | ~37 |
+| 32 K | ~9 |
+| 128 K | ~2 |
+| 1 M | **0** — one request does not fit |
+
+Why batching returns less on K3 than on a dense model:
+
+| Cost per decode step | Amortised by batching? |
+| -------------------- | ---------------------- |
+| Dense/shared weight reads | **yes** — read once, used by all |
+| **Routed expert weight reads** | **weakly** — more tokens reach more experts |
+| Expert-parallel all-to-all | partly; sizes grow with batch |
+| **Load imbalance across ranks** | **no** — step ends with the slowest rank |
+| 93 sequential layer traversals | yes — one traversal per step |
+| KDA recurrent state updates | per request, so scales with batch |
+| Speculative verification compute | **negatively** — competes for compute under load |
+
+## Critical thinking
+
+<Probe q="Decompose the 16.8 → 2.7 tok/s per-user drop. What is actually causing it?">
+
+Four mechanisms, and only the first is the benign one everybody expects.
+
+**1. Ordinary batched-decode sharing, the expected part.** In any batched autoregressive server, one
+decode step produces one token for every sequence, so per-user token rate is (steps per second), and
+steps get slower as the batch grows. If step time scaled perfectly, 54 concurrent users would each get
+$16.8 / 1 = 16.8$ tok/s only if step time were unchanged; in reality more work per step means slower
+steps. A perfectly-amortising dense model would show aggregate throughput scaling nearly linearly, so
+per-user rate would fall roughly as $1/N$ only once compute saturates. Here aggregate scaled 8.7× for
+54× the requests, which is far from linear — so most of the degradation is *not* this.
+
+**2. Expert weight traffic that does not amortise.** This is the K3-specific term. A dense model reads
+its weights once per step regardless of batch. K3 reads the weights of every expert that any token in
+the batch routed to. At batch 1 that is 16 experts; at batch 54 with random routing it approaches the
+number of distinct experts touched by 54×16 = 864 draws from 896 — which is most of them. So the
+weight traffic per step grows substantially with batch while the tokens produced grow linearly, and
+the ratio worsens. This is why MoE serving has a fundamentally different batching curve from dense
+serving, and it is the main reason the aggregate scaling is 8.7× rather than something closer to 54×.
+
+**3. Load imbalance, which is a tail effect.** All ranks run their experts in parallel and the step
+ends when the slowest finishes. With uneven routing, one rank holds the hot experts and everyone waits
+for it. Quantile Balancing (Module 1) is designed to attack exactly this, and Moonshot does not publish
+the resulting imbalance factor — which is the number that would let you predict this term.
+
+**4. Capacity-driven queueing, which shows up as latency rather than throughput.** p50 latency went
+from 28.3 s to 60 s and max to 102 s. The spread between p50 and max is the signature of requests
+waiting for pool space rather than for compute. With a 308,608-token pool, admission is gated, and a
+request that cannot be admitted contributes latency without contributing throughput.
+
+**What this decomposition tells you to do**, in order: batch enough to get the aggregate scaling that
+does exist (the jump from 1 to 54 was still worth 8.7×), but expect the curve to flatten early;
+measure where it flattens on *your* context distribution rather than assuming; and treat p50-to-max
+spread as the signal that you have hit capacity rather than compute, because the fix for those two is
+different — more GPUs for the first, DCP or offloading for the second.
+
+</Probe>
+
+<Probe q="Why does TTFT hold up (0.37–0.54 s) while inter-token latency collapses?">
+
+Because they are limited by different resources, and only one of them is contended in the same way.
+
+**TTFT is a prefill measurement**, and prefill is compute-bound with high arithmetic intensity: a long
+prompt processes many tokens in parallel, so weights are read once and used for thousands of
+positions. It parallelises well, it batches well, and on a warm server with prefix caching it may skip
+most of the work entirely. Chunked pipeline prefill (Module 5) makes it better still. The 0.37–0.54 s
+figure is for *short* prompts on a *warm* server, which is close to a best case — but the structural
+point holds: prefill has reuse to exploit and decode does not.
+
+**Inter-token latency is a decode measurement**, and decode is memory-bound at an arithmetic
+intensity roughly equal to the batch size (codesign series, Module 12). Every step reads expert
+weights, crosses the all-to-all, and traverses 93 layers, to produce one token per sequence. There is
+no reuse to find. Adding users adds expert traffic and synchronisation without adding reuse, so the
+step time grows and everyone's tokens slow down together.
+
+**The operational consequences are significant** and are why the disaggregation of Module 9 exists:
+
+- **Your two SLOs are limited by different things**, so they should be provisioned separately. TTFT
+  wants prefill capacity and prefix cache hit rate; ITL wants decode capacity and pool headroom.
+  DigitalOcean's write-up describes exactly this — "staggered TTFT targets by prompt length" with
+  "separate inter-token latency SLAs for chat versus agentic workloads".
+- **A user perceives them differently.** A 500 ms TTFT with 2.7 tok/s afterwards feels responsive then
+  agonising. Most users would prefer 1.5 s TTFT and 8 tok/s. Since the two are separately tunable —
+  chiefly by choosing your concurrency ceiling — this is a product decision that a systems team is
+  usually making implicitly.
+- **Prefix caching helps only one of them.** It cuts prefill work, so it improves TTFT and total
+  capacity, and does nothing for the decode step rate. On agentic workloads with large shared prefixes
+  it is the single highest-leverage feature — which is why vLLM's default of leaving it off (Module 4)
+  is worth checking first.
+
+</Probe>
+
+<Probe q="What is the actual ceiling on concurrency, and how do you find yours?">
+
+There are three candidate ceilings and the binding one depends on your context distribution — so the
+answer is a procedure rather than a number.
+
+**Ceiling 1: KV/state capacity.** Concurrency × context ≤ pool. With the measured 308,608-token pool,
+that is ~150 requests at 2 K, ~37 at 8 K, ~9 at 32 K. This binds for long-context workloads and is the
+one DCP attacks: SGLang's reported **7.9× logical KV with DCP8** moves a 308 K pool to a 2.4 M-class
+one, which turns ~9 concurrent 32 K requests into ~70.
+
+**Ceiling 2: the running-request cap.** SGLang states this directly as a limitation — *"after DCP
+lifts MLA capacity, the running-request cap becomes the binding limit."* Once you solve capacity, a
+scheduler parameter is next, and it exists because per-request overheads (KDA state, metadata,
+scheduling) do not shrink. This is the ceiling for short-context high-concurrency workloads.
+
+**Ceiling 3: acceptable per-user latency.** Usually the real one. If your product needs 10 tok/s per
+user and you measure 2.7 at concurrency 54, your ceiling is wherever the curve crosses 10 —
+somewhere well below 54 on that hardware. This is a business constraint wearing a systems costume, and
+it is almost always tighter than the other two.
+
+**The procedure:**
+
+1. **Characterise your context distribution**, including the tail. Mean context is not enough because
+   capacity is consumed by the actual lengths, and a few very long requests can occupy the pool.
+2. **Measure the pool on your configuration.** Do not use 308,608 — that is one engine, one hardware,
+   one `mem-fraction-static`. Get yours from the engine's startup log.
+3. **Sweep concurrency and plot both curves**: aggregate throughput and per-user token rate. The knee
+   in the first and your SLO crossing on the second bracket the answer.
+4. **Watch p50-versus-max latency spread.** Widening spread means queueing for capacity, which tells
+   you which ceiling you hit.
+5. **Then decide which ceiling to spend money on.** Capacity-bound → DCP, offloading, or more GPUs.
+   Compute-bound → more GPUs or better kernels. Latency-bound → lower your concurrency ceiling and add
+   replicas, which is the expensive answer and often the correct one.
+
+**The number I would carry as a prior**, pending your own measurement: on a Hopper-class two-node
+deployment, useful concurrency at moderate context is in the tens, not the hundreds. That is a very
+different operating point from a 70 B dense model, and plans imported from one will not survive.
+
+</Probe>
+
+<Probe q="Does speculative decoding help or hurt under concurrency?">
+
+It helps at low concurrency, stops helping in the middle, and can hurt at high concurrency — and both
+engines have published evidence of the transition.
+
+**Why it helps at batch 1.** The machine is idle. Verification uses compute that would otherwise go
+unused, and each accepted token skips a full step's worth of expert reads, all-to-all and 93-layer
+traversal. Hence 3.14× (vLLM) and ~3.7× (SGLang).
+
+**Why the benefit shrinks as the batch grows.** Verification is real compute over draft tokens. On a
+loaded server that compute competes directly with producing tokens for other users. The rejected
+drafts are pure waste — you did the work and threw it away. As utilisation rises, the opportunity cost
+of that waste rises with it, and at some point the machine would produce more total tokens by not
+speculating.
+
+**The published evidence.** SGLang's confidence-scheduled verification — which trims the verification
+window per position using a trained confidence head instead of verifying whole draft blocks uniformly
+— is reported at **+68% throughput at batch 256** with accept length ~2.7, and as **"break-even to
+mildly negative below batch size 8."** Read that carefully: it is a statement that the *optimisation
+to speculation* inverts sign with batch size, which strongly implies the underlying trade does too.
+The feature exists because naive speculation at batch 256 was leaving throughput on the table.
+
+**And the workload dependence compounds it.** Acceptance is ~4.73 tokens per step on coding and ~2.61
+on creative writing (vLLM). Low acceptance means more wasted verification per accepted token, so
+high-entropy workloads hit the crossover at lower concurrency than low-entropy ones do.
+
+**What to do about it:**
+
+- **Treat speculation as a load-dependent setting**, not a global on/off. Enable it aggressively for
+  low-concurrency, latency-sensitive paths and back it off as the batch grows — which is what
+  confidence scheduling automates.
+- **Route by workload if you can.** Coding and tool-calling traffic gets more from speculation than
+  open-ended generation does.
+- **Never benchmark capacity with speculation on and quote it as throughput.** It is the single
+  easiest way to produce a number your production server will not reproduce.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="State the measured concurrency curve and what each half means.">
+
+On 16×H200: **1 request → 16.8 tok/s; 54 requests → 146.9 tok/s aggregate**, i.e. ~2.7 tok/s per user.
+Aggregate scaled **8.7×** while per-user fell **6.2×**, with p50 latency 28.3 s → 60 s and max 102 s.
+Throughput scales strongly sublinearly while per-user latency degrades roughly linearly, so beyond
+some concurrency you trade a lot of user experience for very little capacity — and on this model that
+point is much lower than dense-model intuitions suggest.
+
+</SelfCheck>
+
+<SelfCheck q="Why does batching return less on K3 than on a dense model?">
+
+Because routed expert weight reads do not amortise. A dense model reads its weights once per step
+regardless of batch; K3 reads every expert any token in the batch routed to — at batch 1 that is 16 of
+896, at batch 54 it approaches most of them (54×16 = 864 draws). So weight traffic per step grows with
+batch while tokens produced grow linearly. Add load imbalance (the step ends with the slowest rank, and
+no batching fixes a tail) and an all-to-all whose sizes grow with batch. That is why aggregate scaled
+8.7× rather than near-linearly.
+
+</SelfCheck>
+
+<SelfCheck q="Why does TTFT hold up while inter-token latency collapses?">
+
+Different resources. **TTFT is prefill** — compute-bound, high arithmetic intensity (weights read once
+for thousands of positions), parallelises and batches well, and may be skipped entirely by prefix
+caching. **ITL is decode** — memory-bound at intensity ≈ batch size, with no reuse to find; adding
+users adds expert traffic and synchronisation without adding reuse. Consequences: provision the two
+SLOs separately; recognise that 500 ms TTFT with 2.7 tok/s may be worse product-wise than 1.5 s with
+8 tok/s; and note prefix caching improves only TTFT and capacity, never the decode step rate.
+
+</SelfCheck>
+
+<SelfCheck q="Name the three concurrency ceilings and which workloads hit each.">
+
+**KV/state capacity** (concurrency × context ≤ pool; ~9 requests at 32 K on a 308 K pool) — binds
+long-context workloads, and is what DCP8's 7.9× attacks. **The running-request cap** — SGLang states
+that after DCP lifts MLA capacity this becomes binding; it hits short-context high-concurrency
+workloads because per-request overheads do not shrink. **Acceptable per-user latency** — usually the
+real ceiling, a business constraint in systems clothing, and typically tightest. Diagnose by watching
+p50-versus-max spread: widening spread means queueing for capacity rather than compute.
+
+</SelfCheck>
+
+<SelfCheck q="Does speculative decoding help under load?">
+
+It inverts. At batch 1 verification uses otherwise-idle compute and each accepted token skips a full
+step — hence 3.14×/~3.7×. Under load, verification competes with producing other users' tokens and
+rejected drafts are pure waste whose opportunity cost rises with utilisation. Evidence: SGLang's
+confidence-scheduled verification is **+68% at batch 256** but **"break-even to mildly negative below
+batch size 8"** — the optimisation's sign flips with batch, implying the underlying trade does too.
+Compounded by acceptance varying 2.61–4.73 by workload. So treat it as load-dependent, route
+low-entropy traffic to it preferentially, and never quote a speculation-on benchmark as throughput.
+
+</SelfCheck>

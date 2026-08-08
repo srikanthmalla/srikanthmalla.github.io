@@ -80,6 +80,20 @@ export const SERIES: Series[] = [
       { id: 'R', title: 'In practice', note: 'Real workloads, real chips, the real loop.' },
     ],
   },
+  {
+    id: 'serving-k3',
+    title: 'Serving Kimi K3',
+    subtitle: 'A 2.8T hybrid-attention MoE, and what it takes to keep it fed',
+    description:
+      'Eleven modules on putting a 2.78-trillion-parameter model into production, built from the day-0 reports published by vLLM, SGLang and the people who tried it on hardware they already had. The hybrid KDA/MLA attention that makes a million-token context affordable and makes everything else harder, the memory budget, the two engines, the concurrency collapse, multi-node KV offloading and disaggregation, and the tool-calling surface.  Every number is linked to where it came from.',
+    unit: 'Module',
+    parts: [
+      { id: 'S', title: 'The model', note: 'What it is, and what it costs to hold.' },
+      { id: 'T', title: 'The engines', note: 'vLLM, SGLang, and choosing.' },
+      { id: 'U', title: 'Where it falls over', note: 'Concurrency, cache, disaggregation.' },
+      { id: 'V', title: 'Operating it', note: 'The API surface, cost, and what to do.' },
+    ],
+  },
 ];
 
 export function getSeries(id: string): Series {

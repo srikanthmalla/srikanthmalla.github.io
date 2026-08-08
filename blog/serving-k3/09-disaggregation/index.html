@@ -1,0 +1,596 @@
+<!DOCTYPE html><html lang="en" data-astro-cid-z4jru4n3><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>9. Disaggregation and cache-aware routing — Serving Kimi K3</title><meta name="description" content="Prefill and decode want opposite hardware and opposite parallelism, so both engines separate them. What crosses the boundary, why K3 makes the transfer harder than usual, and why the router has to know what is cached where."><link rel="icon" href="data:,"><script>
+      (() => {
+        try {
+          const t = localStorage.getItem('refresher:theme');
+          if (t === 'light') document.documentElement.classList.add('light');
+        } catch (e) {}
+      })();
+    </script><link rel="stylesheet" href="/blog/_astro/BaseLayout.BNp-sd5V.css"><style>.wrap[data-astro-cid-5x65ok44]{max-width:68ch;margin-inline:auto;padding:3rem 1.25rem 6rem}@media (width>=1024px){.wrap[data-astro-cid-5x65ok44]{max-width:calc(68ch + 6rem);padding-inline:3rem}}.mhead[data-astro-cid-5x65ok44]{border-block-end:1px solid var(--rule);margin-block-end:.5rem;padding-block-end:1.75rem}.mhead-kicker[data-astro-cid-5x65ok44]{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint);margin:0 0 .85rem;font-size:.6875rem;font-weight:500}.mhead-n[data-astro-cid-5x65ok44]{color:var(--accent);font-weight:640}.mhead-dot[data-astro-cid-5x65ok44]{opacity:.5;padding-inline:.35rem}.mhead-title[data-astro-cid-5x65ok44]{font-family:var(--font-sans);letter-spacing:-.027em;color:var(--ink-strong);text-wrap:balance;margin:0;font-size:clamp(1.75rem,1.3rem + 1.9vw,2.375rem);font-weight:660;line-height:1.12}.mhead-blurb[data-astro-cid-5x65ok44]{color:var(--ink-muted);max-width:58ch;margin:.85rem 0 0;font-size:1.0625rem;line-height:1.6}.mfoot[data-astro-cid-5x65ok44]{border-block-start:1px solid var(--rule);margin-block-start:4rem;padding-block-start:1.75rem}.mark[data-astro-cid-5x65ok44]{font-family:var(--font-sans);border:1px solid var(--rule);background:var(--bg-raised);color:var(--ink-muted);cursor:pointer;border-radius:5px;padding:.4rem .85rem;font-size:.75rem;font-weight:550}.mark[data-astro-cid-5x65ok44]:hover{color:var(--ink-strong);border-color:var(--ink-faint)}.mark[data-astro-cid-5x65ok44][aria-pressed=true]{color:var(--bridge);border-color:color-mix(in oklab, var(--bridge) 45%, var(--rule))}.pager[data-astro-cid-5x65ok44]{grid-template-columns:1fr 1fr;gap:1rem;margin-block-start:2rem;display:grid}.pager-link[data-astro-cid-5x65ok44]{border:1px solid var(--rule);font-family:var(--font-sans);border-radius:6px;flex-direction:column;gap:.25rem;padding:.75rem .9rem;text-decoration:none;display:flex}.pager-link[data-astro-cid-5x65ok44]:hover{border-color:var(--ink-faint);background:var(--bg-raised)}.pager-link[data-astro-cid-5x65ok44].is-next{text-align:end}.pager-dir[data-astro-cid-5x65ok44]{text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);font-size:.6875rem}.pager-title[data-astro-cid-5x65ok44]{color:var(--ink-strong);font-size:.8125rem;font-weight:550;line-height:1.35}
+</style><style>.callout{border:1px solid var(--rule);border-inline-start-width:2px;border-radius:5px;margin-block:1.75rem;padding:.9rem 1.1rem 1rem;font-size:.9375rem;line-height:1.65}.callout-probe{border-inline-start-color:var(--probe);background:var(--probe-bg)}.callout-trap{border-inline-start-color:var(--trap);background:var(--trap-bg)}.callout-bridge{border-inline-start-color:var(--bridge);background:var(--bridge-bg)}.callout-label{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;align-items:center;gap:.45rem;margin:0 0 .5rem;font-size:.6875rem;font-weight:620;display:flex}.callout-probe .callout-label{color:var(--probe)}.callout-trap .callout-label{color:var(--trap)}.callout-bridge .callout-label{color:var(--bridge)}.callout-mark{background:currentColor;border-radius:50%;flex:none;width:5px;height:5px}.callout-title{text-transform:none;letter-spacing:0;color:var(--ink-muted);font-weight:500}.callout-body>:first-child{margin-block-start:0}.callout-body>:last-child{margin-block-end:0}.callout-body>*+*{margin-block-start:.75em}.probe{margin-block:1.75rem}.prose .probe-q{font-family:var(--font-sans);letter-spacing:-.01em;color:var(--ink-strong);margin:0 0 .6rem;padding-inline-start:1.15rem;font-size:1rem;font-weight:600;line-height:1.45;position:relative}.prose .probe-q:before{content:"›";color:var(--accent);font-weight:700;position:absolute;inset-inline-start:0}.probe-a{border-inline-start:1px solid var(--rule);margin-inline-start:.1rem;padding-inline-start:1.15rem}.probe-a>*+*{margin-block-start:1.15em}.probe-a>:first-child{margin-block-start:0}.probe-a>:last-child{margin-block-end:0}.selfcheck{border-block-start:1px solid var(--rule-soft)}.selfcheck:last-of-type{border-block-end:1px solid var(--rule-soft)}.prose>.selfcheck+.selfcheck{margin-block-start:0}.selfcheck>summary{cursor:pointer;color:var(--ink);align-items:baseline;gap:1rem;padding:.7rem .2rem;list-style:none;display:flex}.selfcheck>summary::-webkit-details-marker{display:none}.selfcheck>summary:hover{color:var(--ink-strong)}.selfcheck-q{flex:1}.selfcheck-q code{white-space:nowrap}.selfcheck-cue{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);flex:none;padding-block-start:.15rem;font-size:.6875rem;font-weight:600}.selfcheck>summary:hover .selfcheck-cue{color:var(--accent)}.selfcheck-cue-hide,.selfcheck[open] .selfcheck-cue-show{display:none}.selfcheck[open] .selfcheck-cue-hide{display:inline}.selfcheck-a{color:var(--ink-muted);border-inline-start:2px solid var(--rule);margin-block-end:.9rem;margin-inline-start:.2rem;padding:.15rem .2rem 1.05rem;padding-inline-start:1rem;font-size:.9375rem}.selfcheck-a>:first-child{margin-block-start:0}.selfcheck-a>:last-child{margin-block-end:0}.selfcheck-a>*+*{margin-block-start:.7em}.selfcheck-a strong{color:var(--ink)}
+</style></head><body data-astro-cid-z4jru4n3><a href="#content" class="skip" data-astro-cid-z4jru4n3>Skip to content</a><div class="shell" data-astro-cid-z4jru4n3><aside class="rail" data-rail data-astro-cid-z4jru4n3><nav class="rail-nav" aria-label="Serving Kimi K3 contents" data-astro-cid-wv7whodv><div class="rail-head" data-astro-cid-wv7whodv><a href="/blog/" class="rail-up" data-astro-cid-wv7whodv>All series</a><a href="/blog/serving-k3/" class="rail-home" data-astro-cid-wv7whodv><span class="rail-home-title" data-astro-cid-wv7whodv>Serving Kimi K3</span><span class="rail-home-sub" data-astro-cid-wv7whodv>A 2.8T hybrid-attention MoE, and what it takes to keep it fed</span></a><p class="rail-progress" data-astro-cid-wv7whodv><span class="rail-progress-bar" data-astro-cid-wv7whodv><span data-progress-fill data-astro-cid-wv7whodv></span></span><span class="rail-progress-text" data-astro-cid-wv7whodv><span data-progress-count data-astro-cid-wv7whodv>0</span>/11 reviewed</span></p></div><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part S</span>The model</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/01-architecture/" class="rail-link" title="2.78T total, 104B active, 896 experts at top-16, 93 layers split 69 KDA to 24 gated MLA, native MXFP4. The numbers that matter for serving, and the one that most write-ups get wrong." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>1</span><span class="rail-title" data-astro-cid-wv7whodv>What K3 actually is</span><span class="rail-tick" data-tick="serving-k3/01-architecture" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/02-kda-and-the-kv-cache/" class="rail-link" title="69 of 93 layers keep a fixed-size recurrent state instead of a growing KV cache. That is what makes a million tokens affordable — and it creates the hardest engineering problem in the stack." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>2</span><span class="rail-title" data-astro-cid-wv7whodv>KDA, AttnRes, and the two-state problem</span><span class="rail-tick" data-tick="serving-k3/02-kda-and-the-kv-cache" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/03-the-memory-budget/" class="rail-link" title="1.56 TB of weights before a single token. What that leaves for KV on each cluster shape, why the published minimum is 8 GPUs and the production recommendation is 64, and the one measured pool size everyone should start from." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>3</span><span class="rail-title" data-astro-cid-wv7whodv>The memory budget</span><span class="rail-tick" data-tick="serving-k3/03-the-memory-budget" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part T</span>The engines</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/04-vllm/" class="rail-link" title="One hybrid KV manager, DSpark speculative decoding at 3.14×, custom collectives at 1.7–4.5× over NCCL — and three limitations they publish that will bite you on day one." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>4</span><span class="rail-title" data-astro-cid-wv7whodv>vLLM&#39;s path</span><span class="rail-tick" data-tick="serving-k3/04-vllm" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/05-sglang/" class="rail-link" title="One unified pool allocated from both ends, chunked pipeline prefill at 1.7× the tensor-parallel ceiling, decode context parallelism for 7.9× logical KV — and 2,808 tok/s per GPU when prefill and decode are pulled apart." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>5</span><span class="rail-title" data-astro-cid-wv7whodv>SGLang&#39;s path</span><span class="rail-tick" data-tick="serving-k3/05-sglang" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/06-choosing/" class="rail-link" title="vLLM says 370 tok/s, SGLang says 423, and a community report on H200 measured 16.8. All three are honest. What actually separates the engines, and the one head-to-head data point that exists." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>6</span><span class="rail-title" data-astro-cid-wv7whodv>Choosing, and why the numbers don&#39;t compare</span><span class="rail-tick" data-tick="serving-k3/06-choosing" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part U</span>Where it falls over</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/07-concurrency-collapse/" class="rail-link" title="16.8 tok/s at one request, 146.9 aggregate at fifty-four — 8.7× more total throughput for a 6.2× drop per user. Why long context and many users are the same budget, and what actually sets the ceiling." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>7</span><span class="rail-title" data-astro-cid-wv7whodv>The concurrency collapse</span><span class="rail-tick" data-tick="serving-k3/07-concurrency-collapse" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/08-kv-offloading/" class="rail-link" title="Five backends behind one vLLM connector interface — native, LMCache, Mooncake, 3FS, NIXL — three storage tiers, and the constraint nobody documents: which of them work with which parallelism, and what a recurrent state does to all of it." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>8</span><span class="rail-title" data-astro-cid-wv7whodv>Multi-node KV offloading</span><span class="rail-tick" data-tick="serving-k3/08-kv-offloading" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/09-disaggregation/" class="rail-link is-active" aria-current="page" title="Prefill and decode want opposite hardware and opposite parallelism, so both engines separate them. What crosses the boundary, why K3 makes the transfer harder than usual, and why the router has to know what is cached where." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>9</span><span class="rail-title" data-astro-cid-wv7whodv>Disaggregation and cache-aware routing</span><span class="rail-tick" data-tick="serving-k3/09-disaggregation" aria-hidden="true" data-astro-cid-wv7whodv></span></a><ul class="rail-sub" data-rail-sub data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="#the-core-mental-model" class="rail-sub-link" data-toc="the-core-mental-model" data-astro-cid-wv7whodv>The core mental model</a></li><li data-astro-cid-wv7whodv><a href="#what-the-reports-actually-measured" class="rail-sub-link" data-toc="what-the-reports-actually-measured" data-astro-cid-wv7whodv>What the reports actually measured</a></li><li data-astro-cid-wv7whodv><a href="#critical-thinking" class="rail-sub-link" data-toc="critical-thinking" data-astro-cid-wv7whodv>Critical thinking</a></li><li data-astro-cid-wv7whodv><a href="#self-check" class="rail-sub-link" data-toc="self-check" data-astro-cid-wv7whodv>Self-check</a></li></ul></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part V</span>Operating it</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/10-tool-calling/" class="rail-link" title="The model can be running perfectly and your agents still fail. Reasoning and tool-call parsers, grammar-constrained decoding, the empty-tool_calls failure, and a vendor conformance suite where 26 of 30 failures were one missing feature." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>10</span><span class="rail-title" data-astro-cid-wv7whodv>Tool calling and the API surface</span><span class="rail-tick" data-tick="serving-k3/10-tool-calling" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/11-cost-and-decision/" class="rail-link" title="Published break-even points span 2 billion to 24 billion tokens a month, and the spread is mostly assumptions rather than disagreement. The decision procedure, and an honest account of what these day-0 numbers are worth." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>11</span><span class="rail-title" data-astro-cid-wv7whodv>Cost, break-even, and what to actually do</span><span class="rail-tick" data-tick="serving-k3/11-cost-and-decision" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-other" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv>Other series</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>ML Hardware &amp; Low-Latency Systems</span></a></li><li data-astro-cid-wv7whodv><a href="/blog/diffusion/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>Diffusion</span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>ML Software &amp; Compilers</span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>ML Hardware/Software Codesign</span></a></li></ul></section><div class="rail-foot" data-astro-cid-wv7whodv><p data-astro-cid-wv7whodv><kbd data-astro-cid-wv7whodv>j</kbd> <kbd data-astro-cid-wv7whodv>k</kbd> section · <kbd data-astro-cid-wv7whodv>/</kbd> search · <kbd data-astro-cid-wv7whodv>[</kbd><kbd data-astro-cid-wv7whodv>]</kbd> module</p></div></nav></aside><div class="col" data-astro-cid-z4jru4n3><header class="topbar" data-astro-cid-z4jru4n3><button class="icon-btn only-narrow" data-rail-toggle aria-label="Toggle contents" data-astro-cid-z4jru4n3><svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M1.5 3.5h12M1.5 7.5h12M1.5 11.5h12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg></button><p class="crumb" data-astro-cid-z4jru4n3>Part U · Where it falls over › Disaggregation and cache-aware routing</p><div class="topbar-actions" data-astro-cid-z4jru4n3><button class="search-btn" data-search-open aria-label="Search" data-astro-cid-z4jru4n3><span aria-hidden="true" data-astro-cid-z4jru4n3>⌕</span><span class="search-btn-label" data-astro-cid-z4jru4n3>Search</span><kbd data-astro-cid-z4jru4n3>/</kbd></button><button class="icon-btn" data-theme-toggle aria-label="Toggle theme" data-astro-cid-z4jru4n3><svg class="i-sun" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><circle cx="7.5" cy="7.5" r="3" stroke="currentColor" stroke-width="1.2" data-astro-cid-z4jru4n3></circle><path d="M7.5 .8v1.7M7.5 12.5v1.7M14.2 7.5h-1.7M2.5 7.5H.8M12.24 2.76l-1.2 1.2M3.96 11.04l-1.2 1.2M12.24 12.24l-1.2-1.2M3.96 3.96l-1.2-1.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg><svg class="i-moon" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M13 9.3A5.8 5.8 0 0 1 5.7 2 5.9 5.9 0 1 0 13 9.3Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" data-astro-cid-z4jru4n3></path></svg></button><a class="site-link" href="/" data-astro-cid-z4jru4n3>srikanthmalla.com</a></div></header><main id="content" data-astro-cid-z4jru4n3><article class="wrap" data-article data-astro-cid-5x65ok44><header class="mhead" data-astro-cid-5x65ok44><p class="mhead-kicker" data-astro-cid-5x65ok44><span class="mhead-n" data-astro-cid-5x65ok44>Module 9</span><span class="mhead-dot" data-astro-cid-5x65ok44>·</span>Part U — Where it falls over<span class="mhead-dot" data-astro-cid-5x65ok44>·</span>17 min</p><h1 class="mhead-title" data-astro-cid-5x65ok44>Disaggregation and cache-aware routing</h1><p class="mhead-blurb" data-astro-cid-5x65ok44>Prefill and decode want opposite hardware and opposite parallelism, so both engines separate them. What crosses the boundary, why K3 makes the transfer harder than usual, and why the router has to know what is cached where.</p></header><div class="prose" data-astro-cid-5x65ok44><h2 id="the-core-mental-model">The core mental model<a class="anchor" href="#the-core-mental-model" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>Prefill and decode are the same mathematics in opposite resource regimes, and Module 7 showed how
+differently they behave under load: prefill is compute-bound with enormous arithmetic intensity, while
+decode is memory-bound at an intensity roughly equal to the batch size. They also want opposite
+parallelism. SGLang’s measurements make this concrete — <strong>PP8×TP1 chunked pipeline for prefill,
+reported at 1.7× the ceiling of TEP8</strong>, and <strong>DCP8 for decode, reported at 7.9× logical KV capacity</strong>.
+Those two configurations cannot coexist in one engine instance. So if you want both, you must run two
+pools and move requests between them, which is disaggregation. vLLM’s equivalent arrangement is
+<strong>TEP8 prefill routed to DEP16 decode</strong>, and SGLang’s headline aggregate figure — <strong>2,808 tok/s per
+GPU</strong> — is quoted for a disaggregated PP8-prefill-plus-TP8-decode configuration rather than for a
+unified one.</p>
+<p>What crosses the boundary is where K3 differs from a normal disaggregated deployment. On a
+conventional model you transfer the KV cache: a contiguous, position-indexed, immutable set of pages,
+which is a well-understood bulk transfer. On K3 you transfer <strong>two objects with different
+granularities</strong> — vLLM describes the NIXL connector as treating the shared page as “token-level MLA
+cache and request-level KDA state, including convolution and recurrent state”. The MLA portion is
+pages; the KDA portion is 69 layers’ worth of whole recurrent state that must arrive intact and
+correct, because the decode worker will continue updating it in place. That transfer sits directly on
+the critical path of TTFT, and it is pure overhead that a unified deployment does not pay — which is
+why disaggregation only wins when the efficiency gain from specialised parallelism exceeds it.</p>
+<p>The third piece is routing, and it is the part teams most often bolt on too late. Once you have
+multiple decode replicas and a KV cache that may live in several places, <em>which</em> replica you send a
+request to determines whether it hits cache. llm-d pairs offloading with a Router whose <strong>Exact Prefix
+Predictor</strong> selects replicas that can reuse cached blocks. Without that, a request with a 50 K-token
+shared prefix lands on a random replica, misses, and prefills the whole thing — while the replica that
+had it cached sits idle. Cache-aware routing is not an optimisation on top of caching; on a multi-
+replica deployment it is what makes caching work at all, and its absence is invisible except as
+unexplained cost.</p>
+<aside class="callout callout-bridge"><p class="callout-label"><span class="callout-mark" aria-hidden="true"></span>Bridge to what you know<span class="callout-title"> · the codesign series called this two modules early</span></p><div class="callout-body"><p>Module 12 of the codesign series argued that prefill and decode are two points in the resource space
+with identical mathematics, and that serving them on one machine means one of the two is always
+misprovisioned. K3 is that argument arriving as a product decision: two engines independently
+concluded that the only way to get both PP8-class prefill and DCP8-class decode capacity is to stop
+pretending they are one system.</p></div></aside>
+<h2 id="what-the-reports-actually-measured">What the reports actually measured<a class="anchor" href="#what-the-reports-actually-measured" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>The two phases, and what each wants:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th></th><th>Prefill</th><th>Decode</th></tr></thead><tbody><tr><td>Bound by</td><td>compute</td><td>memory bandwidth + capacity</td></tr><tr><td>Arithmetic intensity</td><td>high (∝ sequence)</td><td>≈ batch size</td></tr><tr><td>Best parallelism (SGLang)</td><td><strong>PP8 × TP1</strong>, chunked</td><td><strong>DCP8</strong> / TP8</td></tr><tr><td>Best parallelism (vLLM)</td><td><strong>TEP8</strong></td><td><strong>DEP16</strong></td></tr><tr><td>Reported gain</td><td><strong>1.7× TEP8’s ceiling</strong></td><td><strong>7.9× logical KV</strong></td></tr><tr><td>SLO</td><td>TTFT</td><td>inter-token latency</td></tr><tr><td>Measured on K3/H200</td><td>0.37–0.54 s TTFT, warm, short prompts</td><td>16.8 → 2.7 tok/s per user</td></tr></tbody></table></div>
+<p>Disaggregated aggregate throughput, from <a href="https://www.lmsys.org/blog/2026-07-27-kimi-k3-day0-support/">SGLang</a>:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Configuration</th><th>Result</th></tr></thead><tbody><tr><td>PP8 prefill + TP8 decode, disaggregated</td><td><strong>2,808 tok/s per GPU</strong></td></tr><tr><td>DCP8, long-context agents</td><td>541 tok/s across 48 sessions at 100 K</td></tr></tbody></table></div>
+<p>What crosses the prefill→decode boundary on K3:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Object</th><th>Granularity</th><th>Layers</th><th>Difficulty</th></tr></thead><tbody><tr><td>MLA KV cache</td><td>token-level pages</td><td>24</td><td>conventional bulk transfer</td></tr><tr><td><strong>KDA state</strong></td><td><strong>request-level whole object</strong></td><td><strong>69</strong></td><td>includes convolution + recurrent state</td></tr><tr><td>Transport</td><td>NIXL (vLLM), Mooncake transfer engine (SGLang)</td><td>—</td><td>on the TTFT critical path</td></tr></tbody></table></div>
+<p>Routing, per <a href="https://llm-d.ai/docs/0.7/architecture/advanced/kv-management/kv-offloader">llm-d</a>:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Mechanism</th><th>Purpose</th></tr></thead><tbody><tr><td>Router with <strong>Exact Prefix Predictor (EPP)</strong></td><td>select replicas that can reuse cached blocks</td></tr><tr><td>Partial-hit reconciliation (vLLM)</td><td>compare reusable token lengths from local GPU and remote tiers, take the longer prefix</td></tr><tr><td>Contiguous memory layout (vLLM ≥ 0.12.0)</td><td><strong>4–5×</strong> CPU transfer throughput</td></tr></tbody></table></div>
+<h2 id="critical-thinking">Critical thinking<a class="anchor" href="#critical-thinking" aria-hidden="true" tabindex="-1">#</a></h2>
+<section class="probe"><h3 class="probe-q">When does disaggregation actually pay, given it adds a transfer to TTFT?</h3><div class="probe-a"><p>When the efficiency gain from letting each phase use its preferred parallelism exceeds the transfer
+cost — which on K3 is a lower bar than usual, because the parallelism gains are unusually large.</p><p><strong>The cost side.</strong> Every request now moves its MLA KV and its 69 layers of KDA state from a prefill
+worker to a decode worker before generation starts. That is bytes on the wire, added directly to TTFT,
+plus a scheduling handoff and a second admission decision. On a short prompt it may dominate; on a
+long one it is amortised over a large prefill.</p><p><strong>The gain side, which is where K3 is unusual.</strong> The published deltas are not marginal. Prefill in
+PP8×TP1 rather than TEP8 is <strong>1.7×</strong>. Decode with DCP8 gets <strong>7.9× logical KV capacity</strong>, which
+translates into far higher achievable concurrency and therefore far better aggregate throughput. You
+cannot have both in one instance. So the comparison is not “unified versus disaggregated with a
+transfer tax” — it is “one phase running well and the other compromised, versus both running well
+minus a transfer”.</p><p><strong>The conditions that favour disaggregation:</strong></p><ul>
+<li><strong>Long prompts</strong>, because the transfer amortises over a large prefill and because prefill’s
+parallelism advantage grows with sequence length.</li>
+<li><strong>A prefill/decode ratio that is not 1:1.</strong> Agentic workloads with big contexts and short outputs
+need much more prefill capacity per unit of decode; chat with short prompts and long answers needs
+the reverse. Disaggregation lets you scale the two independently, which is arguably a bigger
+operational win than the throughput number.</li>
+<li><strong>A fast interconnect between the pools.</strong> The transfer is on the critical path, so it wants RDMA or
+NVLink — the same requirement vLLM states for multi-node EP/DP.</li>
+</ul><p><strong>The conditions that favour staying unified:</strong></p><ul>
+<li><strong>Short prompts with long generations</strong>, where the transfer is a large fraction of a small prefill.</li>
+<li><strong>Small deployments.</strong> Two pools means two sets of replicas, each needing enough capacity to hold
+1.56 TB of weights (Module 3). At 8–16 GPUs total you cannot meaningfully split.</li>
+<li><strong>Operational simplicity</strong>, which is not nothing when a cold start is 13 minutes and you now have
+two failure domains, a transfer path, and a router that must know about both.</li>
+</ul><p><strong>My reading of the evidence:</strong> the aggregate figure both engines highlight is a disaggregated one, and
+neither publishes a comparable unified aggregate number — which suggests disaggregation is where the
+throughput is, but also that we are not being shown the controlled comparison. Treat “disaggregate” as
+the direction of travel at scale and as unnecessary complexity below roughly a few dozen GPUs.</p></div></section>
+<section class="probe"><h3 class="probe-q">Why is transferring a KDA state harder than transferring a KV cache?</h3><div class="probe-a"><p>Because it is a different kind of object, and every property that makes a KV transfer easy is absent.</p><p><strong>A KV transfer is easy for specific reasons.</strong> The pages are immutable once written, so the source can
+keep serving while the transfer runs and there is no consistency question. They are position-indexed,
+so a partial transfer is meaningful and can be pipelined — start sending page 0 while page 500 is
+still being computed. They are uniform, so the transfer is a bulk contiguous copy, which is what NIXL
+and RDMA are good at. And if something goes wrong, recomputing a page is cheap and local.</p><p><strong>A KDA state has none of that.</strong> It is one object per request per layer, mutable, with no internal
+position structure. Specifically:</p><ul>
+<li><strong>It must arrive complete and exact.</strong> The decode worker will continue updating it in place, and a
+state that is subtly wrong produces subtly wrong output forever after — with no error, no
+divergence signal, and nothing that a health check would catch. This is the same correctness
+requirement that made ReplaySSM’s bit-identical guarantee necessary (Module 5).</li>
+<li><strong>It cannot be pipelined against prefill.</strong> There is no partial KDA state to send early; the state
+for token <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>n</mi></mrow><annotation encoding="application/x-tex">n</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.4306em"></span><span class="mord mathnormal">n</span></span></span></span> only exists once token <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>n</mi></mrow><annotation encoding="application/x-tex">n</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.4306em"></span><span class="mord mathnormal">n</span></span></span></span> has been processed. So the KDA portion of the transfer
+begins only when prefill finishes, whereas MLA pages can stream as they are produced.</li>
+<li><strong>It is 69 layers’ worth</strong>, plus convolution state. vLLM is explicit that the request-level view
+includes “convolution and recurrent state” — there is more than one tensor per layer to move.</li>
+<li><strong>You cannot fall back to recompute cheaply.</strong> Recomputing a lost KV page means redoing one
+position; recomputing a lost KDA state means replaying from the last checkpoint, potentially tens of
+thousands of tokens (Module 2).</li>
+</ul><p><strong>What follows for a deployment</strong>: the prefill→decode handoff on K3 is a stricter operation than on a
+conventional model, it has a serial component that cannot overlap prefill, and its failure mode is
+silent corruption rather than a retry. That argues for keeping the two pools close — same fabric, low
+latency, RDMA — and for treating the transfer path as a correctness-critical component rather than a
+performance one. It is also a good example of the pattern running through this whole series: the
+hybrid architecture that made 1M context affordable moved cost into the serving stack in a form that
+did not exist before.</p></div></section>
+<section class="probe"><h3 class="probe-q">Why is cache-aware routing necessary rather than nice to have?</h3><div class="probe-a"><p>Because with <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>N</mi></mrow><annotation encoding="application/x-tex">N</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.109em">N</span></span></span></span> replicas and no routing intelligence, your effective cache hit rate falls by roughly
+a factor of <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>N</mi></mrow><annotation encoding="application/x-tex">N</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.109em">N</span></span></span></span>, and the failure is completely silent.</p><p><strong>The arithmetic.</strong> A shared prefix — a system prompt, a document, a repository context — is cached on
+whichever replica first computed it. A new request carrying that prefix arrives and the load balancer
+picks a replica by round-robin or least-connections. The probability it picks the one holding the
+cache is <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>1</mn><mi mathvariant="normal">/</mi><mi>N</mi></mrow><annotation encoding="application/x-tex">1/N</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord">1/</span><span class="mord mathnormal" style="margin-right:0.109em">N</span></span></span></span>. With 8 replicas, seven out of eight requests prefill a prefix that already exists
+elsewhere in your cluster. You pay 8× the prefill compute and hold 8 copies of the same blocks, and
+every metric you normally watch — error rate, throughput, GPU utilisation — looks fine. Utilisation
+looks <em>great</em>, in fact, because you are doing a great deal of unnecessary work.</p><p><strong>What the fix does.</strong> llm-d’s Router uses an <strong>Exact Prefix Predictor</strong> to select replicas that can
+reuse cached blocks — routing by content rather than by load. Two things make this more than a hash
+ring:</p><ul>
+<li><strong>It must trade cache affinity against load.</strong> Always sending a popular prefix to the replica
+holding it creates a hotspot. The router needs to know both what is cached where and how loaded each
+replica is, and pick a point on that trade.</li>
+<li><strong>It composes with a shared store.</strong> With Mooncake’s cross-instance cache (Module 8), a miss on the
+local replica can still hit the distributed store, so routing becomes an optimisation over transfer
+cost rather than a hard requirement. The two mechanisms substitute for each other partially: perfect
+routing reduces the need for a shared store, and a fast shared store reduces the need for perfect
+routing.</li>
+</ul><p><strong>And the K3-specific wrinkle.</strong> Because prefix hits on this model must establish both reusable MLA
+pages <em>and</em> a valid KDA checkpoint (Module 2), a “hit” is a pair of lengths rather than one number.
+vLLM describes reconciling this: when a local GPU hit conflicts with a remote cache result, the
+scheduler compares the exact reusable token lengths from both tiers and selects the longer prefix. So
+the router’s model of what is cached where is more complicated than a prefix hash, and a checkpoint
+interval that does not align with your workload’s shared prefixes reduces the value of routing as well
+as the value of caching.</p><p><strong>The operational advice</strong>, which is short: instrument prefix cache hit rate per replica, and compare
+it against what a perfect router would achieve given your traffic’s prefix distribution. That gap is
+the value of cache-aware routing, expressed in the only units that matter. Almost nobody measures it,
+and on multi-replica deployments with shared prefixes it is frequently the largest single inefficiency
+in the system.</p></div></section>
+<section class="probe"><h3 class="probe-q">How would you stage a K3 deployment from simple to fully disaggregated?</h3><div class="probe-a"><p>In four stages, each one justified by a measurement from the previous — because every stage adds a
+failure domain and a 13-minute restart to something.</p><p><strong>Stage 1 — one pool, prefix caching on.</strong> Single unified deployment, <code>--enable-prefix-caching</code>
+explicitly on (Module 4), the parallelism that fits your hardware. Measure: the token pool from the
+startup log, aggregate throughput and per-user rate across a concurrency sweep, TTFT and ITL
+separately, and prefix cache hit rate. This is your baseline and most deployments should stop here
+until something in it is unacceptable.</p><p><strong>Stage 2 — add capacity where you are bound.</strong> From Module 7’s three ceilings: if capacity-bound at
+long context, enable DCP; if bound by cross-request recompute with a low hit rate, add <code>native</code> CPU
+offloading. Both are single-system changes with no new distributed component. Re-measure the same
+things.</p><p><strong>Stage 3 — disaggregate prefill and decode.</strong> Justified when your prefill/decode ratio is
+lopsided enough that one pool is idling while the other saturates, or when you want PP8-class prefill
+<em>and</em> DCP8-class decode capacity simultaneously. Requires a fast fabric between pools, a NIXL or
+Mooncake transfer path, and acceptance that the transfer is correctness-critical. Measure the transfer
+cost as a component of TTFT explicitly, because that is the thing you are paying.</p><p><strong>Stage 4 — multi-replica with cache-aware routing and a shared store.</strong> Justified when you have
+enough replicas that the <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>1</mn><mi mathvariant="normal">/</mi><mi>N</mi></mrow><annotation encoding="application/x-tex">1/N</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord">1/</span><span class="mord mathnormal" style="margin-right:0.109em">N</span></span></span></span> hit-rate problem is real, and enough shared prefix traffic for it to
+matter. Adds a router with prefix awareness and, if the store is cross-instance, a distributed stateful
+system with its own operations. Measure hit rate per replica against the achievable ceiling.</p><p><strong>What I would resist at every stage</strong>: adding a component because the reports mention it. Every
+number in this series comes from a day-0 post on hardware that is probably not yours, and the
+techniques described — DCP, disaggregation, distributed KV — each solve a specific bottleneck that you
+may not have. The sequence above is designed so that each stage produces the measurement that tells
+you whether the next one is warranted, and the most common good outcome is stopping at stage 2.</p></div></section>
+<h2 id="self-check">Self-check<a class="anchor" href="#self-check" aria-hidden="true" tabindex="-1">#</a></h2>
+<details class="selfcheck"><summary><span class="selfcheck-q">Why must prefill and decode be disaggregated to get both engines' best numbers?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>They want opposite parallelism and cannot coexist in one instance. SGLang: <strong>PP8×TP1 chunked prefill
+at 1.7× TEP8’s ceiling</strong>, <strong>DCP8 decode at 7.9× logical KV</strong>. vLLM: <strong>TEP8 prefill → DEP16 decode</strong>.
+SGLang’s headline <strong>2,808 tok/s per GPU</strong> is quoted for a disaggregated PP8+TP8 configuration. It also
+lets you scale the two pools independently, which matters because agentic workloads (big context,
+short output) and chat (short prompt, long output) have opposite ratios.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">What crosses the prefill→decode boundary on K3, and why is it harder than usual?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Two objects at two granularities: <strong>token-level MLA KV pages (24 layers)</strong> and <strong>request-level KDA
+state including convolution and recurrent state (69 layers)</strong>. KV pages are immutable, position-indexed,
+uniform and pipelineable — you can stream page 0 while page 500 computes. The KDA state is mutable,
+has no internal position structure, only exists once prefill <em>finishes</em> (so it cannot overlap), must
+arrive <strong>exactly</strong> because the decode worker continues updating it in place, and cannot be cheaply
+recomputed — a loss means replaying from the last checkpoint. Its failure mode is silent corruption,
+not a retry.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Why is cache-aware routing necessary rather than optional?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>With <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>N</mi></mrow><annotation encoding="application/x-tex">N</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.109em">N</span></span></span></span> replicas and load-based balancing, the chance of landing on the replica holding a shared
+prefix is <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>1</mn><mi mathvariant="normal">/</mi><mi>N</mi></mrow><annotation encoding="application/x-tex">1/N</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord">1/</span><span class="mord mathnormal" style="margin-right:0.109em">N</span></span></span></span> — so at 8 replicas, seven of eight requests re-prefill a prefix that already exists in
+the cluster, paying 8× the compute and holding 8 copies. The failure is <strong>silent</strong>: error rate,
+throughput and utilisation all look fine (utilisation looks better). llm-d’s <strong>Exact Prefix Predictor</strong>
+routes by content, trading cache affinity against load to avoid hotspots, and it substitutes partially
+with a cross-instance store. On K3 a “hit” is a <em>pair</em> of lengths — reusable MLA pages and a valid KDA
+checkpoint — which vLLM reconciles by taking the longer prefix across tiers.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Give the four-stage deployment sequence and its stopping rule.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>(1) <strong>One pool, prefix caching explicitly on</strong> — measure pool size, the concurrency sweep, TTFT and ITL
+separately, and hit rate. (2) <strong>Add capacity where you are bound</strong> — DCP if capacity-bound at long
+context, <code>native</code> CPU offload if recompute-bound with a low hit rate; both single-system. (3)
+<strong>Disaggregate</strong> when the prefill/decode ratio is lopsided or you need PP8-class prefill and DCP8-class
+decode together; measure the transfer as a component of TTFT. (4) <strong>Multi-replica with cache-aware
+routing and a shared store</strong> when <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>1</mn><mi mathvariant="normal">/</mi><mi>N</mi></mrow><annotation encoding="application/x-tex">1/N</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord">1/</span><span class="mord mathnormal" style="margin-right:0.109em">N</span></span></span></span> hit-rate loss is real. Stopping rule: each stage produces the
+measurement that justifies the next, and <strong>the most common good outcome is stopping at stage 2</strong>.</p></div></details></div><footer class="mfoot" data-astro-cid-5x65ok44><button class="mark" data-mark="serving-k3/09-disaggregation" aria-pressed="false" data-astro-cid-5x65ok44>Mark as reviewed</button><nav class="pager" data-astro-cid-5x65ok44><a class="pager-link" href="/blog/serving-k3/08-kv-offloading/" data-prev data-astro-cid-5x65ok44><span class="pager-dir" data-astro-cid-5x65ok44>← Previous</span><span class="pager-title" data-astro-cid-5x65ok44>8. Multi-node KV offloading</span></a><a class="pager-link is-next" href="/blog/serving-k3/10-tool-calling/" data-next data-astro-cid-5x65ok44><span class="pager-dir" data-astro-cid-5x65ok44>Next →</span><span class="pager-title" data-astro-cid-5x65ok44>10. Tool calling and the API surface</span></a></nav></footer></article></main></div></div><div class="search-overlay" data-search hidden data-astro-cid-ac66eqjo><div class="search-backdrop" data-search-close data-astro-cid-ac66eqjo></div><div class="search-panel" role="dialog" aria-modal="true" aria-label="Search modules" data-astro-cid-ac66eqjo><div class="search-input-row" data-astro-cid-ac66eqjo><span class="search-icon" aria-hidden="true" data-astro-cid-ac66eqjo>⌕</span><input type="text" class="search-input" placeholder="Search all modules…" autocomplete="off" spellcheck="false" data-search-input data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>esc</kbd></div><ul class="search-results" data-search-results data-astro-cid-ac66eqjo></ul><p class="search-empty" data-search-empty hidden data-astro-cid-ac66eqjo>No matches.</p><p class="search-hint" data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>↑</kbd><kbd data-astro-cid-ac66eqjo>↓</kbd> move · <kbd data-astro-cid-ac66eqjo>↵</kbd> open</p></div></div><script>(function(){const indexUrl = "/blog/search.json";
+
+  (() => {
+    const overlay = document.querySelector('[data-search]');
+    if (!overlay) return;
+    const input = overlay.querySelector('[data-search-input]');
+    const list = overlay.querySelector('[data-search-results]');
+    const empty = overlay.querySelector('[data-search-empty]');
+
+    let index = null;
+    let loading = null;
+    let active = 0;
+
+    const load = () => {
+      if (index) return Promise.resolve(index);
+      if (!loading) {
+        loading = fetch(indexUrl)
+          .then((r) => r.json())
+          .then((d) => (index = d))
+          .catch(() => (index = []));
+      }
+      return loading;
+    };
+
+    function open() {
+      overlay.hidden = false;
+      document.documentElement.style.overflow = 'hidden';
+      load().then(() => input.focus());
+      input.focus();
+      input.select();
+    }
+
+    function close() {
+      overlay.hidden = true;
+      document.documentElement.style.overflow = '';
+    }
+
+    function escapeHtml(s) {
+      return s.replace(
+        /[&<>"]/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]
+      );
+    }
+
+    // Excerpt around the first matched term, with the term marked.
+    function excerpt(text, terms) {
+      const lower = text.toLowerCase();
+      let at = -1;
+      for (const t of terms) {
+        const i = lower.indexOf(t);
+        if (i !== -1 && (at === -1 || i < at)) at = i;
+      }
+      if (at === -1) at = 0;
+      const start = Math.max(0, at - 60);
+      let slice = text.slice(start, start + 190);
+      if (start > 0) slice = '…' + slice;
+      if (start + 190 < text.length) slice += '…';
+      let html = escapeHtml(slice);
+      for (const t of terms) {
+        html = html.replace(
+          new RegExp(`(${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'),
+          '<mark>$1</mark>'
+        );
+      }
+      return html;
+    }
+
+    function score(rec, terms) {
+      let s = 0;
+      const hay = (rec.m + ' ' + rec.h + ' ' + (rec.s || '') + ' ' + (rec.k || '')).toLowerCase();
+      const body = rec.t.toLowerCase();
+      for (const t of terms) {
+        if (hay.includes(t)) s += 12;
+        const i = body.indexOf(t);
+        if (i !== -1) s += 4 + Math.max(0, 3 - Math.floor(i / 400));
+        else if (!hay.includes(t)) return 0; // every term must appear
+      }
+      return s;
+    }
+
+    function render(results, terms) {
+      active = 0;
+      list.innerHTML = results
+        .map(
+          (r, i) => `
+          <li>
+            <a href="${r.u}" class="search-hit${i === 0 ? ' is-active' : ''}" data-hit>
+              <span class="search-hit-crumb"><span class="search-hit-series">${escapeHtml(r.s||"")}</span><span class="search-hit-n">${r.n}</span>${escapeHtml(r.m)} <span class="search-hit-sep">›</span> ${escapeHtml(r.h)}</span>
+              <span class="search-hit-text">${excerpt(r.t, terms)}</span>
+            </a>
+          </li>`
+        )
+        .join('');
+      empty.hidden = results.length > 0;
+    }
+
+    function run() {
+      const q = input.value.trim().toLowerCase();
+      if (!q || !index) {
+        list.innerHTML = '';
+        empty.hidden = true;
+        return;
+      }
+      const terms = q.split(/\s+/).filter(Boolean);
+      const results = index
+        .map((r) => ({ r, s: score(r, terms) }))
+        .filter((x) => x.s > 0)
+        .sort((a, b) => b.s - a.s || a.r.n - b.r.n)
+        .slice(0, 12)
+        .map((x) => x.r);
+      render(results, terms);
+    }
+
+    function move(delta) {
+      const hits = list.querySelectorAll('[data-hit]');
+      if (!hits.length) return;
+      hits[active]?.classList.remove('is-active');
+      active = (active + delta + hits.length) % hits.length;
+      hits[active].classList.add('is-active');
+      hits[active].scrollIntoView({ block: 'nearest' });
+    }
+
+    input.addEventListener('input', () => {
+      load().then(run);
+      run();
+    });
+
+    overlay.querySelector('[data-search-close]').addEventListener('click', close);
+
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        move(1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        move(-1);
+      } else if (e.key === 'Enter') {
+        const hit = list.querySelectorAll('[data-hit]')[active];
+        if (hit) {
+          e.preventDefault();
+          window.location.href = hit.getAttribute('href');
+        }
+      }
+    });
+
+    document.querySelectorAll('[data-search-open]').forEach((b) =>
+      b.addEventListener('click', open)
+    );
+
+    window.__openSearch = open;
+  })();
+})();</script><script>(function(){const base = "/blog";
+
+      (() => {
+        const root = document.documentElement;
+
+        /* ---- theme ---------------------------------------------------- */
+        document.querySelector('[data-theme-toggle]')?.addEventListener('click', () => {
+          const light = root.classList.toggle('light');
+          try {
+            localStorage.setItem('refresher:theme', light ? 'light' : 'dark');
+          } catch (e) {}
+        });
+
+        /* ---- progress (localStorage) ---------------------------------- */
+        const KEY = 'refresher:progress';
+        const readSet = () => {
+          try {
+            return new Set(JSON.parse(localStorage.getItem(KEY) || '[]'));
+          } catch (e) {
+            return new Set();
+          }
+        };
+        const writeSet = (s) => {
+          try {
+            localStorage.setItem(KEY, JSON.stringify([...s]));
+          } catch (e) {}
+        };
+
+        function paintProgress() {
+          const done = readSet();
+          const ticks = document.querySelectorAll('[data-tick]');
+          // A module can own more than one tick (rail + contents card), so
+          // count distinct module ids rather than elements.
+          const ids = new Set();
+          ticks.forEach((t) => {
+            const id = t.getAttribute('data-tick');
+            ids.add(id);
+            if (done.has(id)) t.setAttribute('data-read', '');
+            else t.removeAttribute('data-read');
+          });
+          const n = [...ids].filter((id) => done.has(id)).length;
+          const total = ids.size || 1;
+          const fill = document.querySelector('[data-progress-fill]');
+          if (fill) fill.style.width = `${(n / total) * 100}%`;
+          const count = document.querySelector('[data-progress-count]');
+          if (count) count.textContent = String(n);
+          document.querySelectorAll('[data-mark]').forEach((btn) => {
+            const id = btn.getAttribute('data-mark');
+            const on = done.has(id);
+            btn.setAttribute('aria-pressed', String(on));
+            btn.textContent = on ? '✓ Reviewed' : 'Mark as reviewed';
+          });
+        }
+
+        document.querySelectorAll('[data-mark]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-mark');
+            const s = readSet();
+            s.has(id) ? s.delete(id) : s.add(id);
+            writeSet(s);
+            paintProgress();
+          });
+        });
+
+        paintProgress();
+
+        /* ---- scrollspy over h2s, mirrored into the rail --------------- */
+        const article = document.querySelector('[data-article]');
+        const heads = article ? [...article.querySelectorAll('h2[id]')] : [];
+        const subLinks = new Map(
+          [...document.querySelectorAll('[data-toc]')].map((a) => [
+            a.getAttribute('data-toc'),
+            a,
+          ])
+        );
+
+        if (heads.length && subLinks.size) {
+          let currentId = null;
+          const spy = () => {
+            let found = heads[0].id;
+            for (const h of heads) {
+              if (h.getBoundingClientRect().top <= 96) found = h.id;
+              else break;
+            }
+            if (found === currentId) return;
+            subLinks.get(currentId)?.classList.remove('is-current');
+            currentId = found;
+            const el = subLinks.get(currentId);
+            if (el) {
+              el.classList.add('is-current');
+              el.scrollIntoView({ block: 'nearest' });
+            }
+          };
+          spy();
+          addEventListener('scroll', spy, { passive: true });
+        }
+
+        /* ---- keyboard ------------------------------------------------- */
+        const stops = article
+          ? [...article.querySelectorAll('h2[id], h3[id]')]
+          : [];
+
+        function jump(delta) {
+          if (!stops.length) return;
+          // The heading we are "in": the last one scrolled past the threshold.
+          let cur = -1;
+          for (let i = 0; i < stops.length; i++) {
+            if (stops[i].getBoundingClientRect().top <= 100) cur = i;
+            else break;
+          }
+          const target = cur + delta;
+          if (target < 0) return scrollTo({ top: 0, behavior: 'smooth' });
+          if (target >= stops.length) return;
+          stops[target].scrollIntoView({ block: 'start' });
+        }
+
+        addEventListener('keydown', (e) => {
+          const tag = (e.target.tagName || '').toLowerCase();
+          if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+          if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+          if (e.key === '/') {
+            e.preventDefault();
+            window.__openSearch?.();
+          } else if (e.key === 'j') {
+            e.preventDefault();
+            jump(1);
+          } else if (e.key === 'k') {
+            e.preventDefault();
+            jump(-1);
+          } else if (e.key === '[' || e.key === ']') {
+            const sel = e.key === '[' ? '[data-prev]' : '[data-next]';
+            const a = document.querySelector(sel);
+            if (a) {
+              e.preventDefault();
+              window.location.href = a.getAttribute('href');
+            }
+          }
+        });
+
+        /* ---- narrow-screen rail --------------------------------------- */
+        const rail = document.querySelector('[data-rail]');
+        document.querySelector('[data-rail-toggle]')?.addEventListener('click', () => {
+          rail.classList.toggle('is-open');
+        });
+        rail?.addEventListener('click', (e) => {
+          if (e.target.closest('a')) rail.classList.remove('is-open');
+        });
+      })();
+    })();</script></body></html>

@@ -1,0 +1,674 @@
+<!DOCTYPE html><html lang="en" data-astro-cid-z4jru4n3><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>8. Multi-node KV offloading — Serving Kimi K3</title><meta name="description" content="Five backends behind one vLLM connector interface — native, LMCache, Mooncake, 3FS, NIXL — three storage tiers, and the constraint nobody documents: which of them work with which parallelism, and what a recurrent state does to all of it."><link rel="icon" href="data:,"><script>
+      (() => {
+        try {
+          const t = localStorage.getItem('refresher:theme');
+          if (t === 'light') document.documentElement.classList.add('light');
+        } catch (e) {}
+      })();
+    </script><link rel="stylesheet" href="/blog/_astro/BaseLayout.BNp-sd5V.css"><style>.wrap[data-astro-cid-5x65ok44]{max-width:68ch;margin-inline:auto;padding:3rem 1.25rem 6rem}@media (width>=1024px){.wrap[data-astro-cid-5x65ok44]{max-width:calc(68ch + 6rem);padding-inline:3rem}}.mhead[data-astro-cid-5x65ok44]{border-block-end:1px solid var(--rule);margin-block-end:.5rem;padding-block-end:1.75rem}.mhead-kicker[data-astro-cid-5x65ok44]{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint);margin:0 0 .85rem;font-size:.6875rem;font-weight:500}.mhead-n[data-astro-cid-5x65ok44]{color:var(--accent);font-weight:640}.mhead-dot[data-astro-cid-5x65ok44]{opacity:.5;padding-inline:.35rem}.mhead-title[data-astro-cid-5x65ok44]{font-family:var(--font-sans);letter-spacing:-.027em;color:var(--ink-strong);text-wrap:balance;margin:0;font-size:clamp(1.75rem,1.3rem + 1.9vw,2.375rem);font-weight:660;line-height:1.12}.mhead-blurb[data-astro-cid-5x65ok44]{color:var(--ink-muted);max-width:58ch;margin:.85rem 0 0;font-size:1.0625rem;line-height:1.6}.mfoot[data-astro-cid-5x65ok44]{border-block-start:1px solid var(--rule);margin-block-start:4rem;padding-block-start:1.75rem}.mark[data-astro-cid-5x65ok44]{font-family:var(--font-sans);border:1px solid var(--rule);background:var(--bg-raised);color:var(--ink-muted);cursor:pointer;border-radius:5px;padding:.4rem .85rem;font-size:.75rem;font-weight:550}.mark[data-astro-cid-5x65ok44]:hover{color:var(--ink-strong);border-color:var(--ink-faint)}.mark[data-astro-cid-5x65ok44][aria-pressed=true]{color:var(--bridge);border-color:color-mix(in oklab, var(--bridge) 45%, var(--rule))}.pager[data-astro-cid-5x65ok44]{grid-template-columns:1fr 1fr;gap:1rem;margin-block-start:2rem;display:grid}.pager-link[data-astro-cid-5x65ok44]{border:1px solid var(--rule);font-family:var(--font-sans);border-radius:6px;flex-direction:column;gap:.25rem;padding:.75rem .9rem;text-decoration:none;display:flex}.pager-link[data-astro-cid-5x65ok44]:hover{border-color:var(--ink-faint);background:var(--bg-raised)}.pager-link[data-astro-cid-5x65ok44].is-next{text-align:end}.pager-dir[data-astro-cid-5x65ok44]{text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);font-size:.6875rem}.pager-title[data-astro-cid-5x65ok44]{color:var(--ink-strong);font-size:.8125rem;font-weight:550;line-height:1.35}
+</style><style>.callout{border:1px solid var(--rule);border-inline-start-width:2px;border-radius:5px;margin-block:1.75rem;padding:.9rem 1.1rem 1rem;font-size:.9375rem;line-height:1.65}.callout-probe{border-inline-start-color:var(--probe);background:var(--probe-bg)}.callout-trap{border-inline-start-color:var(--trap);background:var(--trap-bg)}.callout-bridge{border-inline-start-color:var(--bridge);background:var(--bridge-bg)}.callout-label{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;align-items:center;gap:.45rem;margin:0 0 .5rem;font-size:.6875rem;font-weight:620;display:flex}.callout-probe .callout-label{color:var(--probe)}.callout-trap .callout-label{color:var(--trap)}.callout-bridge .callout-label{color:var(--bridge)}.callout-mark{background:currentColor;border-radius:50%;flex:none;width:5px;height:5px}.callout-title{text-transform:none;letter-spacing:0;color:var(--ink-muted);font-weight:500}.callout-body>:first-child{margin-block-start:0}.callout-body>:last-child{margin-block-end:0}.callout-body>*+*{margin-block-start:.75em}.probe{margin-block:1.75rem}.prose .probe-q{font-family:var(--font-sans);letter-spacing:-.01em;color:var(--ink-strong);margin:0 0 .6rem;padding-inline-start:1.15rem;font-size:1rem;font-weight:600;line-height:1.45;position:relative}.prose .probe-q:before{content:"›";color:var(--accent);font-weight:700;position:absolute;inset-inline-start:0}.probe-a{border-inline-start:1px solid var(--rule);margin-inline-start:.1rem;padding-inline-start:1.15rem}.probe-a>*+*{margin-block-start:1.15em}.probe-a>:first-child{margin-block-start:0}.probe-a>:last-child{margin-block-end:0}.selfcheck{border-block-start:1px solid var(--rule-soft)}.selfcheck:last-of-type{border-block-end:1px solid var(--rule-soft)}.prose>.selfcheck+.selfcheck{margin-block-start:0}.selfcheck>summary{cursor:pointer;color:var(--ink);align-items:baseline;gap:1rem;padding:.7rem .2rem;list-style:none;display:flex}.selfcheck>summary::-webkit-details-marker{display:none}.selfcheck>summary:hover{color:var(--ink-strong)}.selfcheck-q{flex:1}.selfcheck-q code{white-space:nowrap}.selfcheck-cue{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);flex:none;padding-block-start:.15rem;font-size:.6875rem;font-weight:600}.selfcheck>summary:hover .selfcheck-cue{color:var(--accent)}.selfcheck-cue-hide,.selfcheck[open] .selfcheck-cue-show{display:none}.selfcheck[open] .selfcheck-cue-hide{display:inline}.selfcheck-a{color:var(--ink-muted);border-inline-start:2px solid var(--rule);margin-block-end:.9rem;margin-inline-start:.2rem;padding:.15rem .2rem 1.05rem;padding-inline-start:1rem;font-size:.9375rem}.selfcheck-a>:first-child{margin-block-start:0}.selfcheck-a>:last-child{margin-block-end:0}.selfcheck-a>*+*{margin-block-start:.7em}.selfcheck-a strong{color:var(--ink)}
+</style></head><body data-astro-cid-z4jru4n3><a href="#content" class="skip" data-astro-cid-z4jru4n3>Skip to content</a><div class="shell" data-astro-cid-z4jru4n3><aside class="rail" data-rail data-astro-cid-z4jru4n3><nav class="rail-nav" aria-label="Serving Kimi K3 contents" data-astro-cid-wv7whodv><div class="rail-head" data-astro-cid-wv7whodv><a href="/blog/" class="rail-up" data-astro-cid-wv7whodv>All series</a><a href="/blog/serving-k3/" class="rail-home" data-astro-cid-wv7whodv><span class="rail-home-title" data-astro-cid-wv7whodv>Serving Kimi K3</span><span class="rail-home-sub" data-astro-cid-wv7whodv>A 2.8T hybrid-attention MoE, and what it takes to keep it fed</span></a><p class="rail-progress" data-astro-cid-wv7whodv><span class="rail-progress-bar" data-astro-cid-wv7whodv><span data-progress-fill data-astro-cid-wv7whodv></span></span><span class="rail-progress-text" data-astro-cid-wv7whodv><span data-progress-count data-astro-cid-wv7whodv>0</span>/11 reviewed</span></p></div><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part S</span>The model</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/01-architecture/" class="rail-link" title="2.78T total, 104B active, 896 experts at top-16, 93 layers split 69 KDA to 24 gated MLA, native MXFP4. The numbers that matter for serving, and the one that most write-ups get wrong." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>1</span><span class="rail-title" data-astro-cid-wv7whodv>What K3 actually is</span><span class="rail-tick" data-tick="serving-k3/01-architecture" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/02-kda-and-the-kv-cache/" class="rail-link" title="69 of 93 layers keep a fixed-size recurrent state instead of a growing KV cache. That is what makes a million tokens affordable — and it creates the hardest engineering problem in the stack." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>2</span><span class="rail-title" data-astro-cid-wv7whodv>KDA, AttnRes, and the two-state problem</span><span class="rail-tick" data-tick="serving-k3/02-kda-and-the-kv-cache" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/03-the-memory-budget/" class="rail-link" title="1.56 TB of weights before a single token. What that leaves for KV on each cluster shape, why the published minimum is 8 GPUs and the production recommendation is 64, and the one measured pool size everyone should start from." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>3</span><span class="rail-title" data-astro-cid-wv7whodv>The memory budget</span><span class="rail-tick" data-tick="serving-k3/03-the-memory-budget" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part T</span>The engines</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/04-vllm/" class="rail-link" title="One hybrid KV manager, DSpark speculative decoding at 3.14×, custom collectives at 1.7–4.5× over NCCL — and three limitations they publish that will bite you on day one." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>4</span><span class="rail-title" data-astro-cid-wv7whodv>vLLM&#39;s path</span><span class="rail-tick" data-tick="serving-k3/04-vllm" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/05-sglang/" class="rail-link" title="One unified pool allocated from both ends, chunked pipeline prefill at 1.7× the tensor-parallel ceiling, decode context parallelism for 7.9× logical KV — and 2,808 tok/s per GPU when prefill and decode are pulled apart." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>5</span><span class="rail-title" data-astro-cid-wv7whodv>SGLang&#39;s path</span><span class="rail-tick" data-tick="serving-k3/05-sglang" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/06-choosing/" class="rail-link" title="vLLM says 370 tok/s, SGLang says 423, and a community report on H200 measured 16.8. All three are honest. What actually separates the engines, and the one head-to-head data point that exists." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>6</span><span class="rail-title" data-astro-cid-wv7whodv>Choosing, and why the numbers don&#39;t compare</span><span class="rail-tick" data-tick="serving-k3/06-choosing" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part U</span>Where it falls over</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/07-concurrency-collapse/" class="rail-link" title="16.8 tok/s at one request, 146.9 aggregate at fifty-four — 8.7× more total throughput for a 6.2× drop per user. Why long context and many users are the same budget, and what actually sets the ceiling." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>7</span><span class="rail-title" data-astro-cid-wv7whodv>The concurrency collapse</span><span class="rail-tick" data-tick="serving-k3/07-concurrency-collapse" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/08-kv-offloading/" class="rail-link is-active" aria-current="page" title="Five backends behind one vLLM connector interface — native, LMCache, Mooncake, 3FS, NIXL — three storage tiers, and the constraint nobody documents: which of them work with which parallelism, and what a recurrent state does to all of it." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>8</span><span class="rail-title" data-astro-cid-wv7whodv>Multi-node KV offloading</span><span class="rail-tick" data-tick="serving-k3/08-kv-offloading" aria-hidden="true" data-astro-cid-wv7whodv></span></a><ul class="rail-sub" data-rail-sub data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="#the-core-mental-model" class="rail-sub-link" data-toc="the-core-mental-model" data-astro-cid-wv7whodv>The core mental model</a></li><li data-astro-cid-wv7whodv><a href="#what-the-reports-actually-measured" class="rail-sub-link" data-toc="what-the-reports-actually-measured" data-astro-cid-wv7whodv>What the reports actually measured</a></li><li data-astro-cid-wv7whodv><a href="#critical-thinking" class="rail-sub-link" data-toc="critical-thinking" data-astro-cid-wv7whodv>Critical thinking</a></li><li data-astro-cid-wv7whodv><a href="#self-check" class="rail-sub-link" data-toc="self-check" data-astro-cid-wv7whodv>Self-check</a></li></ul></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/09-disaggregation/" class="rail-link" title="Prefill and decode want opposite hardware and opposite parallelism, so both engines separate them. What crosses the boundary, why K3 makes the transfer harder than usual, and why the router has to know what is cached where." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>9</span><span class="rail-title" data-astro-cid-wv7whodv>Disaggregation and cache-aware routing</span><span class="rail-tick" data-tick="serving-k3/09-disaggregation" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part V</span>Operating it</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/10-tool-calling/" class="rail-link" title="The model can be running perfectly and your agents still fail. Reasoning and tool-call parsers, grammar-constrained decoding, the empty-tool_calls failure, and a vendor conformance suite where 26 of 30 failures were one missing feature." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>10</span><span class="rail-title" data-astro-cid-wv7whodv>Tool calling and the API surface</span><span class="rail-tick" data-tick="serving-k3/10-tool-calling" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/11-cost-and-decision/" class="rail-link" title="Published break-even points span 2 billion to 24 billion tokens a month, and the spread is mostly assumptions rather than disagreement. The decision procedure, and an honest account of what these day-0 numbers are worth." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>11</span><span class="rail-title" data-astro-cid-wv7whodv>Cost, break-even, and what to actually do</span><span class="rail-tick" data-tick="serving-k3/11-cost-and-decision" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-other" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv>Other series</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>ML Hardware &amp; Low-Latency Systems</span></a></li><li data-astro-cid-wv7whodv><a href="/blog/diffusion/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>Diffusion</span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>ML Software &amp; Compilers</span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>ML Hardware/Software Codesign</span></a></li></ul></section><div class="rail-foot" data-astro-cid-wv7whodv><p data-astro-cid-wv7whodv><kbd data-astro-cid-wv7whodv>j</kbd> <kbd data-astro-cid-wv7whodv>k</kbd> section · <kbd data-astro-cid-wv7whodv>/</kbd> search · <kbd data-astro-cid-wv7whodv>[</kbd><kbd data-astro-cid-wv7whodv>]</kbd> module</p></div></nav></aside><div class="col" data-astro-cid-z4jru4n3><header class="topbar" data-astro-cid-z4jru4n3><button class="icon-btn only-narrow" data-rail-toggle aria-label="Toggle contents" data-astro-cid-z4jru4n3><svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M1.5 3.5h12M1.5 7.5h12M1.5 11.5h12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg></button><p class="crumb" data-astro-cid-z4jru4n3>Part U · Where it falls over › Multi-node KV offloading</p><div class="topbar-actions" data-astro-cid-z4jru4n3><button class="search-btn" data-search-open aria-label="Search" data-astro-cid-z4jru4n3><span aria-hidden="true" data-astro-cid-z4jru4n3>⌕</span><span class="search-btn-label" data-astro-cid-z4jru4n3>Search</span><kbd data-astro-cid-z4jru4n3>/</kbd></button><button class="icon-btn" data-theme-toggle aria-label="Toggle theme" data-astro-cid-z4jru4n3><svg class="i-sun" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><circle cx="7.5" cy="7.5" r="3" stroke="currentColor" stroke-width="1.2" data-astro-cid-z4jru4n3></circle><path d="M7.5 .8v1.7M7.5 12.5v1.7M14.2 7.5h-1.7M2.5 7.5H.8M12.24 2.76l-1.2 1.2M3.96 11.04l-1.2 1.2M12.24 12.24l-1.2-1.2M3.96 3.96l-1.2-1.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg><svg class="i-moon" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M13 9.3A5.8 5.8 0 0 1 5.7 2 5.9 5.9 0 1 0 13 9.3Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" data-astro-cid-z4jru4n3></path></svg></button><a class="site-link" href="/" data-astro-cid-z4jru4n3>srikanthmalla.com</a></div></header><main id="content" data-astro-cid-z4jru4n3><article class="wrap" data-article data-astro-cid-5x65ok44><header class="mhead" data-astro-cid-5x65ok44><p class="mhead-kicker" data-astro-cid-5x65ok44><span class="mhead-n" data-astro-cid-5x65ok44>Module 8</span><span class="mhead-dot" data-astro-cid-5x65ok44>·</span>Part U — Where it falls over<span class="mhead-dot" data-astro-cid-5x65ok44>·</span>18 min</p><h1 class="mhead-title" data-astro-cid-5x65ok44>Multi-node KV offloading</h1><p class="mhead-blurb" data-astro-cid-5x65ok44>Five backends behind one vLLM connector interface — native, LMCache, Mooncake, 3FS, NIXL — three storage tiers, and the constraint nobody documents: which of them work with which parallelism, and what a recurrent state does to all of it.</p></header><div class="prose" data-astro-cid-5x65ok44><h2 id="the-core-mental-model">The core mental model<a class="anchor" href="#the-core-mental-model" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>KV offloading extends your effective cache beyond HBM by pushing cold blocks down a hierarchy — GPU
+HBM, then CPU DRAM (up to roughly 250 GB per GPU), then shared storage measured in terabytes and
+visible across the cluster. The economics are straightforward: <a href="https://llm-d.ai/docs/0.7/architecture/advanced/kv-management/kv-offloader">llm-d reports</a>
+that loading cached blocks is “typically faster than recomputing them — up to 16× faster for long
+prompts”, so if you can find a block anywhere cheaper than a prefill, fetching it wins. For K3
+specifically, Module 3’s measured 7.95 GB per-GPU pool makes this more than an optimisation: the
+on-GPU cache is small relative to a 1M-token window, and anything that raises effective capacity
+without buying GPUs is worth serious attention.</p>
+<p>vLLM exposes this through a <strong>connector interface with five named backends</strong> — <code>native</code>, <code>lmcache</code>,
+<code>mooncake</code>, <code>3fs</code> and <code>nixl</code> — currently configured through a JSON string to <code>--kv-transfer-config</code>,
+with an <a href="https://github.com/vllm-project/vllm/issues/26858">open RFC</a> proposing simpler top-level
+flags (<code>--kv-offloading-size</code>, <code>--kv-offloading-backend</code>). They are not interchangeable. <code>native</code> is
+vLLM’s built-in <code>OffloadingConnector</code> dispatching to a CPU or shared-storage tier — simplest, fewest
+dependencies, single-instance scope. <strong>LMCache</strong> is the one llm-d’s deployment guides formally cover
+with explicit recipes. <strong>Mooncake</strong> is a distributed store providing hash-based prefix caching <em>across
+instances</em>, so a block cached by one replica can be found by another — the genuinely multi-node
+capability. <strong>NIXL</strong> is transport rather than storage, built on UCX/libfabric/EFA, and is what both
+engines use to move state between disaggregated prefill and decode workers. <strong>KVBM</strong> is NVIDIA
+Dynamo’s equivalent, with its own three-layer design over NIXL transport.</p>
+<p>Your instinct that some options only work with specific parallelisms is right in substance, and the
+honest finding is that <strong>the documentation is thin on exactly this point</strong>. The vLLM RFC does not
+specify parallelism compatibility per backend; llm-d’s page does not discuss TP/PP/EP/DCP
+restrictions at all. What <em>is</em> stated: Mooncake requires all participating instances to share the same
+<code>tensor_parallel_size</code>, which makes sense — a KV block is laid out per TP rank, so a block written by
+a TP8 instance is not meaningful to a TP16 one. Treat that as the shape of the general constraint
+rather than the only instance of it, and verify on your own configuration, because a cache that
+silently never hits looks exactly like a cache that is working.</p>
+<aside class="callout callout-trap"><p class="callout-label"><span class="callout-mark" aria-hidden="true"></span>Common trap<span class="callout-title"> · offloading a KDA state like it were a KV page</span></p><div class="callout-body"><p>Every technique on this page was designed for append-only, position-indexed, page-granular KV. K3’s
+69 KDA layers hold a mutable, whole-object recurrent state (Module 2). It cannot be offloaded a page
+at a time, cannot be partially fetched, and cannot be shared between two live requests without a
+copy. Any offloading plan for K3 has to say what happens to the KDA state, and “it’s KV cache, we’ll
+offload it” is not an answer.</p></div></aside>
+<h2 id="what-the-reports-actually-measured">What the reports actually measured<a class="anchor" href="#what-the-reports-actually-measured" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>The backends behind vLLM’s connector interface:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Backend</th><th>Kind</th><th>Scope</th><th>Notes</th></tr></thead><tbody><tr><td><code>native</code></td><td>built-in <code>OffloadingConnector</code></td><td>single instance</td><td>CPU tier or shared-storage tier</td></tr><tr><td><code>lmcache</code></td><td>cache engine</td><td>instance + remote</td><td><strong>the one llm-d formally documents</strong></td></tr><tr><td><code>mooncake</code></td><td>distributed store</td><td><strong>cross-instance</strong></td><td>hash-based prefix caching, block-hash dedup</td></tr><tr><td><code>3fs</code></td><td>storage backend</td><td>cluster</td><td></td></tr><tr><td><code>nixl</code></td><td><strong>transport, not storage</strong></td><td>cross-node</td><td>UCX / libfabric / EFA; used for disaggregation</td></tr><tr><td>KVBM (Dynamo)</td><td>offloading system</td><td>CPU + disk</td><td>three layers over NIXL</td></tr></tbody></table></div>
+<p>Storage tiers, per <a href="https://llm-d.ai/docs/0.7/architecture/advanced/kv-management/kv-offloader">llm-d</a>:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Tier</th><th>Capacity</th><th>Scope</th></tr></thead><tbody><tr><td>GPU HBM</td><td>7.95 GB/GPU measured on K3/H200</td><td>rank</td></tr><tr><td>CPU DRAM</td><td>up to ~250 GB per GPU</td><td>node</td></tr><tr><td>Shared storage</td><td>TB+</td><td>cluster</td></tr></tbody></table></div>
+<p>Reported effects:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Claim</th><th>Figure</th></tr></thead><tbody><tr><td>Loading cached blocks vs recomputing</td><td><strong>up to 16× faster</strong> for long prompts</td></tr><tr><td>Contiguous memory layout (vLLM ≥ 0.12.0)</td><td><strong>4–5×</strong> CPU transfer throughput</td></tr></tbody></table></div>
+<p>Documented constraints — note how short this list is:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Constraint</th><th>Stated by</th></tr></thead><tbody><tr><td>All Mooncake instances must share the same <code>tensor_parallel_size</code></td><td>Mooncake vLLM integration docs</td></tr><tr><td>Multi-node EP/DP requires RDMA or NVLink</td><td><a href="https://vllm.ai/blog/2026-07-27-k3">vLLM K3 post</a></td></tr><tr><td>Per-backend TP/PP/EP/DCP compatibility</td><td><strong>not documented</strong> in the RFC or llm-d’s page</td></tr></tbody></table></div>
+<p>And the K3-specific complication, from Modules 2 and 5:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>State</th><th>Offloadable how</th></tr></thead><tbody><tr><td>MLA paged KV (24 layers)</td><td>per page, like any KV</td></tr><tr><td><strong>KDA recurrent state (69 layers)</strong></td><td>whole object only; needs snapshot/copy-on-write/donate</td></tr><tr><td>vLLM’s disaggregation view</td><td>“token-level MLA cache” <strong>and</strong> “request-level KDA state”</td></tr></tbody></table></div>
+<h2 id="critical-thinking">Critical thinking<a class="anchor" href="#critical-thinking" aria-hidden="true" tabindex="-1">#</a></h2>
+<section class="probe"><h3 class="probe-q">Which backend should you actually pick, and what does each buy?</h3><div class="probe-a"><p>Pick by scope — how far you need a cached block to be findable — because that is the axis the backends
+actually differ on.</p><p><strong><code>native</code> — one instance, CPU or shared storage.</strong> The right default. No extra dependency, no extra
+process, no new failure mode, and it captures the biggest win available: a block that fell out of HBM
+is in DRAM instead of gone. If your traffic has temporal locality within a replica — a user’s
+conversation returning to the same replica — this is most of the benefit for none of the operational
+cost. Start here.</p><p><strong>LMCache — richer engine, formally supported by llm-d.</strong> The distinction worth knowing is that
+third-party engines “own their own indexing, memory management, and storage” rather than borrowing
+vLLM’s. That buys smarter eviction, better layout and more tiers; it costs you a second system to
+understand and operate. llm-d covering it with explicit recipes matters more than it sounds — the
+difference between a documented path and “follows the same pattern” is measured in weeks.</p><p><strong>Mooncake — the one that is genuinely multi-node.</strong> Hash-based prefix caching across instances with
+block-hash deduplication means a block computed by replica A is findable by replica B. That is the
+capability that changes system design rather than tuning it, and it is the answer to your question
+about multi-node strategies. It matters most when a shared prefix is used by <em>many</em> users across
+<em>many</em> replicas — a common system prompt, a shared document, a codebase context — because without it
+every replica prefills that prefix independently and caches it independently, which is N× the work and
+N× the memory for one piece of content.</p><p><strong>NIXL — not really in this list.</strong> It is transport. You use it because you are disaggregating
+(Module 9), not because you are offloading, and both engines already use it for K3’s prefill→decode
+handoff. Do not compare it against the others; you may well use it <em>and</em> one of them.</p><p><strong>The decision, compactly:</strong></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>If</th><th>Use</th></tr></thead><tbody><tr><td>Single replica, want cheap capacity</td><td><code>native</code></td></tr><tr><td>Want a mature engine with documented recipes</td><td>LMCache</td></tr><tr><td><strong>Many replicas share prefixes</strong></td><td><strong>Mooncake</strong> (or LMCache + Mooncake store)</td></tr><tr><td>Disaggregating prefill and decode</td><td>NIXL, alongside the above</td></tr><tr><td>On NVIDIA Dynamo</td><td>KVBM</td></tr></tbody></table></div><p><strong>And the thing to check before any of them</strong>: whether <code>--enable-prefix-caching</code> is on at all. vLLM
+leaves it off by default (Module 4). Offloading extends a cache you are not using otherwise.</p></div></section>
+<section class="probe"><h3 class="probe-q">Why would a backend care about parallelism, and how do you find out whether yours does?</h3><div class="probe-a"><p>Because a KV block is not an abstract object — it is a specific memory layout produced by a specific
+sharding of the model — and a consumer that shards differently cannot interpret it.</p><p><strong>The mechanism.</strong> Under tensor parallelism, attention heads are split across ranks, so rank <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>i</mi></mrow><annotation encoding="application/x-tex">i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6595em"></span><span class="mord mathnormal">i</span></span></span></span> holds
+the KV for its own heads only. A “block” for token range <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="false">[</mo><mi>a</mi><mo separator="true">,</mo><mi>b</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">[a,b)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mopen">[</span><span class="mord mathnormal">a</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.1667em"></span><span class="mord mathnormal">b</span><span class="mclose">)</span></span></span></span> on a TP8 instance contains one
+eighth of the heads. A TP16 instance expects one sixteenth, arranged differently. Byte-for-byte the
+cached block is meaningless to it. Hence Mooncake’s stated requirement that all instances share the
+same <code>tensor_parallel_size</code> — it is not a limitation so much as a statement of what a shared cache
+can mean.</p><p><strong>Which other parallelisms should worry you:</strong></p><ul>
+<li><strong>Pipeline parallelism</strong> partitions by <em>layer</em>, so a given rank holds KV for only its layers. A
+cache entry is therefore per-(rank, layer-range), and two deployments with different PP degrees
+partition differently. SGLang uses PP8 for prefill on K3 (Module 5), so this is live.</li>
+<li><strong>DCP</strong> shards MLA KV by <em>token position</em>. A block cached under DCP8 is one eighth of the positions;
+under DCP4 it is one quarter. Different DCP degree, incompatible cache.</li>
+<li><strong>Expert parallelism</strong> does not affect KV layout — experts hold weights, not cache — so EP degree
+should be free. This is the one that does not matter.</li>
+<li><strong>Quantized KV</strong> is a silent one: a cache written with FP8 KV is not readable by an instance
+configured for BF16 KV, and nothing about the parallelism configuration tells you that.</li>
+</ul><p><strong>How to find out, since the documentation will not tell you:</strong></p><ol>
+<li><strong>Read the connector’s key derivation.</strong> Whatever goes into the block hash defines what must match.
+If TP rank, layer range or dtype are in the key, mismatched instances simply miss rather than
+corrupt — which is the safe design and, I would hope, what these implement.</li>
+<li><strong>Test the negative case explicitly.</strong> Bring up two instances with different TP degrees pointed at
+one store, send the same prefix twice, and check whether the second hits. A cache that never hits
+is invisible in correctness terms and shows up only as unexplained cost.</li>
+<li><strong>Monitor hit rate as a first-class metric</strong>, not a debug counter. It is the only signal that
+distinguishes “offloading configured” from “offloading working”, and the failure is silent.</li>
+<li><strong>Keep the fleet homogeneous.</strong> The simplest way to satisfy an undocumented compatibility
+requirement is not to vary the thing it might depend on. Given how thin the documentation is, I
+would treat parallelism configuration as part of the cache’s schema and version it accordingly.</li>
+</ol></div></section>
+<section class="probe"><h3 class="probe-q">What does a KDA recurrent state do to an offloading design?</h3><div class="probe-a"><p>It breaks the three properties every offloading system is built on, and the workarounds are the ones
+Module 2 already established for prefix caching — which is a hint that they are the general answer for
+hybrid models.</p><p><strong>The three broken properties:</strong></p><ul>
+<li><strong>Page granularity.</strong> KV offloading moves blocks: you can evict half a sequence’s KV and keep the
+rest, fetch a prefix without the suffix, and dedupe at block-hash granularity. A KDA state is one
+object for the whole request. There is no “half a recurrent state”, so it is offloaded whole or not
+at all, and it cannot be deduplicated against anything.</li>
+<li><strong>Immutability.</strong> A KV block, once written, never changes, which is what makes it safe to share
+across requests and safe to hold in a remote store while a request runs. A KDA state is overwritten
+every token, so anything you offloaded is stale the moment the request produces another token.
+Offloading a <em>live</em> request’s KDA state is meaningless; only checkpoints are offloadable.</li>
+<li><strong>Position addressability.</strong> A cache lookup asks “do you have the state for this token prefix?” For
+MLA that is a hash of the tokens. For KDA there is no state for an arbitrary prefix — only for the
+positions where a checkpoint was taken.</li>
+</ul><p><strong>What that forces</strong>, and both engines converge on it:</p><ul>
+<li><strong>Only checkpoints are cacheable.</strong> vLLM’s interval checkpointing (e.g. every 32 K tokens, plus
+automatic prompt-end retention) defines the set of KDA states that exist, and therefore the set that
+could ever be stored or transferred. A prefix that does not land on one replays from the checkpoint
+below.</li>
+<li><strong>The transfer object is two things.</strong> vLLM’s NIXL connector treats a shared page as “token-level
+MLA cache and request-level KDA state, including convolution and recurrent state”. Any offloading
+design has to move both, at two granularities, and a partial hit means two lengths to reconcile —
+which is exactly what vLLM describes comparing.</li>
+<li><strong>Copy-on-write is mandatory, not an optimisation.</strong> SGLang lists copy-on-write, snapshot and donate
+as the operations added to make a mutable state safely shareable. Fetching a checkpoint from a
+remote store and continuing from it is a branch, and branches copy.</li>
+</ul><p><strong>The upside</strong>, which is real: because only 24 of 93 layers have per-token KV, the <em>paged</em> portion of
+K3’s cache is roughly a quarter of what a uniform full-attention model would produce. So there is less
+to offload per token, and offloading is correspondingly less critical for context length than it would
+otherwise be. Where it still matters enormously is <strong>cross-request prefix reuse</strong> — the shared system
+prompt, the shared document — because that is a capacity-independent win, and it is exactly what
+Mooncake’s cross-instance store is for.</p></div></section>
+<section class="probe"><h3 class="probe-q">Is offloading actually worth it for K3, or is DCP the better lever?</h3><div class="probe-a"><p>They solve different problems and the honest answer is that DCP is the stronger lever for context
+length while offloading is the stronger lever for <em>reuse across requests</em> — so which you need depends
+on whether your prefixes are shared.</p><p><strong>DCP’s case.</strong> SGLang’s reported <strong>7.9× logical KV capacity with DCP8</strong> is a large, direct increase
+in how much context fits, achieved by sharding rather than by moving data anywhere slower. There is no
+fetch latency, no cache miss, no consistency question: the state is in HBM, just distributed. For
+“few users, enormous contexts” it is close to strictly better than offloading. Its limits are that it
+costs an all-to-all per layer, it does not help the KDA state, and — critically — <strong>it does not help
+request count</strong>, because per-request overheads are untouched.</p><p><strong>Offloading’s case.</strong> It attacks something DCP cannot: a block computed for request A being reused by
+request B, possibly on a different replica, possibly hours later. That is not a capacity multiplier,
+it is a <em>work eliminator</em>, and llm-d’s “up to 16× faster than recomputing for long prompts” is the
+relevant figure. For workloads where many users share a large prefix — a system prompt, a document, a
+repository — this can dominate everything else, because the alternative is every replica prefilling
+the same 50 K tokens independently.</p><p><strong>How to tell which you need</strong>, which is a question about your traffic rather than your hardware:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Your workload</th><th>Better lever</th></tr></thead><tbody><tr><td>Few users, very long unique contexts</td><td><strong>DCP</strong></td></tr><tr><td>Many users, large <em>shared</em> prefixes</td><td><strong>Offloading (Mooncake, cross-instance)</strong></td></tr><tr><td>Many users, short unique contexts</td><td>Neither — you are running-request-cap bound (Module 7)</td></tr><tr><td>Conversations returning to one replica</td><td><code>native</code> CPU offload, cheaply</td></tr></tbody></table></div><p><strong>And they compose.</strong> Nothing prevents running DCP for capacity and a cross-instance store for reuse;
+they operate on different axes. The reason to be deliberate is operational cost — a distributed KV
+store is a stateful system with its own failure modes, capacity planning and consistency behaviour,
+added to a deployment that already takes 13 minutes to restart.</p><p><strong>The measurement that should drive the decision</strong> is prefix cache hit rate on your real traffic with
+<code>native</code> offloading enabled and prefix caching on. If it is already high, a distributed store adds
+little; if it is low <em>because</em> requests scatter across replicas, that is precisely the gap Mooncake
+fills, and you will see it as a hit-rate jump rather than as a latency improvement.</p></div></section>
+<h2 id="self-check">Self-check<a class="anchor" href="#self-check" aria-hidden="true" tabindex="-1">#</a></h2>
+<details class="selfcheck"><summary><span class="selfcheck-q">Name vLLM's five offloading backends and what distinguishes each.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p><code>native</code> — built-in <code>OffloadingConnector</code> to a CPU or shared-storage tier, single-instance scope, no
+extra dependency. <code>lmcache</code> — a full cache engine owning its own indexing and storage, and <strong>the one
+llm-d formally documents with recipes</strong>. <code>mooncake</code> — a distributed store with hash-based prefix
+caching and block-hash dedup <strong>across instances</strong>, the genuinely multi-node option. <code>3fs</code> — a storage
+backend. <code>nixl</code> — <strong>transport, not storage</strong> (UCX/libfabric/EFA), used for disaggregated
+prefill→decode transfer rather than for offloading. Configured today via JSON to
+<code>--kv-transfer-config</code>, with an RFC proposing <code>--kv-offloading-backend</code>.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Why would an offloading backend depend on parallelism, and what is actually documented?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Because a KV block is a specific memory layout produced by a specific sharding: under TP8 a block
+holds one eighth of the heads, which is meaningless to a TP16 instance. PP partitions by layer and DCP
+by token position, so both also change what a block <em>is</em>; EP does not, since experts hold weights not
+cache; and KV dtype is a silent one. <strong>Documented:</strong> Mooncake requires all instances to share
+<code>tensor_parallel_size</code>, and vLLM requires RDMA/NVLink for multi-node EP/DP. <strong>Not documented:</strong>
+per-backend TP/PP/EP/DCP compatibility, in either the vLLM RFC or llm-d’s page. So test the negative
+case explicitly, monitor hit rate as a first-class metric, and keep the fleet homogeneous.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">What three properties does a KDA state break, and what does that force?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p><strong>Page granularity</strong> (one object per request — no half a recurrent state, nothing to dedupe),
+<strong>immutability</strong> (overwritten every token, so an offloaded copy is stale immediately), and <strong>position
+addressability</strong> (no state exists for an arbitrary prefix). Forces: only <strong>checkpoints</strong> are cacheable
+or transferable, so the checkpoint interval defines the offloadable set; the transfer object is two
+things at two granularities — vLLM’s NIXL connector moves “token-level MLA cache and request-level KDA
+state” and reconciles two hit lengths; and copy-on-write becomes mandatory, since continuing from a
+fetched checkpoint is a branch.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">DCP or offloading — which lever, and on what basis?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Different axes. <strong>DCP</strong> (7.9× logical KV with DCP8) is a capacity multiplier with no fetch latency or
+miss — better for <em>few users with very long unique contexts</em> — but costs an all-to-all per layer,
+excludes KDA, and does nothing for request count. <strong>Offloading</strong> is a work <em>eliminator</em>: cross-request,
+cross-replica reuse of already-computed blocks, “up to 16× faster than recomputing” for long prompts —
+better for <em>many users sharing large prefixes</em>. They compose. The measurement that decides it is prefix
+cache hit rate on real traffic with <code>native</code> offload and prefix caching enabled: low hit rate <em>because
+requests scatter across replicas</em> is exactly the gap a cross-instance store fills.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">What is the mitigating upside of K3's hybrid attention for offloading?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Only 24 of 93 layers produce per-token paged KV, so the offloadable paged portion is roughly a quarter
+of a uniform full-attention model’s — less to move per token, and offloading matters correspondingly
+less as a <em>context-length</em> lever. Where it still matters fully is <strong>cross-request prefix reuse</strong>, which
+is capacity-independent and is precisely what a cross-instance store like Mooncake exists for.</p></div></details></div><footer class="mfoot" data-astro-cid-5x65ok44><button class="mark" data-mark="serving-k3/08-kv-offloading" aria-pressed="false" data-astro-cid-5x65ok44>Mark as reviewed</button><nav class="pager" data-astro-cid-5x65ok44><a class="pager-link" href="/blog/serving-k3/07-concurrency-collapse/" data-prev data-astro-cid-5x65ok44><span class="pager-dir" data-astro-cid-5x65ok44>← Previous</span><span class="pager-title" data-astro-cid-5x65ok44>7. The concurrency collapse</span></a><a class="pager-link is-next" href="/blog/serving-k3/09-disaggregation/" data-next data-astro-cid-5x65ok44><span class="pager-dir" data-astro-cid-5x65ok44>Next →</span><span class="pager-title" data-astro-cid-5x65ok44>9. Disaggregation and cache-aware routing</span></a></nav></footer></article></main></div></div><div class="search-overlay" data-search hidden data-astro-cid-ac66eqjo><div class="search-backdrop" data-search-close data-astro-cid-ac66eqjo></div><div class="search-panel" role="dialog" aria-modal="true" aria-label="Search modules" data-astro-cid-ac66eqjo><div class="search-input-row" data-astro-cid-ac66eqjo><span class="search-icon" aria-hidden="true" data-astro-cid-ac66eqjo>⌕</span><input type="text" class="search-input" placeholder="Search all modules…" autocomplete="off" spellcheck="false" data-search-input data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>esc</kbd></div><ul class="search-results" data-search-results data-astro-cid-ac66eqjo></ul><p class="search-empty" data-search-empty hidden data-astro-cid-ac66eqjo>No matches.</p><p class="search-hint" data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>↑</kbd><kbd data-astro-cid-ac66eqjo>↓</kbd> move · <kbd data-astro-cid-ac66eqjo>↵</kbd> open</p></div></div><script>(function(){const indexUrl = "/blog/search.json";
+
+  (() => {
+    const overlay = document.querySelector('[data-search]');
+    if (!overlay) return;
+    const input = overlay.querySelector('[data-search-input]');
+    const list = overlay.querySelector('[data-search-results]');
+    const empty = overlay.querySelector('[data-search-empty]');
+
+    let index = null;
+    let loading = null;
+    let active = 0;
+
+    const load = () => {
+      if (index) return Promise.resolve(index);
+      if (!loading) {
+        loading = fetch(indexUrl)
+          .then((r) => r.json())
+          .then((d) => (index = d))
+          .catch(() => (index = []));
+      }
+      return loading;
+    };
+
+    function open() {
+      overlay.hidden = false;
+      document.documentElement.style.overflow = 'hidden';
+      load().then(() => input.focus());
+      input.focus();
+      input.select();
+    }
+
+    function close() {
+      overlay.hidden = true;
+      document.documentElement.style.overflow = '';
+    }
+
+    function escapeHtml(s) {
+      return s.replace(
+        /[&<>"]/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]
+      );
+    }
+
+    // Excerpt around the first matched term, with the term marked.
+    function excerpt(text, terms) {
+      const lower = text.toLowerCase();
+      let at = -1;
+      for (const t of terms) {
+        const i = lower.indexOf(t);
+        if (i !== -1 && (at === -1 || i < at)) at = i;
+      }
+      if (at === -1) at = 0;
+      const start = Math.max(0, at - 60);
+      let slice = text.slice(start, start + 190);
+      if (start > 0) slice = '…' + slice;
+      if (start + 190 < text.length) slice += '…';
+      let html = escapeHtml(slice);
+      for (const t of terms) {
+        html = html.replace(
+          new RegExp(`(${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'),
+          '<mark>$1</mark>'
+        );
+      }
+      return html;
+    }
+
+    function score(rec, terms) {
+      let s = 0;
+      const hay = (rec.m + ' ' + rec.h + ' ' + (rec.s || '') + ' ' + (rec.k || '')).toLowerCase();
+      const body = rec.t.toLowerCase();
+      for (const t of terms) {
+        if (hay.includes(t)) s += 12;
+        const i = body.indexOf(t);
+        if (i !== -1) s += 4 + Math.max(0, 3 - Math.floor(i / 400));
+        else if (!hay.includes(t)) return 0; // every term must appear
+      }
+      return s;
+    }
+
+    function render(results, terms) {
+      active = 0;
+      list.innerHTML = results
+        .map(
+          (r, i) => `
+          <li>
+            <a href="${r.u}" class="search-hit${i === 0 ? ' is-active' : ''}" data-hit>
+              <span class="search-hit-crumb"><span class="search-hit-series">${escapeHtml(r.s||"")}</span><span class="search-hit-n">${r.n}</span>${escapeHtml(r.m)} <span class="search-hit-sep">›</span> ${escapeHtml(r.h)}</span>
+              <span class="search-hit-text">${excerpt(r.t, terms)}</span>
+            </a>
+          </li>`
+        )
+        .join('');
+      empty.hidden = results.length > 0;
+    }
+
+    function run() {
+      const q = input.value.trim().toLowerCase();
+      if (!q || !index) {
+        list.innerHTML = '';
+        empty.hidden = true;
+        return;
+      }
+      const terms = q.split(/\s+/).filter(Boolean);
+      const results = index
+        .map((r) => ({ r, s: score(r, terms) }))
+        .filter((x) => x.s > 0)
+        .sort((a, b) => b.s - a.s || a.r.n - b.r.n)
+        .slice(0, 12)
+        .map((x) => x.r);
+      render(results, terms);
+    }
+
+    function move(delta) {
+      const hits = list.querySelectorAll('[data-hit]');
+      if (!hits.length) return;
+      hits[active]?.classList.remove('is-active');
+      active = (active + delta + hits.length) % hits.length;
+      hits[active].classList.add('is-active');
+      hits[active].scrollIntoView({ block: 'nearest' });
+    }
+
+    input.addEventListener('input', () => {
+      load().then(run);
+      run();
+    });
+
+    overlay.querySelector('[data-search-close]').addEventListener('click', close);
+
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        move(1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        move(-1);
+      } else if (e.key === 'Enter') {
+        const hit = list.querySelectorAll('[data-hit]')[active];
+        if (hit) {
+          e.preventDefault();
+          window.location.href = hit.getAttribute('href');
+        }
+      }
+    });
+
+    document.querySelectorAll('[data-search-open]').forEach((b) =>
+      b.addEventListener('click', open)
+    );
+
+    window.__openSearch = open;
+  })();
+})();</script><script>(function(){const base = "/blog";
+
+      (() => {
+        const root = document.documentElement;
+
+        /* ---- theme ---------------------------------------------------- */
+        document.querySelector('[data-theme-toggle]')?.addEventListener('click', () => {
+          const light = root.classList.toggle('light');
+          try {
+            localStorage.setItem('refresher:theme', light ? 'light' : 'dark');
+          } catch (e) {}
+        });
+
+        /* ---- progress (localStorage) ---------------------------------- */
+        const KEY = 'refresher:progress';
+        const readSet = () => {
+          try {
+            return new Set(JSON.parse(localStorage.getItem(KEY) || '[]'));
+          } catch (e) {
+            return new Set();
+          }
+        };
+        const writeSet = (s) => {
+          try {
+            localStorage.setItem(KEY, JSON.stringify([...s]));
+          } catch (e) {}
+        };
+
+        function paintProgress() {
+          const done = readSet();
+          const ticks = document.querySelectorAll('[data-tick]');
+          // A module can own more than one tick (rail + contents card), so
+          // count distinct module ids rather than elements.
+          const ids = new Set();
+          ticks.forEach((t) => {
+            const id = t.getAttribute('data-tick');
+            ids.add(id);
+            if (done.has(id)) t.setAttribute('data-read', '');
+            else t.removeAttribute('data-read');
+          });
+          const n = [...ids].filter((id) => done.has(id)).length;
+          const total = ids.size || 1;
+          const fill = document.querySelector('[data-progress-fill]');
+          if (fill) fill.style.width = `${(n / total) * 100}%`;
+          const count = document.querySelector('[data-progress-count]');
+          if (count) count.textContent = String(n);
+          document.querySelectorAll('[data-mark]').forEach((btn) => {
+            const id = btn.getAttribute('data-mark');
+            const on = done.has(id);
+            btn.setAttribute('aria-pressed', String(on));
+            btn.textContent = on ? '✓ Reviewed' : 'Mark as reviewed';
+          });
+        }
+
+        document.querySelectorAll('[data-mark]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-mark');
+            const s = readSet();
+            s.has(id) ? s.delete(id) : s.add(id);
+            writeSet(s);
+            paintProgress();
+          });
+        });
+
+        paintProgress();
+
+        /* ---- scrollspy over h2s, mirrored into the rail --------------- */
+        const article = document.querySelector('[data-article]');
+        const heads = article ? [...article.querySelectorAll('h2[id]')] : [];
+        const subLinks = new Map(
+          [...document.querySelectorAll('[data-toc]')].map((a) => [
+            a.getAttribute('data-toc'),
+            a,
+          ])
+        );
+
+        if (heads.length && subLinks.size) {
+          let currentId = null;
+          const spy = () => {
+            let found = heads[0].id;
+            for (const h of heads) {
+              if (h.getBoundingClientRect().top <= 96) found = h.id;
+              else break;
+            }
+            if (found === currentId) return;
+            subLinks.get(currentId)?.classList.remove('is-current');
+            currentId = found;
+            const el = subLinks.get(currentId);
+            if (el) {
+              el.classList.add('is-current');
+              el.scrollIntoView({ block: 'nearest' });
+            }
+          };
+          spy();
+          addEventListener('scroll', spy, { passive: true });
+        }
+
+        /* ---- keyboard ------------------------------------------------- */
+        const stops = article
+          ? [...article.querySelectorAll('h2[id], h3[id]')]
+          : [];
+
+        function jump(delta) {
+          if (!stops.length) return;
+          // The heading we are "in": the last one scrolled past the threshold.
+          let cur = -1;
+          for (let i = 0; i < stops.length; i++) {
+            if (stops[i].getBoundingClientRect().top <= 100) cur = i;
+            else break;
+          }
+          const target = cur + delta;
+          if (target < 0) return scrollTo({ top: 0, behavior: 'smooth' });
+          if (target >= stops.length) return;
+          stops[target].scrollIntoView({ block: 'start' });
+        }
+
+        addEventListener('keydown', (e) => {
+          const tag = (e.target.tagName || '').toLowerCase();
+          if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+          if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+          if (e.key === '/') {
+            e.preventDefault();
+            window.__openSearch?.();
+          } else if (e.key === 'j') {
+            e.preventDefault();
+            jump(1);
+          } else if (e.key === 'k') {
+            e.preventDefault();
+            jump(-1);
+          } else if (e.key === '[' || e.key === ']') {
+            const sel = e.key === '[' ? '[data-prev]' : '[data-next]';
+            const a = document.querySelector(sel);
+            if (a) {
+              e.preventDefault();
+              window.location.href = a.getAttribute('href');
+            }
+          }
+        });
+
+        /* ---- narrow-screen rail --------------------------------------- */
+        const rail = document.querySelector('[data-rail]');
+        document.querySelector('[data-rail-toggle]')?.addEventListener('click', () => {
+          rail.classList.toggle('is-open');
+        });
+        rail?.addEventListener('click', (e) => {
+          if (e.target.closest('a')) rail.classList.remove('is-open');
+        });
+      })();
+    })();</script></body></html>

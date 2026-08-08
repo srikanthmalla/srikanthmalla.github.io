@@ -1,0 +1,306 @@
+---
+n: 5
+title: "SGLang's path"
+blurb: 'One unified pool allocated from both ends, chunked pipeline prefill at 1.7× the tensor-parallel ceiling, decode context parallelism for 7.9× logical KV — and 2,808 tok/s per GPU when prefill and decode are pulled apart.'
+part: 'T'
+minutes: 18
+draft: false
+tags: ['SGLang', 'LMSYS', 'DCP', 'decode context parallelism', 'chunked pipeline parallelism', 'ReplaySSM', 'unified pool', 'Marlin', 'FlashInfer', 'Miles']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+[SGLang's day-0 support](https://www.lmsys.org/blog/2026-07-27-kimi-k3-day0-support/), built with
+Moonshot and NVIDIA, makes a more aggressive memory decision than vLLM's and pairs it with two
+parallelism strategies that vLLM does not use for this model. The memory decision: rather than two
+kinds of block under one manager, **one pool with KDA state blocks allocated from one end and MLA KV
+from the other**, growing toward each other. That removes the pre-sizing guess entirely — you do not
+decide in advance how much memory belongs to recurrent state versus paged KV, because the boundary
+moves with the workload — and it eliminates the fragmentation that two fixed regions would produce
+when the mix shifts between short high-concurrency traffic and long low-concurrency traffic.
+
+The two parallelism strategies are where the throughput comes from, and both exist because prefill
+and decode want different things. For **prefill**, chunked pipeline parallelism: PP8×TP1, prompts
+divided into chunks streaming through 8 stages of 12 layers each, with point-to-point handoffs hiding
+**91% of communication time**, reported at **1.7× the ceiling of TEP8**. For **decode**, **decode
+context parallelism**: shard the MLA KV *by token position*, $1/N$ per rank, reconciled with a single
+all-to-all per layer via a log-sum-exp reduction — reported at **7.9× logical KV capacity with DCP8**.
+KDA layers stay tensor-parallel throughout, because a recurrent state has no token axis to shard on.
+Pull the two apart and they report **2,808 tok/s per GPU** aggregate under PP8 prefill plus TP8
+decode, which is the number that makes the economics work.
+
+The third thing is that SGLang publishes a **kernel waterfall** rather than a single number, and it is
+the most useful artefact either engine produced. Going from a working implementation to ~113 tok/s at
+batch 1 decomposes as: launch elimination and MoE fusion +19.9, NVIDIA compute kernels (fused KDA,
+W4A8 MoE, TMA aggregation) +10.3, communication fusion (CustomAllReduceV2, multicast, NVLS) **+27.6**,
+overlap and prologue fusion +10.4, and further phases to +44.8 cumulative. The largest single line is
+communication, and their explanation of why is the sentence worth taking away from this whole series:
+*"all-reduce is a synchronization point, so a microsecond saved there converts one-for-one into step
+time."*
+
+<Callout type="bridge" title="DCP is the codesign series' Module 11, arriving as a product feature">
+  Sharding KV by token position across ranks is spatial assignment applied to the sequence dimension,
+  with the interconnect as the memory level — and the log-sum-exp reduction is exactly the online-
+  softmax trick from that series' Module 12, used here to make the partial attention results
+  combinable across ranks instead of across tiles. That KDA cannot participate is the same fact from
+  a third direction: a recurrent state is not addressable by position, so there is no axis to assign.
+</Callout>
+
+## What the reports actually measured
+
+Decode, single sequence, from [SGLang's post](https://www.lmsys.org/blog/2026-07-27-kimi-k3-day0-support/):
+
+| Configuration | Tokens/s |
+| ------------- | -------- |
+| Batch 1, no speculation | ~113 |
+| **Batch 1 + DSpark** | **~423** |
+
+The kernel waterfall to ~113 tok/s at batch 1 — the most informative table published on K3:
+
+| Optimisation phase | Gain |
+| ------------------ | ---- |
+| Launch elimination + MoE fusion | +19.9 tok/s |
+| NVIDIA compute kernels (fused KDA, W4A8 MoE, TMA aggregation) | +10.3 tok/s |
+| **Communication fusion** (CustomAllReduceV2, multicast, NVLS) | **+27.6 tok/s** |
+| Overlap + prologue fusion | +10.4 tok/s |
+| Further phases, cumulative | +44.8 tok/s |
+
+Parallelism, and what each is for:
+
+| Phase | Strategy | Reported result |
+| ----- | -------- | --------------- |
+| Prefill | PP8 × TP1, chunked pipeline, 12 layers/stage | **1.7× TEP8's ceiling**; P2P hides 91% of comms |
+| Decode | **DCP8** — MLA KV sharded by token position | **7.9× logical KV capacity** |
+| Decode, KDA layers | tensor-parallel (cannot be position-sharded) | — |
+| Aggregate, disaggregated | PP8 prefill + TP8 decode | **2,808 tok/s per GPU** |
+| Long-context agents | DCP8 | **541 tok/s across 48 sessions at 100 K context** |
+
+Speculative decoding machinery:
+
+| Mechanism | Detail |
+| --------- | ------ |
+| Naive KDA state snapshot per draft step | ~512 KB |
+| **ReplaySSM** (store raw inputs; replay accepted prefix) | ~16 KB — **32× less** |
+| Reconstruction guarantee | **bit-identical** |
+| Confidence-scheduled verification, batch 256, accept ~2.7 | **+68% throughput** |
+| Same, below batch 8 | "break-even to mildly negative" |
+
+Backends by hardware:
+
+| Hardware | MoE path |
+| -------- | -------- |
+| Blackwell | FlashInfer MXFP4 runner (native) |
+| Elsewhere | Marlin (W4A16, dequantizing) |
+| Short-context batch throughput | MegaMoE |
+
+Published limitations:
+
+| Limitation | Consequence |
+| ---------- | ----------- |
+| KDA checkpoints only at aligned radix-tree nodes and fixed intervals | unaligned prefixes replay from the checkpoint above |
+| After DCP lifts MLA capacity | **the running-request cap becomes the binding limit** |
+| Confidence-scheduled verification below batch 8 | break-even to mildly negative |
+
+## Critical thinking
+
+<Probe q="Why allocate one pool from both ends instead of two pools?">
+
+Because the right split between recurrent state and paged KV depends on the workload mix, the mix
+changes minute to minute, and a fixed split cannot follow it.
+
+**What the split depends on.** KDA state is a per-*request* constant; MLA KV is per-*token*. So the
+ratio between them is set by mean context length. A hundred concurrent 2 K-token chats is dominated
+by the 100 fixed KDA states. Two concurrent 500 K-token documents is dominated by MLA KV. Both are
+K3 workloads, and a production server sees both, sometimes in the same minute.
+
+**What two fixed pools cost you.** You choose a boundary at startup. When traffic skews short, the MLA
+region sits idle while the KDA region is full and you reject requests. When traffic skews long, the
+reverse. You cannot rebalance without a restart, and a restart is 13 minutes (Module 3). SGLang names
+exactly this: the unified pool eliminates "fragmentation and pre-sizing guesses".
+
+**Why allocating from opposite ends is the right primitive.** It is the classic heap/stack
+arrangement, and it works here for the same reason: two allocators with different lifetime and size
+characteristics share one contiguous region, each growing toward the other, with the *only* failure
+condition being that they meet. There is no internal boundary to get wrong, no unused reservation on
+either side, and the memory is fully fungible right up to exhaustion. It also suits the objects: KDA
+blocks are fixed-size and per-request; MLA pages are uniform and numerous. Growing the numerous
+uniform thing from one end and the chunky per-request thing from the other keeps each side's
+allocation pattern simple.
+
+**What it does not solve.** The pool still runs out, and now it runs out as a single event rather than
+as two independently diagnosable ones — a long-context request and a burst of short ones now compete
+directly, so admission control has to arbitrate between them explicitly rather than falling out of
+separate budgets. That is a policy problem moved into the scheduler, which is the right place for it
+but is not nothing. It is also why SGLang's stated limitation after DCP is that "the running-request
+cap becomes the binding limit": once you fix capacity, the next constraint is a scheduler parameter.
+
+</Probe>
+
+<Probe q="How does DCP get 7.9× logical KV capacity, and why can't KDA use it?">
+
+By sharding the KV along the *token* axis instead of replicating it, and reconciling the partial
+attention results with a mathematically exact reduction.
+
+**The mechanism.** Under plain tensor parallelism, attention heads are split across ranks but every
+rank needs the KV for the positions its heads attend to — in the common arrangement the KV is
+effectively replicated or partly replicated across the TP group, so aggregate KV capacity does not
+scale with rank count. DCP instead gives rank $i$ tokens $i, i+N, i+2N, \dots$ (or a contiguous
+block), so each rank holds $1/N$ of the sequence. Each rank computes attention against only its
+shard, producing a *partial* result: an unnormalised weighted sum plus a running log-sum-exp of the
+scores. One all-to-all per layer combines them — and because softmax normalisation can be deferred
+and recombined via log-sum-exp, the combination is exact rather than approximate. It is the same
+algebraic move that makes FlashAttention's tiling legal, applied across ranks instead of across
+tiles.
+
+**Why 7.9× and not 8×.** With DCP8 you would naively expect 8×. The shortfall is the KDA state, which
+does not shard, plus per-rank metadata and alignment overhead. That the number is 7.9 rather than,
+say, 5 tells you the KDA state is a small fraction of the pool at the context lengths they measured —
+consistent with long-context agent workloads, and it would look worse at short context.
+
+**Why KDA cannot participate.** A recurrent state is not indexed by token position. It is a single
+matrix summarising *all* tokens seen so far, produced by a sequential in-place update. There is no
+subset of it corresponding to tokens $i, i+N, \dots$ to give to rank $i$, and no reduction that
+recombines per-rank partial states, because the update is not associative in the way attention's
+softmax-weighted sum is. So KDA layers stay tensor-parallel, sharded by feature dimension like any
+other matmul.
+
+**The consequence, which is a real asymmetry**: DCP scales your *context length* but not your
+*request count*, because the per-request KDA constant is untouched. So DCP is the right tool for "few
+users, enormous contexts" — which is exactly the agentic workload they benchmarked, 48 sessions at
+100 K context — and does nothing for "many users, short contexts". Module 7 is about what does.
+
+</Probe>
+
+<Probe q="Why is prefill PP8×TP1 rather than tensor-parallel, and what does that mean for the deployment?">
+
+Because prefill is compute-bound with long sequences, which is the regime where pipeline parallelism's
+weakness disappears and tensor parallelism's cost does not.
+
+**Why TP is expensive for prefill here.** Tensor parallelism all-reduces activations twice per layer,
+with bytes proportional to (batch × sequence × hidden). At prefill, sequence is enormous — that is the
+whole point — so those all-reduces are large and frequent, and there are 93 layers of them. The
+codesign series' Module 11 gives the ratio: TP's FLOP-per-byte is roughly $H$, which is fine on
+NVLink, but "fine" still means a substantial synchronous cost 186 times per forward pass.
+
+**Why PP works well for prefill specifically.** Pipeline parallelism's usual problem is the bubble,
+$(p-1)/m$ for $p$ stages and $m$ microbatches — you need many microbatches to fill it. Prefill
+naturally provides them: chunk a long prompt and each chunk is a microbatch. A 200 K-token prompt at
+reasonable chunk size gives you dozens of chunks streaming through 8 stages of 12 layers, so the
+bubble is small. And the communication is point-to-point activations at stage boundaries — 7 handoffs
+instead of 186 all-reduces — which is why they report **91% of communication time hidden** and
+**1.7× TEP8's ceiling**.
+
+**What it means for the deployment**, and this is the practical part:
+
+- **Prefill and decode want different parallelism, so you must disaggregate to have both.** PP8×TP1
+  for prefill and DCP8 or TP8 for decode cannot coexist in one engine instance. This is why the
+  aggregate number (2,808 tok/s per GPU) is quoted for a disaggregated configuration, and vLLM's
+  equivalent is TEP8 prefill routed to DEP16 decode. Module 9.
+- **It changes your failure domains.** A prefill pipeline stage failing is different from a decode
+  rank failing, and you now operate two pools with different scaling characteristics.
+- **The transfer between them is now on the critical path.** Every request's KV *and KDA state* must
+  move from a prefill worker to a decode worker, which is what the NIXL connector's two logical views
+  exist for. That transfer is pure overhead added to TTFT, and it only pays because the two phases are
+  so much more efficient in their preferred shapes.
+
+</Probe>
+
+<Probe q="ReplaySSM cuts speculative state 32×. Why was 512 KB per draft step unaffordable?">
+
+Because it is per draft step *per sequence in the batch*, and it is bandwidth on the exact resource
+decode is already limited by.
+
+**The arithmetic.** 512 KB per draft step. At batch 64 with a draft depth of 4, that is
+$512\,\text{KB} \times 64 \times 4 = 128$ MB of state written and read per decode step. At even 20
+steps per second that is 2.5 GB/s of pure bookkeeping traffic — and decode is memory-bandwidth-bound,
+so every byte spent on snapshots is a byte not spent reading expert weights. The snapshot competes
+directly with the thing producing tokens.
+
+Worse, it also consumes *capacity*: those snapshots live in the same pool as the KV and the KDA
+states (Module 3's 7.95 GB on H200). Speculation would be reducing your maximum concurrency in order
+to increase your per-user speed, which is close to the opposite of what a loaded server wants.
+
+**What ReplaySSM does instead.** Store the raw *inputs* to the state update rather than the state
+itself — ~16 KB, a 32× reduction. The verification kernel additionally records the gate values, and a
+fold kernel replays the accepted prefix to reconstruct the state. It is store-versus-recompute
+(codesign Module 7) applied to speculation: the inputs are much smaller than the state, and replaying
+a handful of tokens is cheap compared with the bandwidth of moving the state.
+
+**The property that makes it safe**, and it deserves emphasis: reconstruction is **bit-identical**.
+This is not a nicety. Speculative decoding's guarantee is that its output distribution matches
+non-speculative decoding exactly; if the reconstructed KDA state differed even slightly from what
+sequential processing would have produced, outputs would drift from the non-speculative result in a
+way that is invisible in aggregate metrics and shows up as unreproducible behaviour. Getting a
+recomputation to be bit-identical through a gated recurrent update is genuinely fiddly, which is
+presumably why the gate values are recorded rather than recomputed.
+
+**The generalisable point**: every technique that assumed append-only KV needed re-deriving for a
+recurrent state, and the re-derivation was usually "store less, recompute more, and prove the
+recomputation is exact". That is the same answer three times — prefix caching (checkpoint and
+replay), speculation (ReplaySSM), and offloading (Module 8) — which suggests it is the right general
+shape for hybrid models rather than three coincidences.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="What is SGLang's memory design and what does it eliminate?">
+
+**One pool with KDA state blocks allocated from one end and MLA KV from the other**, growing toward
+each other — the heap/stack arrangement. It eliminates the **pre-sizing guess** and the fragmentation
+of two fixed regions, which matters because the right split depends on mean context length (KDA is
+per-request, MLA is per-token) and a production server sees 2 K chats and 500 K documents in the same
+minute, with a restart costing 13 minutes. What it does not solve: the pool still exhausts, now as a
+single event, so admission control must explicitly arbitrate between long and short requests.
+
+</SelfCheck>
+
+<SelfCheck q="How does DCP work, why 7.9× rather than 8×, and why is KDA excluded?">
+
+Shard MLA KV by **token position**, $1/N$ per rank; each rank computes a partial attention result and
+one all-to-all per layer combines them exactly via **log-sum-exp** — the same deferred-normalisation
+algebra that makes FlashAttention's tiling legal, applied across ranks. Short of 8× because the KDA
+state does not shard, plus metadata and alignment overhead; that it is 7.9 and not 5 says KDA was a
+small fraction of the pool at their context lengths. KDA cannot participate because a recurrent state
+has no token axis — it is one matrix summarising all tokens, produced by a non-associative in-place
+update. **Key asymmetry:** DCP scales context length, not request count.
+
+</SelfCheck>
+
+<SelfCheck q="Why PP8×TP1 for prefill, and what does that force on the deployment?">
+
+TP all-reduces activations twice per layer with bytes ∝ batch×sequence×hidden — enormous at prefill,
+186 times per pass. PP's usual weakness (the bubble) vanishes because chunking a long prompt supplies
+plenty of microbatches, and communication becomes 7 point-to-point handoffs instead: **91% of comms
+hidden, 1.7× TEP8's ceiling**. It forces **disaggregation**, since PP8×TP1 prefill and DCP8/TP8 decode
+cannot coexist in one instance — which is why the 2,808 tok/s per GPU figure is a disaggregated one —
+and it puts the prefill→decode transfer of both KV *and* KDA state on the critical path of TTFT.
+
+</SelfCheck>
+
+<SelfCheck q="Why was a 512 KB-per-draft-step snapshot unaffordable, and what replaced it?">
+
+Because it is per draft step *per sequence*: at batch 64 and depth 4 that is 128 MB per decode step of
+pure bookkeeping traffic, competing for the exact bandwidth decode is limited by — and it consumes
+pool capacity, so speculation would reduce concurrency to raise per-user speed. **ReplaySSM** stores
+the raw inputs instead (~16 KB, **32×** less), records gate values in the verification kernel, and
+replays the accepted prefix in a fold kernel — **bit-identically**, which is essential because
+speculation's guarantee is exact distributional equivalence and drift would be invisible in aggregate
+metrics.
+
+</SelfCheck>
+
+<SelfCheck q="What does SGLang's kernel waterfall say is the biggest single win, and why?">
+
+**Communication fusion — CustomAllReduceV2, multicast, NVLS — at +27.6 tok/s**, larger than launch
+elimination and MoE fusion (+19.9) or the NVIDIA compute kernels (+10.3). Because "all-reduce is a
+synchronization point, so a microsecond saved there converts one-for-one into step time": at batch 1
+there is nothing to overlap the collective against, and it happens 93 times per token. It also means
+the single-user tok/s figure is substantially a collectives benchmark and will not transfer across
+interconnects.
+
+</SelfCheck>

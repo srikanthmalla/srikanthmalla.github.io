@@ -1,0 +1,601 @@
+<!DOCTYPE html><html lang="en" data-astro-cid-z4jru4n3><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>1. What K3 actually is — Serving Kimi K3</title><meta name="description" content="2.78T total, 104B active, 896 experts at top-16, 93 layers split 69 KDA to 24 gated MLA, native MXFP4. The numbers that matter for serving, and the one that most write-ups get wrong."><link rel="icon" href="data:,"><script>
+      (() => {
+        try {
+          const t = localStorage.getItem('refresher:theme');
+          if (t === 'light') document.documentElement.classList.add('light');
+        } catch (e) {}
+      })();
+    </script><link rel="stylesheet" href="/blog/_astro/BaseLayout.BNp-sd5V.css"><style>.wrap[data-astro-cid-5x65ok44]{max-width:68ch;margin-inline:auto;padding:3rem 1.25rem 6rem}@media (width>=1024px){.wrap[data-astro-cid-5x65ok44]{max-width:calc(68ch + 6rem);padding-inline:3rem}}.mhead[data-astro-cid-5x65ok44]{border-block-end:1px solid var(--rule);margin-block-end:.5rem;padding-block-end:1.75rem}.mhead-kicker[data-astro-cid-5x65ok44]{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint);margin:0 0 .85rem;font-size:.6875rem;font-weight:500}.mhead-n[data-astro-cid-5x65ok44]{color:var(--accent);font-weight:640}.mhead-dot[data-astro-cid-5x65ok44]{opacity:.5;padding-inline:.35rem}.mhead-title[data-astro-cid-5x65ok44]{font-family:var(--font-sans);letter-spacing:-.027em;color:var(--ink-strong);text-wrap:balance;margin:0;font-size:clamp(1.75rem,1.3rem + 1.9vw,2.375rem);font-weight:660;line-height:1.12}.mhead-blurb[data-astro-cid-5x65ok44]{color:var(--ink-muted);max-width:58ch;margin:.85rem 0 0;font-size:1.0625rem;line-height:1.6}.mfoot[data-astro-cid-5x65ok44]{border-block-start:1px solid var(--rule);margin-block-start:4rem;padding-block-start:1.75rem}.mark[data-astro-cid-5x65ok44]{font-family:var(--font-sans);border:1px solid var(--rule);background:var(--bg-raised);color:var(--ink-muted);cursor:pointer;border-radius:5px;padding:.4rem .85rem;font-size:.75rem;font-weight:550}.mark[data-astro-cid-5x65ok44]:hover{color:var(--ink-strong);border-color:var(--ink-faint)}.mark[data-astro-cid-5x65ok44][aria-pressed=true]{color:var(--bridge);border-color:color-mix(in oklab, var(--bridge) 45%, var(--rule))}.pager[data-astro-cid-5x65ok44]{grid-template-columns:1fr 1fr;gap:1rem;margin-block-start:2rem;display:grid}.pager-link[data-astro-cid-5x65ok44]{border:1px solid var(--rule);font-family:var(--font-sans);border-radius:6px;flex-direction:column;gap:.25rem;padding:.75rem .9rem;text-decoration:none;display:flex}.pager-link[data-astro-cid-5x65ok44]:hover{border-color:var(--ink-faint);background:var(--bg-raised)}.pager-link[data-astro-cid-5x65ok44].is-next{text-align:end}.pager-dir[data-astro-cid-5x65ok44]{text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);font-size:.6875rem}.pager-title[data-astro-cid-5x65ok44]{color:var(--ink-strong);font-size:.8125rem;font-weight:550;line-height:1.35}
+</style><style>.callout{border:1px solid var(--rule);border-inline-start-width:2px;border-radius:5px;margin-block:1.75rem;padding:.9rem 1.1rem 1rem;font-size:.9375rem;line-height:1.65}.callout-probe{border-inline-start-color:var(--probe);background:var(--probe-bg)}.callout-trap{border-inline-start-color:var(--trap);background:var(--trap-bg)}.callout-bridge{border-inline-start-color:var(--bridge);background:var(--bridge-bg)}.callout-label{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;align-items:center;gap:.45rem;margin:0 0 .5rem;font-size:.6875rem;font-weight:620;display:flex}.callout-probe .callout-label{color:var(--probe)}.callout-trap .callout-label{color:var(--trap)}.callout-bridge .callout-label{color:var(--bridge)}.callout-mark{background:currentColor;border-radius:50%;flex:none;width:5px;height:5px}.callout-title{text-transform:none;letter-spacing:0;color:var(--ink-muted);font-weight:500}.callout-body>:first-child{margin-block-start:0}.callout-body>:last-child{margin-block-end:0}.callout-body>*+*{margin-block-start:.75em}.probe{margin-block:1.75rem}.prose .probe-q{font-family:var(--font-sans);letter-spacing:-.01em;color:var(--ink-strong);margin:0 0 .6rem;padding-inline-start:1.15rem;font-size:1rem;font-weight:600;line-height:1.45;position:relative}.prose .probe-q:before{content:"›";color:var(--accent);font-weight:700;position:absolute;inset-inline-start:0}.probe-a{border-inline-start:1px solid var(--rule);margin-inline-start:.1rem;padding-inline-start:1.15rem}.probe-a>*+*{margin-block-start:1.15em}.probe-a>:first-child{margin-block-start:0}.probe-a>:last-child{margin-block-end:0}.selfcheck{border-block-start:1px solid var(--rule-soft)}.selfcheck:last-of-type{border-block-end:1px solid var(--rule-soft)}.prose>.selfcheck+.selfcheck{margin-block-start:0}.selfcheck>summary{cursor:pointer;color:var(--ink);align-items:baseline;gap:1rem;padding:.7rem .2rem;list-style:none;display:flex}.selfcheck>summary::-webkit-details-marker{display:none}.selfcheck>summary:hover{color:var(--ink-strong)}.selfcheck-q{flex:1}.selfcheck-q code{white-space:nowrap}.selfcheck-cue{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);flex:none;padding-block-start:.15rem;font-size:.6875rem;font-weight:600}.selfcheck>summary:hover .selfcheck-cue{color:var(--accent)}.selfcheck-cue-hide,.selfcheck[open] .selfcheck-cue-show{display:none}.selfcheck[open] .selfcheck-cue-hide{display:inline}.selfcheck-a{color:var(--ink-muted);border-inline-start:2px solid var(--rule);margin-block-end:.9rem;margin-inline-start:.2rem;padding:.15rem .2rem 1.05rem;padding-inline-start:1rem;font-size:.9375rem}.selfcheck-a>:first-child{margin-block-start:0}.selfcheck-a>:last-child{margin-block-end:0}.selfcheck-a>*+*{margin-block-start:.7em}.selfcheck-a strong{color:var(--ink)}
+</style></head><body data-astro-cid-z4jru4n3><a href="#content" class="skip" data-astro-cid-z4jru4n3>Skip to content</a><div class="shell" data-astro-cid-z4jru4n3><aside class="rail" data-rail data-astro-cid-z4jru4n3><nav class="rail-nav" aria-label="Serving Kimi K3 contents" data-astro-cid-wv7whodv><div class="rail-head" data-astro-cid-wv7whodv><a href="/blog/" class="rail-up" data-astro-cid-wv7whodv>All series</a><a href="/blog/serving-k3/" class="rail-home" data-astro-cid-wv7whodv><span class="rail-home-title" data-astro-cid-wv7whodv>Serving Kimi K3</span><span class="rail-home-sub" data-astro-cid-wv7whodv>A 2.8T hybrid-attention MoE, and what it takes to keep it fed</span></a><p class="rail-progress" data-astro-cid-wv7whodv><span class="rail-progress-bar" data-astro-cid-wv7whodv><span data-progress-fill data-astro-cid-wv7whodv></span></span><span class="rail-progress-text" data-astro-cid-wv7whodv><span data-progress-count data-astro-cid-wv7whodv>0</span>/11 reviewed</span></p></div><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part S</span>The model</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/01-architecture/" class="rail-link is-active" aria-current="page" title="2.78T total, 104B active, 896 experts at top-16, 93 layers split 69 KDA to 24 gated MLA, native MXFP4. The numbers that matter for serving, and the one that most write-ups get wrong." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>1</span><span class="rail-title" data-astro-cid-wv7whodv>What K3 actually is</span><span class="rail-tick" data-tick="serving-k3/01-architecture" aria-hidden="true" data-astro-cid-wv7whodv></span></a><ul class="rail-sub" data-rail-sub data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="#the-core-mental-model" class="rail-sub-link" data-toc="the-core-mental-model" data-astro-cid-wv7whodv>The core mental model</a></li><li data-astro-cid-wv7whodv><a href="#what-the-reports-actually-measured" class="rail-sub-link" data-toc="what-the-reports-actually-measured" data-astro-cid-wv7whodv>What the reports actually measured</a></li><li data-astro-cid-wv7whodv><a href="#critical-thinking" class="rail-sub-link" data-toc="critical-thinking" data-astro-cid-wv7whodv>Critical thinking</a></li><li data-astro-cid-wv7whodv><a href="#self-check" class="rail-sub-link" data-toc="self-check" data-astro-cid-wv7whodv>Self-check</a></li></ul></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/02-kda-and-the-kv-cache/" class="rail-link" title="69 of 93 layers keep a fixed-size recurrent state instead of a growing KV cache. That is what makes a million tokens affordable — and it creates the hardest engineering problem in the stack." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>2</span><span class="rail-title" data-astro-cid-wv7whodv>KDA, AttnRes, and the two-state problem</span><span class="rail-tick" data-tick="serving-k3/02-kda-and-the-kv-cache" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/03-the-memory-budget/" class="rail-link" title="1.56 TB of weights before a single token. What that leaves for KV on each cluster shape, why the published minimum is 8 GPUs and the production recommendation is 64, and the one measured pool size everyone should start from." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>3</span><span class="rail-title" data-astro-cid-wv7whodv>The memory budget</span><span class="rail-tick" data-tick="serving-k3/03-the-memory-budget" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part T</span>The engines</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/04-vllm/" class="rail-link" title="One hybrid KV manager, DSpark speculative decoding at 3.14×, custom collectives at 1.7–4.5× over NCCL — and three limitations they publish that will bite you on day one." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>4</span><span class="rail-title" data-astro-cid-wv7whodv>vLLM&#39;s path</span><span class="rail-tick" data-tick="serving-k3/04-vllm" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/05-sglang/" class="rail-link" title="One unified pool allocated from both ends, chunked pipeline prefill at 1.7× the tensor-parallel ceiling, decode context parallelism for 7.9× logical KV — and 2,808 tok/s per GPU when prefill and decode are pulled apart." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>5</span><span class="rail-title" data-astro-cid-wv7whodv>SGLang&#39;s path</span><span class="rail-tick" data-tick="serving-k3/05-sglang" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/06-choosing/" class="rail-link" title="vLLM says 370 tok/s, SGLang says 423, and a community report on H200 measured 16.8. All three are honest. What actually separates the engines, and the one head-to-head data point that exists." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>6</span><span class="rail-title" data-astro-cid-wv7whodv>Choosing, and why the numbers don&#39;t compare</span><span class="rail-tick" data-tick="serving-k3/06-choosing" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part U</span>Where it falls over</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/07-concurrency-collapse/" class="rail-link" title="16.8 tok/s at one request, 146.9 aggregate at fifty-four — 8.7× more total throughput for a 6.2× drop per user. Why long context and many users are the same budget, and what actually sets the ceiling." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>7</span><span class="rail-title" data-astro-cid-wv7whodv>The concurrency collapse</span><span class="rail-tick" data-tick="serving-k3/07-concurrency-collapse" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/08-kv-offloading/" class="rail-link" title="Five backends behind one vLLM connector interface — native, LMCache, Mooncake, 3FS, NIXL — three storage tiers, and the constraint nobody documents: which of them work with which parallelism, and what a recurrent state does to all of it." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>8</span><span class="rail-title" data-astro-cid-wv7whodv>Multi-node KV offloading</span><span class="rail-tick" data-tick="serving-k3/08-kv-offloading" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/09-disaggregation/" class="rail-link" title="Prefill and decode want opposite hardware and opposite parallelism, so both engines separate them. What crosses the boundary, why K3 makes the transfer harder than usual, and why the router has to know what is cached where." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>9</span><span class="rail-title" data-astro-cid-wv7whodv>Disaggregation and cache-aware routing</span><span class="rail-tick" data-tick="serving-k3/09-disaggregation" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part V</span>Operating it</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/10-tool-calling/" class="rail-link" title="The model can be running perfectly and your agents still fail. Reasoning and tool-call parsers, grammar-constrained decoding, the empty-tool_calls failure, and a vendor conformance suite where 26 of 30 failures were one missing feature." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>10</span><span class="rail-title" data-astro-cid-wv7whodv>Tool calling and the API surface</span><span class="rail-tick" data-tick="serving-k3/10-tool-calling" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/11-cost-and-decision/" class="rail-link" title="Published break-even points span 2 billion to 24 billion tokens a month, and the spread is mostly assumptions rather than disagreement. The decision procedure, and an honest account of what these day-0 numbers are worth." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>11</span><span class="rail-title" data-astro-cid-wv7whodv>Cost, break-even, and what to actually do</span><span class="rail-tick" data-tick="serving-k3/11-cost-and-decision" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-other" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv>Other series</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>ML Hardware &amp; Low-Latency Systems</span></a></li><li data-astro-cid-wv7whodv><a href="/blog/diffusion/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>Diffusion</span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>ML Software &amp; Compilers</span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>ML Hardware/Software Codesign</span></a></li></ul></section><div class="rail-foot" data-astro-cid-wv7whodv><p data-astro-cid-wv7whodv><kbd data-astro-cid-wv7whodv>j</kbd> <kbd data-astro-cid-wv7whodv>k</kbd> section · <kbd data-astro-cid-wv7whodv>/</kbd> search · <kbd data-astro-cid-wv7whodv>[</kbd><kbd data-astro-cid-wv7whodv>]</kbd> module</p></div></nav></aside><div class="col" data-astro-cid-z4jru4n3><header class="topbar" data-astro-cid-z4jru4n3><button class="icon-btn only-narrow" data-rail-toggle aria-label="Toggle contents" data-astro-cid-z4jru4n3><svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M1.5 3.5h12M1.5 7.5h12M1.5 11.5h12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg></button><p class="crumb" data-astro-cid-z4jru4n3>Part S · The model › What K3 actually is</p><div class="topbar-actions" data-astro-cid-z4jru4n3><button class="search-btn" data-search-open aria-label="Search" data-astro-cid-z4jru4n3><span aria-hidden="true" data-astro-cid-z4jru4n3>⌕</span><span class="search-btn-label" data-astro-cid-z4jru4n3>Search</span><kbd data-astro-cid-z4jru4n3>/</kbd></button><button class="icon-btn" data-theme-toggle aria-label="Toggle theme" data-astro-cid-z4jru4n3><svg class="i-sun" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><circle cx="7.5" cy="7.5" r="3" stroke="currentColor" stroke-width="1.2" data-astro-cid-z4jru4n3></circle><path d="M7.5 .8v1.7M7.5 12.5v1.7M14.2 7.5h-1.7M2.5 7.5H.8M12.24 2.76l-1.2 1.2M3.96 11.04l-1.2 1.2M12.24 12.24l-1.2-1.2M3.96 3.96l-1.2-1.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg><svg class="i-moon" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M13 9.3A5.8 5.8 0 0 1 5.7 2 5.9 5.9 0 1 0 13 9.3Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" data-astro-cid-z4jru4n3></path></svg></button><a class="site-link" href="/" data-astro-cid-z4jru4n3>srikanthmalla.com</a></div></header><main id="content" data-astro-cid-z4jru4n3><article class="wrap" data-article data-astro-cid-5x65ok44><header class="mhead" data-astro-cid-5x65ok44><p class="mhead-kicker" data-astro-cid-5x65ok44><span class="mhead-n" data-astro-cid-5x65ok44>Module 1</span><span class="mhead-dot" data-astro-cid-5x65ok44>·</span>Part S — The model<span class="mhead-dot" data-astro-cid-5x65ok44>·</span>15 min</p><h1 class="mhead-title" data-astro-cid-5x65ok44>What K3 actually is</h1><p class="mhead-blurb" data-astro-cid-5x65ok44>2.78T total, 104B active, 896 experts at top-16, 93 layers split 69 KDA to 24 gated MLA, native MXFP4. The numbers that matter for serving, and the one that most write-ups get wrong.</p></header><div class="prose" data-astro-cid-5x65ok44><h2 id="the-core-mental-model">The core mental model<a class="anchor" href="#the-core-mental-model" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>Kimi K3 is Moonshot AI’s open-weight flagship, released 16 July 2026 with weights following on 27
+July. It is a natively multimodal mixture-of-experts model with <strong>2.78 trillion total parameters and
+about 104 billion activated per token</strong>, a 1-million-token context window, and — the fact that shapes
+everything about serving it — a hybrid attention stack in which most layers do not maintain a
+conventional KV cache at all. For anyone whose job is to run it, four numbers do almost all the work:
+the total parameter count sets what you must hold, the active count sets your arithmetic per token,
+the expert configuration sets your communication pattern, and the KDA/MLA split sets how memory grows
+with context. Everything downstream in this series is a consequence of those four.</p>
+<p>The MoE configuration is unusual and worth understanding rather than memorising. K3 uses what
+Moonshot calls <strong>Stable LatentMoE</strong>: 896 routed experts with 16 active per token, where the router
+first projects each token down to a <strong>latent dimension of 3,584 — half the 7,168 hidden size</strong> —
+before dispatching it to experts. The expert computation happens in that narrower space and the
+combined result is projected back to model width. The point is bandwidth: both the expert weight
+traffic and the all-to-all payload scale with the width you dispatch at, so halving it buys you
+roughly twice the routing multiplicity at similar inference cost. That is why K3 can afford 16 active
+experts where earlier models used 8, and it is the reason the expert-parallel all-to-all is less
+catastrophic here than the raw expert count suggests. Routing balance is handled by <strong>Quantile
+Balancing</strong>, deriving expert allocation from router-score quantiles rather than the heuristic
+auxiliary-loss updates that Module 9 of the codesign series describes.</p>
+<p>The last structural fact is that <strong>K3 is natively MXFP4</strong>. The weights are not a post-training
+quantization of a BF16 model — Moonshot applied quantization-aware training from the SFT stage
+onward, with MXFP4 weights and MXFP8 activations. This matters practically in two directions. It
+means the 4-bit weights <em>are</em> the model, so you are not choosing between a quality tier and a memory
+tier, and the ~1.4–1.56 TB footprint is simply what K3 weighs. And it means your hardware’s MXFP4
+support is a first-order deployment question rather than an optimisation: Blackwell-class parts run
+it natively, while everything older goes through a dequantizing path, which Module 6 shows is exactly
+where one widely-reported deployment fell over.</p>
+<aside class="callout callout-trap"><p class="callout-label"><span class="callout-mark" aria-hidden="true"></span>Common trap<span class="callout-title"> · “K3 has 32B active parameters”</span></p><div class="callout-body"><p>This number appears in a lot of secondary coverage and it is <strong>Kimi K2’s</strong> figure, carried forward
+by mistake. K3 activates about <strong>104B per token</strong>. The error matters because active parameters
+determine your decode arithmetic and your per-token weight traffic, so a 3× error here produces a
+3× error in every capacity estimate built on it. Moonshot’s own launch post is also confusing on
+this point, referring to a much larger figure; the 104B number is the one consistent with 896
+experts at top-16 in a 3,584-dim latent space.</p></div></aside>
+<h2 id="what-the-reports-actually-measured">What the reports actually measured<a class="anchor" href="#what-the-reports-actually-measured" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>The architecture, assembled from
+<a href="https://www.kimi.com/blog/kimi-k3">Moonshot’s tech blog</a>,
+<a href="https://vllm.ai/blog/2026-07-27-k3">vLLM’s day-0 post</a> and
+<a href="https://www.lmsys.org/blog/2026-07-27-kimi-k3-day0-support/">SGLang’s</a>:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Property</th><th>Value</th></tr></thead><tbody><tr><td>Total parameters</td><td>2.78 T</td></tr><tr><td>Active per token</td><td>~104 B</td></tr><tr><td>Layers</td><td>93</td></tr><tr><td>— KDA (linear)</td><td>69</td></tr><tr><td>— Gated MLA (full)</td><td>24</td></tr><tr><td>Interleave</td><td>full attention roughly every 4th position</td></tr><tr><td>Routed experts</td><td>896</td></tr><tr><td>Active experts</td><td>16 (top-16), plus shared</td></tr><tr><td>Hidden size</td><td>7,168</td></tr><tr><td>MoE latent dim</td><td>3,584</td></tr><tr><td>Context window</td><td>1,000,000 tokens</td></tr><tr><td>Weight format</td><td>MXFP4 (native, QAT from SFT)</td></tr><tr><td>Activation format</td><td>MXFP8</td></tr><tr><td>Vision</td><td>native, 12-head encoder</td></tr></tbody></table></div>
+<p>What each number governs when you serve it:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Number</th><th>Governs</th><th>Module</th></tr></thead><tbody><tr><td>2.78 T total</td><td>weights to hold → minimum cluster size</td><td>3</td></tr><tr><td>104 B active</td><td>decode arithmetic and per-token weight traffic</td><td>3, 7</td></tr><tr><td>896 experts, top-16</td><td>all-to-all pattern, EP degree, load imbalance</td><td>4, 5</td></tr><tr><td>69 KDA / 24 MLA</td><td>how memory grows with context</td><td>2</td></tr><tr><td>MXFP4 native</td><td>which hardware runs it without a dequant path</td><td>6</td></tr><tr><td>12-head vision</td><td>why TP=8 cannot shard the encoder</td><td>4</td></tr></tbody></table></div>
+<p>Footprint at native precision, as reported:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Source</th><th>Weight footprint</th><th>Per GPU</th></tr></thead><tbody><tr><td><a href="https://www.digitalocean.com/blog/serving-kimi-k3-inference-engine">DigitalOcean</a></td><td>~1.56 TB</td><td>~195 GiB on 8×288 GB</td></tr><tr><td><a href="https://huggingface.co/moonshotai/Kimi-K3/discussions/136">Community 16×H200 report</a></td><td>~1.56 TB</td><td>~102.75 GB on 16 GPUs</td></tr><tr><td>Common secondary estimate</td><td>~1.4 TB</td><td>—</td></tr></tbody></table></div>
+<h2 id="critical-thinking">Critical thinking<a class="anchor" href="#critical-thinking" aria-hidden="true" tabindex="-1">#</a></h2>
+<section class="probe"><h3 class="probe-q">Why does LatentMoE's 3,584-dim latent matter more for serving than for quality?</h3><div class="probe-a"><p>Because it changes the two quantities that dominate MoE serving cost — expert weight bandwidth and
+all-to-all payload — and it changes them by the same factor.</p><p>In a conventional MoE, a token routed to an expert is dispatched at full model width. With <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>H</mi><mo>=</mo><mn>7168</mn></mrow><annotation encoding="application/x-tex">H = 7168</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0813em">H</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">7168</span></span></span></span>
+and top-<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi><mo>=</mo><mn>16</mn></mrow><annotation encoding="application/x-tex">k = 16</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6944em"></span><span class="mord mathnormal" style="margin-right:0.0315em">k</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">16</span></span></span></span>, every token’s dispatch carries <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>16</mn><mo>×</mo><mn>7168</mn></mrow><annotation encoding="application/x-tex">16 \times 7168</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.7278em;vertical-align:-0.0833em"></span><span class="mord">16</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">7168</span></span></span></span> values across the expert-parallel
+all-to-all, and every active expert’s weights must be read at that width. LatentMoE projects the token
+to 3,584 first, so both the dispatched activation and the expert’s own weight matrices are half as
+wide. The all-to-all payload halves; the expert weight traffic halves.</p><p>Why that is a serving fact rather than a modelling one:</p><ul>
+<li><strong>Decode is bandwidth-bound</strong>, as the codesign series’ Module 12 argues at length. Per-token cost
+at decode is dominated by reading the active expert weights, so halving that width is close to a
+direct throughput multiplier on the MoE portion of the step.</li>
+<li><strong>The all-to-all is the hardest collective to overlap</strong>, because its sizes are data-dependent
+(codesign Module 11). Halving its payload halves the exposed time of the one communication you
+cannot schedule statically.</li>
+<li><strong>It buys routing multiplicity you would otherwise not afford.</strong> The design lets K3 use top-16
+where the same bandwidth budget would have bought top-8 at full width. That is the actual trade —
+the latent projection is not free in quality terms, and Moonshot spent the savings on activating
+more experts rather than on being cheaper.</li>
+</ul><p>The consequence for capacity planning is that you cannot estimate K3’s decode cost from total
+parameters or even from active parameters alone. The 104 B active figure already reflects the latent
+width, but the <em>traffic</em> also depends on how much of that 104 B is expert weights read at 3,584
+versus dense components read at 7,168. Any back-of-envelope that treats the model as a uniform 104 B
+dense model will be wrong in a direction that depends on batch size.</p></div></section>
+<section class="probe"><h3 class="probe-q">What does native MXFP4 change for a deployment, compared with quantizing a BF16 model yourself?</h3><div class="probe-a"><p>It moves quantization from a decision you make into a property of the artefact, and that has
+consequences in both directions.</p><p><strong>What it removes.</strong> There is no accuracy-versus-memory tier to choose. With a BF16 model you weigh
+FP8 against INT4 against keeping full precision, run evaluations, and own the result. With K3 the
+4-bit weights are what Moonshot trained and evaluated — quantization-aware from the SFT stage onward,
+with MXFP8 activations — so the published benchmark numbers are the numbers for the weights you are
+running. That is a genuine simplification, and it removes the most common source of “our self-hosted
+model is worse than the API” incidents.</p><p><strong>What it adds.</strong> Your hardware’s format support becomes a hard deployment gate rather than a tuning
+choice. The engines handle this by routing to different kernels:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Hardware</th><th>Path</th><th>Consequence</th></tr></thead><tbody><tr><td>Blackwell (B200/B300/GB300)</td><td>FlashInfer MXFP4 runner, native</td><td>full speed</td></tr><tr><td>Hopper (H100/H200)</td><td>Marlin W4A16 dequantizing</td><td>extra work per weight read</td></tr><tr><td>AMD MI355X</td><td>FlyDSL A16W4/A8W4 fused</td><td>vendor path</td></tr></tbody></table></div><p>On a dequantizing path you still get the memory win — the weights occupy 4 bits in HBM, which is what
+makes the model fit at all — but the compute is done after upconversion, so the arithmetic throughput
+advantage of a 4-bit MAC is not available. Per the codesign series’ Module 10, that is exactly the
+“emulated format” case, and it is the right trade at decode (where you are bandwidth-bound and the
+memory win is the whole point) and a much weaker one at prefill.</p><p><strong>The subtler cost</strong> is that you cannot go <em>up</em>. If you find K3’s MXFP4 numerics marginal for some
+workload, there is no BF16 checkpoint to fall back to — the model was trained into this format. The
+<a href="https://www.lmsys.org/blog/2026-07-27-kimi-k3-day0-support/">SGLang RL results</a> are interesting here:
+they report train/rollout KL sitting flat at a “~2e-3 MXFP4 floor”, which is a candid way of saying
+the format imposes a noise floor that further training does not cross. For inference that floor is
+irrelevant; for anyone fine-tuning, it is a real constraint and it is why their recipe uses BF16 LoRA
+deltas over MXFP4 base weights rather than touching the base.</p></div></section>
+<section class="probe"><h3 class="probe-q">896 experts at top-16 sounds like an expert-parallelism nightmare. Why is it tractable?</h3><div class="probe-a"><p>Three reasons, and only one of them is the latent projection.</p><p><strong>The latent width halves the traffic</strong>, as above. That is the first-order effect on the all-to-all.</p><p><strong>Quantile Balancing attacks the variance directly.</strong> The codesign series’ Module 9 makes the case
+that MoE’s real cost is not the routing but the <em>imbalance</em> — all experts run in parallel and the
+step ends when the slowest finishes, so a hot expert with 2–10× the average load sets the latency for
+every device. Deriving expert allocation from router-score quantiles rather than from heuristic
+auxiliary-loss updates targets the tail of the load distribution rather than its mean, which is the
+statistic that actually matters. Moonshot does not publish the resulting imbalance factor, which is
+the number a serving engineer would most want.</p><p><strong>More experts at fixed active count is a memory problem, not a compute problem.</strong> 896 experts means
+a very large weight footprint, which is why K3 needs a large cluster. But per token you still touch
+16 of them. So the expert count drives <em>capacity</em> and the expert parallel degree, while the top-<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi></mrow><annotation encoding="application/x-tex">k</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6944em"></span><span class="mord mathnormal" style="margin-right:0.0315em">k</span></span></span></span>
+drives <em>traffic</em>. Those are separable, and the design deliberately pushed on the one that hardware is
+better at absorbing — HBM capacity across many GPUs — rather than the one it is not.</p><p><strong>Where it is genuinely hard</strong>, and both engines say so:</p><ul>
+<li><strong>Expert parallelism becomes mandatory rather than optional.</strong> vLLM notes that EP is essential
+given “896 routed experts, 16 active per token, plus shared experts”, and both engines’
+best-throughput configurations are expert-parallel rather than purely tensor-parallel.</li>
+<li><strong>Multi-node EP requires RDMA or NVLink.</strong> vLLM states this outright for multi-node expert/data
+parallel deployments. An all-to-all with data-dependent sizes over commodity Ethernet is the case
+the codesign series’ Module 11 argues does not work, and here it is as a deployment requirement.</li>
+<li><strong>Small-batch decode does not amortise it.</strong> At batch 1 you are paying all-to-all latency to
+activate 16 experts for a single token. This is a large part of why single-user decode sits around
+113–118 tok/s rather than higher, and why speculative decoding matters so much on this model —
+Module 4.</li>
+</ul></div></section>
+<h2 id="self-check">Self-check<a class="anchor" href="#self-check" aria-hidden="true" tabindex="-1">#</a></h2>
+<details class="selfcheck"><summary><span class="selfcheck-q">Give the four numbers that determine how K3 serves, and what each governs.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p><strong>2.78 T total</strong> — what you must hold, hence minimum cluster size. <strong>~104 B active per token</strong> —
+decode arithmetic and per-token weight traffic. <strong>896 experts at top-16</strong> — the all-to-all pattern,
+EP degree and imbalance exposure. <strong>69 KDA / 24 gated MLA out of 93 layers</strong> — how memory grows with
+context. Everything else in serving K3 is downstream of those four.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">What does a lot of coverage get wrong about K3's active parameters?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>It reports <strong>32 B</strong>, which is Kimi <strong>K2’s</strong> figure carried forward. K3 activates about <strong>104 B</strong> per
+token. Since active parameters set decode arithmetic and per-token weight traffic, a 3× error there
+propagates into every capacity and throughput estimate built on it.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">What is LatentMoE and why is it a serving decision?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>The router projects each token to a <strong>3,584-dim latent — half the 7,168 hidden size</strong> — before
+dispatch; experts compute there and the result is projected back. Both expert weight traffic and
+all-to-all payload scale with dispatch width, so both halve. That matters because decode is
+bandwidth-bound and the all-to-all is the collective hardest to overlap (its sizes are
+data-dependent). Moonshot spent the saving on <strong>top-16 instead of top-8</strong>, so it buys routing
+multiplicity rather than cheapness.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">What does native MXFP4 remove, and what does it add?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Removes the accuracy-versus-memory decision — the 4-bit weights <em>are</em> the model, trained
+quantization-aware from SFT onward with MXFP8 activations, so published benchmarks apply to what you
+run. Adds a hardware gate: Blackwell runs it natively via the FlashInfer MXFP4 runner, Hopper goes
+through Marlin W4A16 dequantization (memory win kept, arithmetic win lost — the “emulated format”
+case), AMD via FlyDSL. And you cannot go up: there is no BF16 checkpoint, and SGLang reports a
+“~2e-3 MXFP4 floor” on train/rollout KL, which is why their recipe uses BF16 LoRA deltas over
+untouched MXFP4 base weights.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Why is 896 experts at top-16 tractable, and where is it genuinely hard?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Tractable because the latent projection halves all-to-all traffic, Quantile Balancing targets the
+<em>tail</em> of the load distribution (the statistic that sets step latency) rather than the mean, and
+expert <strong>count</strong> drives capacity while <strong>top-k</strong> drives traffic — so the design pushed on the axis
+hardware absorbs well. Hard because expert parallelism becomes mandatory rather than optional,
+multi-node EP requires RDMA or NVLink, and at batch 1 you pay full all-to-all latency to activate 16
+experts for one token — which is why single-user decode sits near 113–118 tok/s and why speculative
+decoding matters disproportionately on this model.</p></div></details></div><footer class="mfoot" data-astro-cid-5x65ok44><button class="mark" data-mark="serving-k3/01-architecture" aria-pressed="false" data-astro-cid-5x65ok44>Mark as reviewed</button><nav class="pager" data-astro-cid-5x65ok44><span data-astro-cid-5x65ok44></span><a class="pager-link is-next" href="/blog/serving-k3/02-kda-and-the-kv-cache/" data-next data-astro-cid-5x65ok44><span class="pager-dir" data-astro-cid-5x65ok44>Next →</span><span class="pager-title" data-astro-cid-5x65ok44>2. KDA, AttnRes, and the two-state problem</span></a></nav></footer></article></main></div></div><div class="search-overlay" data-search hidden data-astro-cid-ac66eqjo><div class="search-backdrop" data-search-close data-astro-cid-ac66eqjo></div><div class="search-panel" role="dialog" aria-modal="true" aria-label="Search modules" data-astro-cid-ac66eqjo><div class="search-input-row" data-astro-cid-ac66eqjo><span class="search-icon" aria-hidden="true" data-astro-cid-ac66eqjo>⌕</span><input type="text" class="search-input" placeholder="Search all modules…" autocomplete="off" spellcheck="false" data-search-input data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>esc</kbd></div><ul class="search-results" data-search-results data-astro-cid-ac66eqjo></ul><p class="search-empty" data-search-empty hidden data-astro-cid-ac66eqjo>No matches.</p><p class="search-hint" data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>↑</kbd><kbd data-astro-cid-ac66eqjo>↓</kbd> move · <kbd data-astro-cid-ac66eqjo>↵</kbd> open</p></div></div><script>(function(){const indexUrl = "/blog/search.json";
+
+  (() => {
+    const overlay = document.querySelector('[data-search]');
+    if (!overlay) return;
+    const input = overlay.querySelector('[data-search-input]');
+    const list = overlay.querySelector('[data-search-results]');
+    const empty = overlay.querySelector('[data-search-empty]');
+
+    let index = null;
+    let loading = null;
+    let active = 0;
+
+    const load = () => {
+      if (index) return Promise.resolve(index);
+      if (!loading) {
+        loading = fetch(indexUrl)
+          .then((r) => r.json())
+          .then((d) => (index = d))
+          .catch(() => (index = []));
+      }
+      return loading;
+    };
+
+    function open() {
+      overlay.hidden = false;
+      document.documentElement.style.overflow = 'hidden';
+      load().then(() => input.focus());
+      input.focus();
+      input.select();
+    }
+
+    function close() {
+      overlay.hidden = true;
+      document.documentElement.style.overflow = '';
+    }
+
+    function escapeHtml(s) {
+      return s.replace(
+        /[&<>"]/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]
+      );
+    }
+
+    // Excerpt around the first matched term, with the term marked.
+    function excerpt(text, terms) {
+      const lower = text.toLowerCase();
+      let at = -1;
+      for (const t of terms) {
+        const i = lower.indexOf(t);
+        if (i !== -1 && (at === -1 || i < at)) at = i;
+      }
+      if (at === -1) at = 0;
+      const start = Math.max(0, at - 60);
+      let slice = text.slice(start, start + 190);
+      if (start > 0) slice = '…' + slice;
+      if (start + 190 < text.length) slice += '…';
+      let html = escapeHtml(slice);
+      for (const t of terms) {
+        html = html.replace(
+          new RegExp(`(${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'),
+          '<mark>$1</mark>'
+        );
+      }
+      return html;
+    }
+
+    function score(rec, terms) {
+      let s = 0;
+      const hay = (rec.m + ' ' + rec.h + ' ' + (rec.s || '') + ' ' + (rec.k || '')).toLowerCase();
+      const body = rec.t.toLowerCase();
+      for (const t of terms) {
+        if (hay.includes(t)) s += 12;
+        const i = body.indexOf(t);
+        if (i !== -1) s += 4 + Math.max(0, 3 - Math.floor(i / 400));
+        else if (!hay.includes(t)) return 0; // every term must appear
+      }
+      return s;
+    }
+
+    function render(results, terms) {
+      active = 0;
+      list.innerHTML = results
+        .map(
+          (r, i) => `
+          <li>
+            <a href="${r.u}" class="search-hit${i === 0 ? ' is-active' : ''}" data-hit>
+              <span class="search-hit-crumb"><span class="search-hit-series">${escapeHtml(r.s||"")}</span><span class="search-hit-n">${r.n}</span>${escapeHtml(r.m)} <span class="search-hit-sep">›</span> ${escapeHtml(r.h)}</span>
+              <span class="search-hit-text">${excerpt(r.t, terms)}</span>
+            </a>
+          </li>`
+        )
+        .join('');
+      empty.hidden = results.length > 0;
+    }
+
+    function run() {
+      const q = input.value.trim().toLowerCase();
+      if (!q || !index) {
+        list.innerHTML = '';
+        empty.hidden = true;
+        return;
+      }
+      const terms = q.split(/\s+/).filter(Boolean);
+      const results = index
+        .map((r) => ({ r, s: score(r, terms) }))
+        .filter((x) => x.s > 0)
+        .sort((a, b) => b.s - a.s || a.r.n - b.r.n)
+        .slice(0, 12)
+        .map((x) => x.r);
+      render(results, terms);
+    }
+
+    function move(delta) {
+      const hits = list.querySelectorAll('[data-hit]');
+      if (!hits.length) return;
+      hits[active]?.classList.remove('is-active');
+      active = (active + delta + hits.length) % hits.length;
+      hits[active].classList.add('is-active');
+      hits[active].scrollIntoView({ block: 'nearest' });
+    }
+
+    input.addEventListener('input', () => {
+      load().then(run);
+      run();
+    });
+
+    overlay.querySelector('[data-search-close]').addEventListener('click', close);
+
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        move(1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        move(-1);
+      } else if (e.key === 'Enter') {
+        const hit = list.querySelectorAll('[data-hit]')[active];
+        if (hit) {
+          e.preventDefault();
+          window.location.href = hit.getAttribute('href');
+        }
+      }
+    });
+
+    document.querySelectorAll('[data-search-open]').forEach((b) =>
+      b.addEventListener('click', open)
+    );
+
+    window.__openSearch = open;
+  })();
+})();</script><script>(function(){const base = "/blog";
+
+      (() => {
+        const root = document.documentElement;
+
+        /* ---- theme ---------------------------------------------------- */
+        document.querySelector('[data-theme-toggle]')?.addEventListener('click', () => {
+          const light = root.classList.toggle('light');
+          try {
+            localStorage.setItem('refresher:theme', light ? 'light' : 'dark');
+          } catch (e) {}
+        });
+
+        /* ---- progress (localStorage) ---------------------------------- */
+        const KEY = 'refresher:progress';
+        const readSet = () => {
+          try {
+            return new Set(JSON.parse(localStorage.getItem(KEY) || '[]'));
+          } catch (e) {
+            return new Set();
+          }
+        };
+        const writeSet = (s) => {
+          try {
+            localStorage.setItem(KEY, JSON.stringify([...s]));
+          } catch (e) {}
+        };
+
+        function paintProgress() {
+          const done = readSet();
+          const ticks = document.querySelectorAll('[data-tick]');
+          // A module can own more than one tick (rail + contents card), so
+          // count distinct module ids rather than elements.
+          const ids = new Set();
+          ticks.forEach((t) => {
+            const id = t.getAttribute('data-tick');
+            ids.add(id);
+            if (done.has(id)) t.setAttribute('data-read', '');
+            else t.removeAttribute('data-read');
+          });
+          const n = [...ids].filter((id) => done.has(id)).length;
+          const total = ids.size || 1;
+          const fill = document.querySelector('[data-progress-fill]');
+          if (fill) fill.style.width = `${(n / total) * 100}%`;
+          const count = document.querySelector('[data-progress-count]');
+          if (count) count.textContent = String(n);
+          document.querySelectorAll('[data-mark]').forEach((btn) => {
+            const id = btn.getAttribute('data-mark');
+            const on = done.has(id);
+            btn.setAttribute('aria-pressed', String(on));
+            btn.textContent = on ? '✓ Reviewed' : 'Mark as reviewed';
+          });
+        }
+
+        document.querySelectorAll('[data-mark]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-mark');
+            const s = readSet();
+            s.has(id) ? s.delete(id) : s.add(id);
+            writeSet(s);
+            paintProgress();
+          });
+        });
+
+        paintProgress();
+
+        /* ---- scrollspy over h2s, mirrored into the rail --------------- */
+        const article = document.querySelector('[data-article]');
+        const heads = article ? [...article.querySelectorAll('h2[id]')] : [];
+        const subLinks = new Map(
+          [...document.querySelectorAll('[data-toc]')].map((a) => [
+            a.getAttribute('data-toc'),
+            a,
+          ])
+        );
+
+        if (heads.length && subLinks.size) {
+          let currentId = null;
+          const spy = () => {
+            let found = heads[0].id;
+            for (const h of heads) {
+              if (h.getBoundingClientRect().top <= 96) found = h.id;
+              else break;
+            }
+            if (found === currentId) return;
+            subLinks.get(currentId)?.classList.remove('is-current');
+            currentId = found;
+            const el = subLinks.get(currentId);
+            if (el) {
+              el.classList.add('is-current');
+              el.scrollIntoView({ block: 'nearest' });
+            }
+          };
+          spy();
+          addEventListener('scroll', spy, { passive: true });
+        }
+
+        /* ---- keyboard ------------------------------------------------- */
+        const stops = article
+          ? [...article.querySelectorAll('h2[id], h3[id]')]
+          : [];
+
+        function jump(delta) {
+          if (!stops.length) return;
+          // The heading we are "in": the last one scrolled past the threshold.
+          let cur = -1;
+          for (let i = 0; i < stops.length; i++) {
+            if (stops[i].getBoundingClientRect().top <= 100) cur = i;
+            else break;
+          }
+          const target = cur + delta;
+          if (target < 0) return scrollTo({ top: 0, behavior: 'smooth' });
+          if (target >= stops.length) return;
+          stops[target].scrollIntoView({ block: 'start' });
+        }
+
+        addEventListener('keydown', (e) => {
+          const tag = (e.target.tagName || '').toLowerCase();
+          if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+          if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+          if (e.key === '/') {
+            e.preventDefault();
+            window.__openSearch?.();
+          } else if (e.key === 'j') {
+            e.preventDefault();
+            jump(1);
+          } else if (e.key === 'k') {
+            e.preventDefault();
+            jump(-1);
+          } else if (e.key === '[' || e.key === ']') {
+            const sel = e.key === '[' ? '[data-prev]' : '[data-next]';
+            const a = document.querySelector(sel);
+            if (a) {
+              e.preventDefault();
+              window.location.href = a.getAttribute('href');
+            }
+          }
+        });
+
+        /* ---- narrow-screen rail --------------------------------------- */
+        const rail = document.querySelector('[data-rail]');
+        document.querySelector('[data-rail-toggle]')?.addEventListener('click', () => {
+          rail.classList.toggle('is-open');
+        });
+        rail?.addEventListener('click', (e) => {
+          if (e.target.closest('a')) rail.classList.remove('is-open');
+        });
+      })();
+    })();</script></body></html>

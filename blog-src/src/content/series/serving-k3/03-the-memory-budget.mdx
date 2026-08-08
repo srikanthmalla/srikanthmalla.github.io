@@ -1,0 +1,295 @@
+---
+n: 3
+title: 'The memory budget'
+blurb: '1.56 TB of weights before a single token. What that leaves for KV on each cluster shape, why the published minimum is 8 GPUs and the production recommendation is 64, and the one measured pool size everyone should start from.'
+part: 'S'
+minutes: 16
+draft: false
+tags: ['memory', 'KV cache', 'cluster sizing', 'H200', 'B300', 'GB300', 'MI355X', 'capacity planning', 'weight loading']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+Capacity planning for K3 starts from one subtraction. The weights are about **1.56 TB** at native
+MXFP4, they must be resident, and whatever is left after dividing them across your GPUs is your KV
+budget. Everything about the deployment — how many concurrent users you can serve, how long their
+contexts can be, whether prefix caching helps — falls out of that remainder. On an 8×B300 node with
+288 GB per GPU you are placing roughly **195 GiB of weights per GPU**, leaving something under 90 GB
+for cache, activations and workspace. On 16×H200 at 141 GB, weights drop to about **102.75 GB per
+GPU** and the [measured KV pool was 7.95 GB per GPU](https://huggingface.co/moonshotai/Kimi-K3/discussions/136).
+That second number is the single most useful measurement published about serving K3, because it is
+the only one taken on hardware most people actually have, and it is small.
+
+The reason 7.95 GB is the number to reason from rather than the 195 GiB figure is that it is what
+remains after everything real: framework overhead, CUDA graphs, activation workspace, the MoE
+all-to-all buffers, and a `mem-fraction-static` of 0.85 that exists because pushing it higher causes
+failures. It supported **~308,608 tokens** of hybrid state. Against K3's 1M-token advertised window,
+that is instructive: a *single* request at full context would not fit. Long context and high
+concurrency are not two separate features you tune independently — they are two ways of spending the
+same 308 K tokens, and Module 7 is about what happens when you try to have both.
+
+The third piece is that cluster shape is not a free choice, and the published shapes are quantised
+rather than continuous. [SGLang's cookbook](https://docs.sglang.io/cookbook/autoregressive/Moonshotai/Kimi-K3)
+lists working configurations at 8 B300/GB300/MI355X, 16 B200 or H200, and 32 H100 — the count rises
+as per-GPU capacity falls, which is just the weights divided by what fits. But Moonshot's own launch
+guidance recommends **64 or more accelerators** for efficient production inference, and the gap
+between "8 GPUs will run it" and "64 GPUs to run it well" is not about memory at all. It is about
+expert parallelism: 896 experts want a large high-bandwidth communication domain, and the shapes that
+merely fit the weights leave you doing all-to-all across too few ranks with too little headroom.
+
+<Callout type="trap" title="sizing from the weight footprint alone">
+  "1.56 TB of weights, my GPUs have 141 GB, so 12 GPUs" is the calculation that produces a cluster
+  that loads the model and cannot serve anyone. The measured H200 deployment used 16 GPUs and still
+  ended up with under 8 GB per GPU of cache. Size from the *remainder* you need, not from the weights
+  you must hold — and get the remainder from a measurement, because framework overhead on a model
+  this shape is not something you can estimate.
+</Callout>
+
+## What the reports actually measured
+
+Published working cluster shapes:
+
+| Shape | Per-GPU capacity | Aggregate | Source |
+| ----- | ---------------- | --------- | ------ |
+| 8 × B300 / GB300 | 288 GB | 2,304 GB | vLLM, SGLang cookbook |
+| 8 × MI355X | 288 GB | 2,304 GB | SGLang cookbook |
+| 16 × B200 | 192 GB | 3,072 GB | SGLang cookbook |
+| 16 × H200 | 141 GB | 2,256 GB | SGLang cookbook, community report |
+| 32 × H100 | 80 GB | 2,560 GB | SGLang cookbook |
+| **64+** | — | — | **Moonshot's production recommendation** |
+
+The one end-to-end measured budget, from the
+[16×H200 community deployment](https://huggingface.co/moonshotai/Kimi-K3/discussions/136):
+
+| Item | Value |
+| ---- | ----- |
+| Engine | SGLang, TP16 + EP16 |
+| MoE backend | Marlin (W4A16 dequantizing) |
+| Attention backend | FlashMLA |
+| `mem-fraction-static` | 0.85 |
+| Weights per GPU | ~102.75 GB |
+| **KV pool per GPU** | **7.95 GB (bf16)** |
+| **Tokens supported** | **~308,608** |
+| Cold start, total | ~13 min |
+| — weight loading (1.56 TB) | 11.2 min |
+| — distributed init | 25 s |
+| — CUDA graph capture | 39 s |
+
+What the 308 K token pool buys, depending on how you spend it:
+
+| Spending pattern | Concurrent requests |
+| ---------------- | ------------------- |
+| 1 M context each | **0** — one request does not fit |
+| 128 K context each | ~2 |
+| 32 K context each | ~9 |
+| 8 K context each | ~37 |
+| 2 K context each | ~150 |
+
+Treat these as the shape of the constraint rather than exact figures — the pool holds both paged MLA
+KV and fixed-size KDA state, and the per-request constant means short requests do worse than a naive
+division suggests.
+
+## Critical thinking
+
+<Probe q="Why does Moonshot recommend 64+ accelerators when 8 will hold the model?">
+
+Because the two numbers answer different questions, and only the smaller one is about memory.
+
+**8 GPUs is a capacity statement.** 1.56 TB of weights across 8×288 GB is ~195 GiB per GPU, which
+fits with room left over. It is the minimum shape on which the model exists.
+
+**64+ is a communication statement.** K3 activates 16 of 896 experts per token, and expert
+parallelism is how you avoid replicating 2.78 T of weights everywhere. The all-to-all that dispatches
+tokens to expert-holding ranks and gathers the results back is the collective this model lives or dies
+on, and its behaviour improves with a larger high-bandwidth domain for reasons the codesign series'
+Module 11 sets out:
+
+- **Experts per rank falls as ranks rise.** With EP8 each rank holds 112 experts; with EP64 it holds
+  14. Fewer experts per rank means less weight traffic per rank per token, which matters because
+  decode is bandwidth-bound.
+- **Load imbalance averages out.** The step ends when the slowest rank finishes. A rank holding 112
+  experts sees the sum of 112 experts' loads, but so does everyone else — the variance that hurts is
+  in how *hot* the hottest rank is, and spreading experts over more ranks with the same top-$k$
+  reduces the chance any one rank is disproportionately loaded.
+- **You need the domain to be high-bandwidth, not merely large.** vLLM states that multi-node
+  expert/data parallel deployments require RDMA or NVLink. 64 accelerators inside an NVL72-class
+  domain is a very different machine from 64 accelerators across eight Ethernet-connected nodes, and
+  only the first is what the recommendation means.
+
+**The honest reading of the gap:** 8 GPUs is what you deploy to evaluate the model or serve a handful
+of internal users. 64+ is what you deploy to serve traffic economically. The published single-user
+numbers — 111–118 tok/s on vLLM, ~113 on SGLang — come from 8- and 16-GPU configurations, and the
+aggregate throughput numbers that make the economics work (SGLang's **2,808 tok/s per GPU** under
+disaggregated PP8 prefill plus TP8 decode) come from larger, disaggregated shapes. Quoting the two
+together as though one implies the other is the most common error in the coverage.
+
+</Probe>
+
+<Probe q="A 308 K token pool against a 1 M context window. How is that not a contradiction?">
+
+It is not a contradiction, but it is a much sharper constraint than the spec sheet implies, and the
+resolution is that the 1 M window is a *model* capability and the pool is a *deployment* budget.
+
+**What the 1 M means.** The model was trained to attend over a million tokens and will produce
+coherent output at that length. Nothing about that claim promises any particular deployment can hold
+a million tokens of state.
+
+**Why 308 K on that cluster.** 16×H200 is a shape chosen to *fit the weights*, not to leave cache
+room. After ~102.75 GB of weights per 141 GB GPU, at a static fraction of 0.85, 7.95 GB remains.
+K3's hybrid state is much cheaper per token than a uniform full-attention model's — Module 2's ~4×
+argument — but cheaper is not free.
+
+**How you actually get to a million tokens**, and each of these is a real strategy from the reports:
+
+- **More GPUs.** The obvious answer: the pool scales with the number of GPUs once the weights are
+  amortised across them. This is the main reason the production recommendation is 64+.
+- **Decode context parallelism.** SGLang's DCP shards MLA KV *by token position* across ranks, one
+  $1/N$ per rank, reconciled with a single all-to-all per layer via log-sum-exp reduction. They report
+  **7.9× logical KV capacity on K3 with DCP8** — which converts a 308 K-class pool into a 2.4 M-class
+  one. Note that KDA layers stay tensor-parallel, because a recurrent state cannot be sharded by
+  position.
+- **Offloading.** Push cold KV to CPU DRAM or NVMe and pull it back on demand. Module 8.
+- **Accept the trade.** Serve long contexts at low concurrency, or high concurrency at short
+  contexts, and route the two to different pools.
+
+**The constraint to internalise** is that context length and concurrency multiply. Your pool holds a
+fixed number of tokens; a request consumes context-length tokens for its whole lifetime; so
+concurrent requests × context length ≤ pool. There is no configuration in which you serve many users
+at a million tokens each on a cluster sized to hold the weights, and DCP is the only technique in the
+list that changes the constant by an order of magnitude rather than incrementally.
+
+</Probe>
+
+<Probe q="Weight loading took 11.2 minutes of a 13-minute cold start. Does that matter?">
+
+It matters for exactly one thing, and it is worth being clear about which, because it is easy to
+over- or under-react.
+
+**It does not matter for steady-state serving.** A 13-minute start amortised over days of uptime is
+nothing, and the 39 seconds of CUDA graph capture and 25 seconds of distributed init are noise.
+
+**It matters enormously for anything that restarts.** Concretely:
+
+- **Autoscaling is effectively off the table** at this granularity. You cannot respond to a traffic
+  spike by bringing up another replica in 13 minutes. Capacity must be provisioned ahead of demand,
+  which changes the cost model in Module 9 — you are paying for peak, not for average.
+- **Rolling deployments are expensive.** Every config change, engine upgrade or model revision costs
+  13 minutes per replica, and you need spare capacity to cover the replica that is down.
+- **Crash recovery is a real outage.** A rank dying takes the whole tensor-parallel group with it,
+  and recovery is a full reload. At 16-GPU scale across two nodes, the probability of some rank
+  failing over a long run is not negligible, and there is no partial recovery.
+- **It compounds with the failure modes below.** The same report notes that the deployment needed
+  explicit NIC pinning via `NCCL_SOCKET_IFNAME` and `GLOO_SOCKET_IFNAME`, and a local Triton JIT
+  cache to avoid filesystem contention between ranks. Each of those was presumably found by a 13-minute
+  cycle ending in a failure.
+
+**What can be done**, in rough order of effectiveness: keep replicas warm and over-provision rather
+than autoscale; use a fast shared filesystem or local NVMe for weights, since 1.56 TB at 11.2 minutes
+implies roughly 2.3 GB/s, which is far below what local NVMe delivers and suggests the load path was
+the bottleneck rather than anything intrinsic; and separate the prefill and decode pools (Modules 4
+and 5) so that a decode replica restarting does not take prefill capacity with it.
+
+The general point is that the cold-start cost is not an inconvenience but an input to the
+architecture. It pushes you toward fewer, larger, longer-lived replicas — which is the same direction
+the memory budget and the expert-parallelism requirement push, and it is why K3 deployments look
+nothing like the elastic fleets people are used to running smaller models on.
+
+</Probe>
+
+<Probe q="How would you size a cluster for a stated workload, given what is published?">
+
+Work backwards from the token pool, because that is the binding constraint and the only quantity with
+a measurement attached.
+
+**Step 1 — state the workload in tokens of resident state.** Concurrency × mean context length, plus
+headroom for the tail. 50 concurrent agent sessions at 100 K context is 5 M tokens of state. 200 chat
+users at 8 K is 1.6 M.
+
+**Step 2 — divide by measured per-GPU pool, not by an estimate.** The one published figure is 7.95 GB
+supporting ~308,608 tokens on H200 at TP16/EP16 with `mem-fraction-static=0.85`. If your hardware and
+config differ, that number changes, and it changes in ways framework overhead makes hard to predict —
+so measure it on your shape before planning on it. Note also that the pool is per GPU but the *state*
+is sharded, so the aggregate token capacity depends on your parallelism: TP16 replicates KV across
+ranks in the naive case, while DCP8 shards MLA KV by position for a reported **7.9× logical capacity**.
+Getting this wrong by a factor of 8 is easy.
+
+**Step 3 — check the expert-parallel domain separately.** Memory sizing may give you a number below
+what expert parallelism wants. Moonshot's 64+ recommendation exists because EP behaves better in a
+large high-bandwidth domain, and vLLM requires RDMA or NVLink for multi-node EP. If your memory
+calculation says 16 GPUs and they are in two Ethernet-connected nodes, you have satisfied the wrong
+constraint.
+
+**Step 4 — decide prefill and decode separately, then disaggregate.** They want different shapes.
+SGLang reports **PP8×TP1 chunked-pipeline prefill delivering 1.7× TEP8's ceiling**, and separately
+DCP8 for decode capacity; vLLM reports a **TEP8 prefill routed to DEP16 decode** configuration. If you
+size one pool for both, one of the two is misprovisioned — which is the codesign series' Module 12
+conclusion arriving as a deployment recipe.
+
+**Step 5 — over-provision for cold start.** 13 minutes to recover means your steady-state utilisation
+target has to leave room for a failed replica, because you cannot replace it quickly.
+
+**And the honest caveat**, which belongs in any plan built on this: every number above comes from
+day-0 reports published within days of the weights, on hardware ranging from H200 to GB300 NVL72,
+with different engines and configurations. They are not comparable to each other and they will move.
+Use them to size a *first* deployment to measure on, not as a specification.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="What is the single most useful published memory measurement, and why that one?">
+
+**7.95 GB of KV pool per GPU supporting ~308,608 tokens**, from the 16×H200 community deployment at
+TP16/EP16 with `mem-fraction-static=0.85`. It is the useful one because it is measured on hardware
+most people have, and because it is what remains *after* framework overhead, CUDA graphs, activation
+workspace and all-to-all buffers — none of which you can estimate reliably on a model this shape.
+
+</SelfCheck>
+
+<SelfCheck q="Why is the minimum 8 GPUs but the production recommendation 64+?">
+
+8 GPUs is a **capacity** statement — 1.56 TB across 8×288 GB is ~195 GiB each, and it fits. 64+ is a
+**communication** statement about expert parallelism: fewer experts per rank means less weight traffic
+per token, load imbalance averages out across more ranks, and the domain must be high-bandwidth
+(vLLM requires RDMA or NVLink for multi-node EP). 8 GPUs is what you deploy to evaluate; 64+ is what
+you deploy to serve economically.
+
+</SelfCheck>
+
+<SelfCheck q="How is a 308 K token pool compatible with a 1 M context window?">
+
+The 1 M is a **model capability**; the pool is a **deployment budget**, and the tested shape was
+chosen to fit the weights rather than to leave cache room. Routes to a real 1 M: more GPUs; **DCP8**,
+which shards MLA KV by token position for a reported **7.9× logical KV capacity** (KDA layers stay
+tensor-parallel, since a recurrent state cannot be position-sharded); offloading; or routing long
+context and high concurrency to separate pools. The constraint to internalise: concurrency × context
+length ≤ pool, and only DCP moves that by an order of magnitude.
+
+</SelfCheck>
+
+<SelfCheck q="What does a 13-minute cold start actually cost you?">
+
+Not steady-state performance — architecture. Autoscaling becomes impractical, so you provision for
+peak rather than average; rolling deploys cost 13 min per replica plus spare capacity; a single rank
+failure takes the whole TP group and requires a full reload with no partial recovery. It pushes you
+toward fewer, larger, longer-lived replicas — the same direction the memory budget and the
+expert-parallel domain requirement push. Note 1.56 TB in 11.2 min is only ~2.3 GB/s, well under local
+NVMe, so the load path is likely improvable.
+
+</SelfCheck>
+
+<SelfCheck q="Give the five steps for sizing a K3 cluster.">
+
+(1) State the workload as **concurrency × context length** in tokens of resident state. (2) Divide by
+a **measured** per-GPU pool on your own shape, accounting for whether your parallelism replicates or
+shards KV — DCP8's 7.9× makes this an easy factor-of-8 error. (3) Check the **expert-parallel domain**
+separately, since memory sizing may give a number below what EP wants and 16 GPUs in two
+Ethernet-connected nodes satisfies the wrong constraint. (4) Size **prefill and decode separately and
+disaggregate** — PP8×TP1 prefill vs DCP8/TP8 decode. (5) Over-provision for a 13-minute cold start.
+Caveat: every input is a day-0 number from different hardware and will move.
+
+</SelfCheck>

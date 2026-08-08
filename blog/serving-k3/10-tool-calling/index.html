@@ -1,0 +1,590 @@
+<!DOCTYPE html><html lang="en" data-astro-cid-z4jru4n3><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>10. Tool calling and the API surface — Serving Kimi K3</title><meta name="description" content="The model can be running perfectly and your agents still fail. Reasoning and tool-call parsers, grammar-constrained decoding, the empty-tool_calls failure, and a vendor conformance suite where 26 of 30 failures were one missing feature."><link rel="icon" href="data:,"><script>
+      (() => {
+        try {
+          const t = localStorage.getItem('refresher:theme');
+          if (t === 'light') document.documentElement.classList.add('light');
+        } catch (e) {}
+      })();
+    </script><link rel="stylesheet" href="/blog/_astro/BaseLayout.BNp-sd5V.css"><style>.wrap[data-astro-cid-5x65ok44]{max-width:68ch;margin-inline:auto;padding:3rem 1.25rem 6rem}@media (width>=1024px){.wrap[data-astro-cid-5x65ok44]{max-width:calc(68ch + 6rem);padding-inline:3rem}}.mhead[data-astro-cid-5x65ok44]{border-block-end:1px solid var(--rule);margin-block-end:.5rem;padding-block-end:1.75rem}.mhead-kicker[data-astro-cid-5x65ok44]{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint);margin:0 0 .85rem;font-size:.6875rem;font-weight:500}.mhead-n[data-astro-cid-5x65ok44]{color:var(--accent);font-weight:640}.mhead-dot[data-astro-cid-5x65ok44]{opacity:.5;padding-inline:.35rem}.mhead-title[data-astro-cid-5x65ok44]{font-family:var(--font-sans);letter-spacing:-.027em;color:var(--ink-strong);text-wrap:balance;margin:0;font-size:clamp(1.75rem,1.3rem + 1.9vw,2.375rem);font-weight:660;line-height:1.12}.mhead-blurb[data-astro-cid-5x65ok44]{color:var(--ink-muted);max-width:58ch;margin:.85rem 0 0;font-size:1.0625rem;line-height:1.6}.mfoot[data-astro-cid-5x65ok44]{border-block-start:1px solid var(--rule);margin-block-start:4rem;padding-block-start:1.75rem}.mark[data-astro-cid-5x65ok44]{font-family:var(--font-sans);border:1px solid var(--rule);background:var(--bg-raised);color:var(--ink-muted);cursor:pointer;border-radius:5px;padding:.4rem .85rem;font-size:.75rem;font-weight:550}.mark[data-astro-cid-5x65ok44]:hover{color:var(--ink-strong);border-color:var(--ink-faint)}.mark[data-astro-cid-5x65ok44][aria-pressed=true]{color:var(--bridge);border-color:color-mix(in oklab, var(--bridge) 45%, var(--rule))}.pager[data-astro-cid-5x65ok44]{grid-template-columns:1fr 1fr;gap:1rem;margin-block-start:2rem;display:grid}.pager-link[data-astro-cid-5x65ok44]{border:1px solid var(--rule);font-family:var(--font-sans);border-radius:6px;flex-direction:column;gap:.25rem;padding:.75rem .9rem;text-decoration:none;display:flex}.pager-link[data-astro-cid-5x65ok44]:hover{border-color:var(--ink-faint);background:var(--bg-raised)}.pager-link[data-astro-cid-5x65ok44].is-next{text-align:end}.pager-dir[data-astro-cid-5x65ok44]{text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);font-size:.6875rem}.pager-title[data-astro-cid-5x65ok44]{color:var(--ink-strong);font-size:.8125rem;font-weight:550;line-height:1.35}
+</style><style>.callout{border:1px solid var(--rule);border-inline-start-width:2px;border-radius:5px;margin-block:1.75rem;padding:.9rem 1.1rem 1rem;font-size:.9375rem;line-height:1.65}.callout-probe{border-inline-start-color:var(--probe);background:var(--probe-bg)}.callout-trap{border-inline-start-color:var(--trap);background:var(--trap-bg)}.callout-bridge{border-inline-start-color:var(--bridge);background:var(--bridge-bg)}.callout-label{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;align-items:center;gap:.45rem;margin:0 0 .5rem;font-size:.6875rem;font-weight:620;display:flex}.callout-probe .callout-label{color:var(--probe)}.callout-trap .callout-label{color:var(--trap)}.callout-bridge .callout-label{color:var(--bridge)}.callout-mark{background:currentColor;border-radius:50%;flex:none;width:5px;height:5px}.callout-title{text-transform:none;letter-spacing:0;color:var(--ink-muted);font-weight:500}.callout-body>:first-child{margin-block-start:0}.callout-body>:last-child{margin-block-end:0}.callout-body>*+*{margin-block-start:.75em}.probe{margin-block:1.75rem}.prose .probe-q{font-family:var(--font-sans);letter-spacing:-.01em;color:var(--ink-strong);margin:0 0 .6rem;padding-inline-start:1.15rem;font-size:1rem;font-weight:600;line-height:1.45;position:relative}.prose .probe-q:before{content:"›";color:var(--accent);font-weight:700;position:absolute;inset-inline-start:0}.probe-a{border-inline-start:1px solid var(--rule);margin-inline-start:.1rem;padding-inline-start:1.15rem}.probe-a>*+*{margin-block-start:1.15em}.probe-a>:first-child{margin-block-start:0}.probe-a>:last-child{margin-block-end:0}.selfcheck{border-block-start:1px solid var(--rule-soft)}.selfcheck:last-of-type{border-block-end:1px solid var(--rule-soft)}.prose>.selfcheck+.selfcheck{margin-block-start:0}.selfcheck>summary{cursor:pointer;color:var(--ink);align-items:baseline;gap:1rem;padding:.7rem .2rem;list-style:none;display:flex}.selfcheck>summary::-webkit-details-marker{display:none}.selfcheck>summary:hover{color:var(--ink-strong)}.selfcheck-q{flex:1}.selfcheck-q code{white-space:nowrap}.selfcheck-cue{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);flex:none;padding-block-start:.15rem;font-size:.6875rem;font-weight:600}.selfcheck>summary:hover .selfcheck-cue{color:var(--accent)}.selfcheck-cue-hide,.selfcheck[open] .selfcheck-cue-show{display:none}.selfcheck[open] .selfcheck-cue-hide{display:inline}.selfcheck-a{color:var(--ink-muted);border-inline-start:2px solid var(--rule);margin-block-end:.9rem;margin-inline-start:.2rem;padding:.15rem .2rem 1.05rem;padding-inline-start:1rem;font-size:.9375rem}.selfcheck-a>:first-child{margin-block-start:0}.selfcheck-a>:last-child{margin-block-end:0}.selfcheck-a>*+*{margin-block-start:.7em}.selfcheck-a strong{color:var(--ink)}
+</style></head><body data-astro-cid-z4jru4n3><a href="#content" class="skip" data-astro-cid-z4jru4n3>Skip to content</a><div class="shell" data-astro-cid-z4jru4n3><aside class="rail" data-rail data-astro-cid-z4jru4n3><nav class="rail-nav" aria-label="Serving Kimi K3 contents" data-astro-cid-wv7whodv><div class="rail-head" data-astro-cid-wv7whodv><a href="/blog/" class="rail-up" data-astro-cid-wv7whodv>All series</a><a href="/blog/serving-k3/" class="rail-home" data-astro-cid-wv7whodv><span class="rail-home-title" data-astro-cid-wv7whodv>Serving Kimi K3</span><span class="rail-home-sub" data-astro-cid-wv7whodv>A 2.8T hybrid-attention MoE, and what it takes to keep it fed</span></a><p class="rail-progress" data-astro-cid-wv7whodv><span class="rail-progress-bar" data-astro-cid-wv7whodv><span data-progress-fill data-astro-cid-wv7whodv></span></span><span class="rail-progress-text" data-astro-cid-wv7whodv><span data-progress-count data-astro-cid-wv7whodv>0</span>/11 reviewed</span></p></div><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part S</span>The model</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/01-architecture/" class="rail-link" title="2.78T total, 104B active, 896 experts at top-16, 93 layers split 69 KDA to 24 gated MLA, native MXFP4. The numbers that matter for serving, and the one that most write-ups get wrong." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>1</span><span class="rail-title" data-astro-cid-wv7whodv>What K3 actually is</span><span class="rail-tick" data-tick="serving-k3/01-architecture" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/02-kda-and-the-kv-cache/" class="rail-link" title="69 of 93 layers keep a fixed-size recurrent state instead of a growing KV cache. That is what makes a million tokens affordable — and it creates the hardest engineering problem in the stack." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>2</span><span class="rail-title" data-astro-cid-wv7whodv>KDA, AttnRes, and the two-state problem</span><span class="rail-tick" data-tick="serving-k3/02-kda-and-the-kv-cache" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/03-the-memory-budget/" class="rail-link" title="1.56 TB of weights before a single token. What that leaves for KV on each cluster shape, why the published minimum is 8 GPUs and the production recommendation is 64, and the one measured pool size everyone should start from." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>3</span><span class="rail-title" data-astro-cid-wv7whodv>The memory budget</span><span class="rail-tick" data-tick="serving-k3/03-the-memory-budget" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part T</span>The engines</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/04-vllm/" class="rail-link" title="One hybrid KV manager, DSpark speculative decoding at 3.14×, custom collectives at 1.7–4.5× over NCCL — and three limitations they publish that will bite you on day one." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>4</span><span class="rail-title" data-astro-cid-wv7whodv>vLLM&#39;s path</span><span class="rail-tick" data-tick="serving-k3/04-vllm" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/05-sglang/" class="rail-link" title="One unified pool allocated from both ends, chunked pipeline prefill at 1.7× the tensor-parallel ceiling, decode context parallelism for 7.9× logical KV — and 2,808 tok/s per GPU when prefill and decode are pulled apart." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>5</span><span class="rail-title" data-astro-cid-wv7whodv>SGLang&#39;s path</span><span class="rail-tick" data-tick="serving-k3/05-sglang" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/06-choosing/" class="rail-link" title="vLLM says 370 tok/s, SGLang says 423, and a community report on H200 measured 16.8. All three are honest. What actually separates the engines, and the one head-to-head data point that exists." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>6</span><span class="rail-title" data-astro-cid-wv7whodv>Choosing, and why the numbers don&#39;t compare</span><span class="rail-tick" data-tick="serving-k3/06-choosing" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part U</span>Where it falls over</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/07-concurrency-collapse/" class="rail-link" title="16.8 tok/s at one request, 146.9 aggregate at fifty-four — 8.7× more total throughput for a 6.2× drop per user. Why long context and many users are the same budget, and what actually sets the ceiling." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>7</span><span class="rail-title" data-astro-cid-wv7whodv>The concurrency collapse</span><span class="rail-tick" data-tick="serving-k3/07-concurrency-collapse" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/08-kv-offloading/" class="rail-link" title="Five backends behind one vLLM connector interface — native, LMCache, Mooncake, 3FS, NIXL — three storage tiers, and the constraint nobody documents: which of them work with which parallelism, and what a recurrent state does to all of it." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>8</span><span class="rail-title" data-astro-cid-wv7whodv>Multi-node KV offloading</span><span class="rail-tick" data-tick="serving-k3/08-kv-offloading" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/09-disaggregation/" class="rail-link" title="Prefill and decode want opposite hardware and opposite parallelism, so both engines separate them. What crosses the boundary, why K3 makes the transfer harder than usual, and why the router has to know what is cached where." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>9</span><span class="rail-title" data-astro-cid-wv7whodv>Disaggregation and cache-aware routing</span><span class="rail-tick" data-tick="serving-k3/09-disaggregation" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part V</span>Operating it</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/10-tool-calling/" class="rail-link is-active" aria-current="page" title="The model can be running perfectly and your agents still fail. Reasoning and tool-call parsers, grammar-constrained decoding, the empty-tool_calls failure, and a vendor conformance suite where 26 of 30 failures were one missing feature." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>10</span><span class="rail-title" data-astro-cid-wv7whodv>Tool calling and the API surface</span><span class="rail-tick" data-tick="serving-k3/10-tool-calling" aria-hidden="true" data-astro-cid-wv7whodv></span></a><ul class="rail-sub" data-rail-sub data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="#the-core-mental-model" class="rail-sub-link" data-toc="the-core-mental-model" data-astro-cid-wv7whodv>The core mental model</a></li><li data-astro-cid-wv7whodv><a href="#what-the-reports-actually-measured" class="rail-sub-link" data-toc="what-the-reports-actually-measured" data-astro-cid-wv7whodv>What the reports actually measured</a></li><li data-astro-cid-wv7whodv><a href="#critical-thinking" class="rail-sub-link" data-toc="critical-thinking" data-astro-cid-wv7whodv>Critical thinking</a></li><li data-astro-cid-wv7whodv><a href="#self-check" class="rail-sub-link" data-toc="self-check" data-astro-cid-wv7whodv>Self-check</a></li></ul></li><li data-astro-cid-wv7whodv><a href="/blog/serving-k3/11-cost-and-decision/" class="rail-link" title="Published break-even points span 2 billion to 24 billion tokens a month, and the spread is mostly assumptions rather than disagreement. The decision procedure, and an honest account of what these day-0 numbers are worth." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>11</span><span class="rail-title" data-astro-cid-wv7whodv>Cost, break-even, and what to actually do</span><span class="rail-tick" data-tick="serving-k3/11-cost-and-decision" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-other" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv>Other series</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>ML Hardware &amp; Low-Latency Systems</span></a></li><li data-astro-cid-wv7whodv><a href="/blog/diffusion/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>Diffusion</span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>ML Software &amp; Compilers</span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>ML Hardware/Software Codesign</span></a></li></ul></section><div class="rail-foot" data-astro-cid-wv7whodv><p data-astro-cid-wv7whodv><kbd data-astro-cid-wv7whodv>j</kbd> <kbd data-astro-cid-wv7whodv>k</kbd> section · <kbd data-astro-cid-wv7whodv>/</kbd> search · <kbd data-astro-cid-wv7whodv>[</kbd><kbd data-astro-cid-wv7whodv>]</kbd> module</p></div></nav></aside><div class="col" data-astro-cid-z4jru4n3><header class="topbar" data-astro-cid-z4jru4n3><button class="icon-btn only-narrow" data-rail-toggle aria-label="Toggle contents" data-astro-cid-z4jru4n3><svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M1.5 3.5h12M1.5 7.5h12M1.5 11.5h12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg></button><p class="crumb" data-astro-cid-z4jru4n3>Part V · Operating it › Tool calling and the API surface</p><div class="topbar-actions" data-astro-cid-z4jru4n3><button class="search-btn" data-search-open aria-label="Search" data-astro-cid-z4jru4n3><span aria-hidden="true" data-astro-cid-z4jru4n3>⌕</span><span class="search-btn-label" data-astro-cid-z4jru4n3>Search</span><kbd data-astro-cid-z4jru4n3>/</kbd></button><button class="icon-btn" data-theme-toggle aria-label="Toggle theme" data-astro-cid-z4jru4n3><svg class="i-sun" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><circle cx="7.5" cy="7.5" r="3" stroke="currentColor" stroke-width="1.2" data-astro-cid-z4jru4n3></circle><path d="M7.5 .8v1.7M7.5 12.5v1.7M14.2 7.5h-1.7M2.5 7.5H.8M12.24 2.76l-1.2 1.2M3.96 11.04l-1.2 1.2M12.24 12.24l-1.2-1.2M3.96 3.96l-1.2-1.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg><svg class="i-moon" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M13 9.3A5.8 5.8 0 0 1 5.7 2 5.9 5.9 0 1 0 13 9.3Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" data-astro-cid-z4jru4n3></path></svg></button><a class="site-link" href="/" data-astro-cid-z4jru4n3>srikanthmalla.com</a></div></header><main id="content" data-astro-cid-z4jru4n3><article class="wrap" data-article data-astro-cid-5x65ok44><header class="mhead" data-astro-cid-5x65ok44><p class="mhead-kicker" data-astro-cid-5x65ok44><span class="mhead-n" data-astro-cid-5x65ok44>Module 10</span><span class="mhead-dot" data-astro-cid-5x65ok44>·</span>Part V — Operating it<span class="mhead-dot" data-astro-cid-5x65ok44>·</span>15 min</p><h1 class="mhead-title" data-astro-cid-5x65ok44>Tool calling and the API surface</h1><p class="mhead-blurb" data-astro-cid-5x65ok44>The model can be running perfectly and your agents still fail. Reasoning and tool-call parsers, grammar-constrained decoding, the empty-tool_calls failure, and a vendor conformance suite where 26 of 30 failures were one missing feature.</p></header><div class="prose" data-astro-cid-5x65ok44><h2 id="the-core-mental-model">The core mental model<a class="anchor" href="#the-core-mental-model" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>Everything in this series so far has been about making K3 fast. This module is about the failure mode
+where it is fast and your application still does not work, which for agentic deployments is the more
+likely outcome on day one. K3’s raw output contains three distinct regions — reasoning, answer text,
+and tool calls — that must be separated and turned into an OpenAI-shaped API response. That separation
+is done by parsers you have to ask for explicitly: <code>--reasoning-parser kimi_k3</code> and
+<code>--tool-call-parser kimi_k3</code> on both vLLM and SGLang. Omit them and the model’s control tokens flow
+through into your content field as text, which is the exact symptom reported historically for K2 on
+vLLM 0.10.0 — the model appears to refuse to call functions while actually calling them into a string
+nobody parses.</p>
+<p>The parsers are necessary and not sufficient, because the model does not always emit what the parser
+expects. vLLM states plainly that they have “occasionally seen K3 emit a tool-call format its own
+parser does not expect, yielding an empty <code>tool_calls</code> result”, and characterise it as prompt- and
+run-dependent rather than a blanket failure. That is the worst shape a bug can have for a production
+agent: it succeeds almost always, fails unpredictably, and fails <em>quietly</em> — you get a 200 response
+with an empty tool list, which most client code interprets as “the model chose not to call a tool”
+rather than as an error. An agent loop that treats that as a decision rather than a fault will do
+something plausible and wrong.</p>
+<p>The mitigation that actually works is to stop relying on parsing free-form output and constrain the
+generation instead. vLLM integrates K3’s format with <strong>XGrammar</strong>, so structured regions are
+constrained <em>during decoding</em> and returned as separate reasoning, content and tool-call fields. This
+is the difference between hoping the model emits valid JSON matching your schema and making invalid
+tokens unreachable — the sampler masks them. It costs a little throughput and removes an entire class
+of failure, and for any agent whose next action depends on a parsed tool call, that trade is not close.</p>
+<aside class="callout callout-trap"><p class="callout-label"><span class="callout-mark" aria-hidden="true"></span>Common trap<span class="callout-title"> · an empty tool_calls array is not a decision</span></p><div class="callout-body"><p>Client code almost universally treats <code>tool_calls: []</code> as “the model answered directly”. On K3 it may
+instead mean the parser did not recognise what the model emitted. Those need different handling —
+one is a normal branch, the other should retry or fall back. If your agent cannot distinguish them,
+a parser mismatch becomes an agent that silently stops using its tools, and you will find out from
+users rather than from monitoring.</p></div></aside>
+<h2 id="what-the-reports-actually-measured">What the reports actually measured<a class="anchor" href="#what-the-reports-actually-measured" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>The flags, on both engines:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Flag</th><th>Purpose</th></tr></thead><tbody><tr><td><code>--reasoning-parser kimi_k3</code></td><td>separate the reasoning region from the answer</td></tr><tr><td><code>--tool-call-parser kimi_k3</code></td><td>extract tool calls into structured fields</td></tr><tr><td><code>--enable-auto-tool-choice</code></td><td>let the model decide when to call</td></tr><tr><td>Structured / strict tool calling</td><td>constrain the grammar during generation</td></tr></tbody></table></div>
+<p>vLLM ships a <a href="https://docs.vllm.ai/en/latest/api/vllm/parser/kimi_k3/"><code>kimi_k3</code> parser module</a>; the
+format is integrated with <strong>XGrammar</strong> so structured regions are constrained at decode time.</p>
+<p>Known failure modes:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Symptom</th><th>Cause</th><th>Reported for</th></tr></thead><tbody><tr><td>Empty <code>tool_calls</code>, 200 response</td><td>model emitted a format the parser did not expect; prompt- and run-dependent</td><td><a href="https://vllm.ai/blog/2026-07-27-k3">vLLM, K3</a></td></tr><tr><td>Control tokens appear as content text</td><td>parser not enabled or mismatched</td><td>vLLM 0.10.0 with <code>kimi_k2</code></td></tr></tbody></table></div>
+<p>Moonshot’s <strong>Kimi Vendor Verifier (KVV)</strong> conformance suite, per
+<a href="https://www.digitalocean.com/blog/serving-kimi-k3-inference-engine">DigitalOcean</a>:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Component</th><th>Covers</th></tr></thead><tbody><tr><td>OCRBench</td><td>vision / text extraction</td></tr><tr><td>MMMU Pro</td><td>multimodal reasoning</td></tr><tr><td>AIME2025</td><td>math</td></tr><tr><td>Tool calling</td><td>function-call correctness</td></tr><tr><td>JSON-schema accuracy</td><td>structured output conformance</td></tr><tr><td>SWE-Bench</td><td>coding agents</td></tr><tr><td>BEAM</td><td>long-term memory over <strong>synthetic 1M-token conversations</strong></td></tr></tbody></table></div>
+<p>And the result that is worth the whole module:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Finding</th><th>Detail</th></tr></thead><tbody><tr><td>Initial KVV run</td><td><strong>30 failures</strong></td></tr><tr><td>Traced to one cause</td><td><strong>26 of 30</strong> — missing dynamic tools implementation</td></tr></tbody></table></div>
+<h2 id="critical-thinking">Critical thinking<a class="anchor" href="#critical-thinking" aria-hidden="true" tabindex="-1">#</a></h2>
+<section class="probe"><h3 class="probe-q">26 of 30 conformance failures were one missing feature. What is the lesson?</h3><div class="probe-a"><p>That serving-stack conformance failures cluster, and that a raw failure count tells you almost nothing
+about how much work you have left.</p><p><strong>What happened.</strong> DigitalOcean ran Moonshot’s Kimi Vendor Verifier against their deployment and got
+30 failures spread across a six-benchmark suite. Read as a scorecard, that looks like a broad quality
+problem — failures in tool calling, in schema conformance, presumably in agentic coding. Read as a
+diagnosis, 26 of them were the same missing thing: dynamic tools support. One feature, implemented
+once, cleared 87% of the failures.</p><p><strong>Why it clusters like that.</strong> The benchmarks are not independent. Tool calling, JSON-schema accuracy
+and SWE-Bench all exercise the same API surface, so a single gap in that surface fails all three. This
+is the norm rather than the exception for serving conformance: the model’s weights are fixed and
+correct, so almost every failure is in the layer that formats requests and parses responses, and that
+layer has a small number of features each used by many tests.</p><p><strong>The practical consequences:</strong></p><ul>
+<li><strong>Triage by cause before by count.</strong> A dashboard showing “30 failures across 6 benchmarks” invites
+the conclusion that the model or the quantization is wrong. Grouping by root cause first would have
+shown one missing feature immediately.</li>
+<li><strong>Do not judge a deployment by an early conformance number.</strong> 30 failures sounds like a
+fundamentally broken serving stack; it was a fundamentally working one with one gap.</li>
+<li><strong>Run the vendor’s suite before you build on top.</strong> The value of KVV here is not the score, it is
+that it surfaced a missing feature that would otherwise have appeared as mysterious agent
+misbehaviour in production. Moonshot publishing a conformance suite at all is the useful thing, and
+running it is cheap relative to what it catches.</li>
+</ul><p><strong>And the observation I would generalise</strong>: on a model this well-supported by its engines, the
+performance work described in Modules 4–9 is largely done for you by vLLM and SGLang, while the API
+conformance work is not. That is where a deployment’s remaining risk actually lives, and it gets a
+fraction of the attention that tok/s does — including in the coverage this series is built from, where
+one paragraph on tool calling sits under many pages of throughput numbers.</p></div></section>
+<section class="probe"><h3 class="probe-q">Why does grammar-constrained decoding fix the empty-tool_calls problem, and what does it cost?</h3><div class="probe-a"><p>Because it changes the failure from “detect an invalid output after the fact” to “make an invalid
+output unreachable”, and those have very different reliability properties.</p><p><strong>How parsing fails.</strong> The model generates freely; the parser inspects the result and tries to extract
+tool calls. If the model emitted a format the parser does not recognise — a variant delimiter, an
+extra wrapper, a subtly different token sequence — extraction returns nothing. The generation was
+already produced and paid for; you discover the mismatch afterwards, and the only recovery is to
+retry and hope.</p><p><strong>How constrained decoding works.</strong> XGrammar maintains, at each decoding step, the set of tokens that
+could continue a valid parse of the target grammar, and masks the rest before sampling. Tokens that
+would produce malformed output have zero probability of being selected. The model cannot emit an
+unparseable tool call, because the tokens that would do so are unreachable. That converts a runtime
+detection problem into a construction guarantee, and it is why vLLM integrating K3’s format with
+XGrammar is the substantive fix rather than a convenience.</p><p><strong>What it costs:</strong></p><ul>
+<li><strong>Throughput.</strong> Computing the valid-token mask at each step is real work, and it is on the critical
+path of sampling. Modern implementations are efficient — precompiled grammars, cached mask
+computation — but it is not free, and it applies only to the structured regions, so the cost scales
+with how much of your output is constrained.</li>
+<li><strong>Expressiveness.</strong> The grammar must actually describe what you want. An over-tight schema forbids
+outputs the model would legitimately produce; a loose one lets malformed-but-parseable results
+through.</li>
+<li><strong>It cannot fix semantic errors.</strong> Constrained decoding guarantees the tool call is <em>well-formed</em>
+and matches your schema. It cannot guarantee the model called the <em>right</em> tool with the <em>right</em>
+arguments. Schema conformance and correctness are different properties, and only one is being
+bought.</li>
+</ul><p><strong>The layered defence that follows</strong>, which is vLLM’s own recommendation and which I would treat as
+the minimum for a production agent:</p><ol>
+<li><strong>Constrain generation</strong> with strict or structured tool calling wherever the schema is known.</li>
+<li><strong>Validate against your schema</strong> anyway on receipt — belt and braces, and it catches version skew
+between what you constrained and what you expect.</li>
+<li><strong>Treat empty <code>tool_calls</code> as a distinct outcome</strong>, not as “no tool needed”. Retry, or fall back to
+an unconstrained call, or escalate — but do not let the agent proceed as though the model made a
+choice.</li>
+<li><strong>Alert on the rate.</strong> Empty-tool-call frequency is a health metric. A step change in it means a
+model, engine or prompt change has moved the output format, and it is otherwise invisible.</li>
+</ol></div></section>
+<section class="probe"><h3 class="probe-q">Why do reasoning and tool-call parsers exist as separate opt-in flags at all?</h3><div class="probe-a"><p>Because the model’s output format is model-specific and the API contract is not, and someone has to
+own the translation between them — but the design has a real cost that shows up as this class of bug.</p><p><strong>The structural situation.</strong> K3 emits a single token stream containing reasoning, answer text and tool
+calls, delimited by model-specific control tokens. The OpenAI-compatible API expects three separate
+fields. The mapping between them is a property of <em>this model family</em> — the delimiters, the escaping,
+the ordering — so it cannot live in the generic server code, and it is shipped as a named parser you
+select with <code>--reasoning-parser kimi_k3</code> and <code>--tool-call-parser kimi_k3</code>.</p><p><strong>Why they are opt-in rather than inferred.</strong> In principle the server knows which model it loaded and
+could pick the parser automatically. In practice: fine-tunes change output formats while keeping the
+base model’s identifier; some users want the raw stream; and parser selection is decoupled from model
+loading in the engine’s architecture. The result is a configuration that must be right and is not
+checked — nothing validates that your parser matches your model, and a mismatch produces plausible
+garbage rather than an error.</p><p><strong>The failure this design produces</strong>, and it has now happened twice in this model family:</p><ul>
+<li><strong>Parser omitted.</strong> Control tokens appear in the content field as literal text. This is the reported
+K2 symptom on vLLM 0.10.0 with <code>--enable-auto-tool-choice</code> and <code>--tool-call-parser kimi_k2</code> — the
+model “outputs control tokens as text instead of actually invoking functions”. From the outside it
+looks like a model capability problem, which sends people to investigate the wrong layer entirely.</li>
+<li><strong>Parser present but the model drifts.</strong> vLLM’s reported K3 issue: the model occasionally emits a
+format the parser does not expect, and you get empty <code>tool_calls</code>. Prompt-dependent, so it will not
+reproduce reliably.</li>
+</ul><p><strong>What I would do about it</strong>, given the design is what it is: pin the engine version and the parser
+name together and treat them as one artefact; add a startup smoke test that issues one tool-calling
+request and asserts a structured result, so a mismatch fails at deploy rather than at 3 a.m.; and
+monitor the shape of responses, not just their status codes. All three are cheap, and the class of bug
+they catch is the one that does not announce itself.</p></div></section>
+<section class="probe"><h3 class="probe-q">What should a production agent on K3 assume about the API surface?</h3><div class="probe-a"><p>That it is the least-hardened part of the stack, and that the model being correct tells you nothing
+about whether the interface is.</p><p><strong>The reasoning behind that</strong>, which is a little unfair but I think accurate: the performance work in
+Modules 4–9 had two well-resourced engine teams, plus Moonshot and NVIDIA, optimising it for weeks
+before release, with published measurements and independent replication. The API surface had a parser
+module and a note in a blog post. Kernel work gets benchmarked publicly and compared between engines;
+tool-call formatting does not. So the maturity gradient runs steeply from the bottom of the stack to
+the top, and the risk in your deployment sits at the top.</p><p><strong>The assumptions I would build on:</strong></p><ul>
+<li><strong>Every tool call may fail to parse.</strong> Not often — vLLM describes it as occasional and
+run-dependent — but often enough that an agent making thousands of calls will see it. Handle it as a
+fault path with retry and fallback.</li>
+<li><strong>Constrained decoding is the default, not an optimisation.</strong> If your schema is known, constrain
+it. The throughput cost is small relative to the cost of an agent taking a wrong action.</li>
+<li><strong>Validate everything on receipt.</strong> Against your schema, not against “is it JSON”.</li>
+<li><strong>Run the vendor conformance suite before launch.</strong> KVV exists, covers tool calling and JSON-schema
+accuracy specifically, and in the one published run it surfaced a missing feature behind 26 of 30
+failures. That is a very high return on an afternoon.</li>
+<li><strong>Version-pin the whole surface together.</strong> Engine version, parser name, grammar backend, and your
+schemas. Any of them moving independently can change the output shape.</li>
+<li><strong>Instrument response <em>shape</em>, not just status.</strong> Rate of empty <code>tool_calls</code>, rate of schema
+validation failures, rate of retries. These are the only signals that catch a silent format drift,
+and none of them are in a default dashboard.</li>
+</ul><p><strong>And one thing I would not assume</strong>: that this stays true. These reports are from within days of the
+27 July 2026 weight release, and API conformance is exactly the kind of thing that gets fixed quickly
+once real agents hit it. The structural point — that the interface layer is less hardened than the
+kernels, and that its failures are quiet — will outlast the specific bugs.</p></div></section>
+<h2 id="self-check">Self-check<a class="anchor" href="#self-check" aria-hidden="true" tabindex="-1">#</a></h2>
+<details class="selfcheck"><summary><span class="selfcheck-q">What two flags does K3 need, and what happens without them?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p><code>--reasoning-parser kimi_k3</code> and <code>--tool-call-parser kimi_k3</code>, on both vLLM and SGLang, because the
+model emits reasoning, answer text and tool calls in one stream delimited by model-specific control
+tokens that must be split into API fields. Without them the control tokens flow into the content field
+as literal text — the reported K2 symptom on vLLM 0.10.0, where the model appears not to invoke
+functions while actually emitting calls into an unparsed string.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Why is an empty tool_calls array dangerous, and how should it be handled?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Because vLLM reports K3 occasionally emitting a format its parser does not expect, yielding empty
+<code>tool_calls</code> with a 200 response — prompt- and run-dependent, so it will not reproduce reliably. Client
+code near-universally reads that as “the model chose to answer directly”, so a parse fault becomes a
+silent behavioural change. Handle it as a <strong>distinct outcome</strong>: retry, fall back, or escalate — never
+proceed as though a choice was made — and alert on its rate, since a step change signals a format
+drift that is otherwise invisible.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">What does grammar-constrained decoding fix, what does it cost, and what does it not fix?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Fixes: it masks tokens that cannot continue a valid parse, so malformed tool calls become
+<strong>unreachable</strong> rather than detected after the fact — vLLM integrates K3’s format with <strong>XGrammar</strong> for
+this. Costs: mask computation on the sampling critical path (small, and only over constrained
+regions), and an over-tight grammar can forbid legitimate outputs. Does <strong>not</strong> fix semantics — it
+guarantees a well-formed call matching your schema, not the <em>right</em> tool with the <em>right</em> arguments.
+Hence the layered defence: constrain, validate on receipt anyway, treat empty as a fault, alert on the
+rate.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">What is the lesson from 26 of 30 KVV failures having one cause?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>That serving-conformance failures <strong>cluster</strong>, because the weights are fixed and correct so nearly all
+failures live in the request/response layer, where a small number of features are exercised by many
+tests — tool calling, JSON-schema accuracy and SWE-Bench all hit the same surface. So triage by root
+cause before by count, don’t judge a deployment by an early failure number (30 failures was one
+missing dynamic-tools implementation), and run the vendor suite before building on top. More broadly:
+the performance work is largely done for you by the engines; the API conformance work is not, and that
+is where the residual risk sits.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">What should a production agent assume about K3's API surface?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>That it is the least-hardened layer — two engine teams plus Moonshot and NVIDIA spent weeks on kernels
+with published, independently replicated measurements, while the API surface got a parser module and a
+paragraph. So: assume every tool call may fail to parse; treat constrained decoding as the default
+where the schema is known; validate on receipt; run KVV before launch; version-pin engine, parser,
+grammar backend and schemas together; and instrument response <strong>shape</strong> (empty-tool_calls rate, schema
+failure rate, retry rate) rather than status codes alone.</p></div></details></div><footer class="mfoot" data-astro-cid-5x65ok44><button class="mark" data-mark="serving-k3/10-tool-calling" aria-pressed="false" data-astro-cid-5x65ok44>Mark as reviewed</button><nav class="pager" data-astro-cid-5x65ok44><a class="pager-link" href="/blog/serving-k3/09-disaggregation/" data-prev data-astro-cid-5x65ok44><span class="pager-dir" data-astro-cid-5x65ok44>← Previous</span><span class="pager-title" data-astro-cid-5x65ok44>9. Disaggregation and cache-aware routing</span></a><a class="pager-link is-next" href="/blog/serving-k3/11-cost-and-decision/" data-next data-astro-cid-5x65ok44><span class="pager-dir" data-astro-cid-5x65ok44>Next →</span><span class="pager-title" data-astro-cid-5x65ok44>11. Cost, break-even, and what to actually do</span></a></nav></footer></article></main></div></div><div class="search-overlay" data-search hidden data-astro-cid-ac66eqjo><div class="search-backdrop" data-search-close data-astro-cid-ac66eqjo></div><div class="search-panel" role="dialog" aria-modal="true" aria-label="Search modules" data-astro-cid-ac66eqjo><div class="search-input-row" data-astro-cid-ac66eqjo><span class="search-icon" aria-hidden="true" data-astro-cid-ac66eqjo>⌕</span><input type="text" class="search-input" placeholder="Search all modules…" autocomplete="off" spellcheck="false" data-search-input data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>esc</kbd></div><ul class="search-results" data-search-results data-astro-cid-ac66eqjo></ul><p class="search-empty" data-search-empty hidden data-astro-cid-ac66eqjo>No matches.</p><p class="search-hint" data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>↑</kbd><kbd data-astro-cid-ac66eqjo>↓</kbd> move · <kbd data-astro-cid-ac66eqjo>↵</kbd> open</p></div></div><script>(function(){const indexUrl = "/blog/search.json";
+
+  (() => {
+    const overlay = document.querySelector('[data-search]');
+    if (!overlay) return;
+    const input = overlay.querySelector('[data-search-input]');
+    const list = overlay.querySelector('[data-search-results]');
+    const empty = overlay.querySelector('[data-search-empty]');
+
+    let index = null;
+    let loading = null;
+    let active = 0;
+
+    const load = () => {
+      if (index) return Promise.resolve(index);
+      if (!loading) {
+        loading = fetch(indexUrl)
+          .then((r) => r.json())
+          .then((d) => (index = d))
+          .catch(() => (index = []));
+      }
+      return loading;
+    };
+
+    function open() {
+      overlay.hidden = false;
+      document.documentElement.style.overflow = 'hidden';
+      load().then(() => input.focus());
+      input.focus();
+      input.select();
+    }
+
+    function close() {
+      overlay.hidden = true;
+      document.documentElement.style.overflow = '';
+    }
+
+    function escapeHtml(s) {
+      return s.replace(
+        /[&<>"]/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]
+      );
+    }
+
+    // Excerpt around the first matched term, with the term marked.
+    function excerpt(text, terms) {
+      const lower = text.toLowerCase();
+      let at = -1;
+      for (const t of terms) {
+        const i = lower.indexOf(t);
+        if (i !== -1 && (at === -1 || i < at)) at = i;
+      }
+      if (at === -1) at = 0;
+      const start = Math.max(0, at - 60);
+      let slice = text.slice(start, start + 190);
+      if (start > 0) slice = '…' + slice;
+      if (start + 190 < text.length) slice += '…';
+      let html = escapeHtml(slice);
+      for (const t of terms) {
+        html = html.replace(
+          new RegExp(`(${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'),
+          '<mark>$1</mark>'
+        );
+      }
+      return html;
+    }
+
+    function score(rec, terms) {
+      let s = 0;
+      const hay = (rec.m + ' ' + rec.h + ' ' + (rec.s || '') + ' ' + (rec.k || '')).toLowerCase();
+      const body = rec.t.toLowerCase();
+      for (const t of terms) {
+        if (hay.includes(t)) s += 12;
+        const i = body.indexOf(t);
+        if (i !== -1) s += 4 + Math.max(0, 3 - Math.floor(i / 400));
+        else if (!hay.includes(t)) return 0; // every term must appear
+      }
+      return s;
+    }
+
+    function render(results, terms) {
+      active = 0;
+      list.innerHTML = results
+        .map(
+          (r, i) => `
+          <li>
+            <a href="${r.u}" class="search-hit${i === 0 ? ' is-active' : ''}" data-hit>
+              <span class="search-hit-crumb"><span class="search-hit-series">${escapeHtml(r.s||"")}</span><span class="search-hit-n">${r.n}</span>${escapeHtml(r.m)} <span class="search-hit-sep">›</span> ${escapeHtml(r.h)}</span>
+              <span class="search-hit-text">${excerpt(r.t, terms)}</span>
+            </a>
+          </li>`
+        )
+        .join('');
+      empty.hidden = results.length > 0;
+    }
+
+    function run() {
+      const q = input.value.trim().toLowerCase();
+      if (!q || !index) {
+        list.innerHTML = '';
+        empty.hidden = true;
+        return;
+      }
+      const terms = q.split(/\s+/).filter(Boolean);
+      const results = index
+        .map((r) => ({ r, s: score(r, terms) }))
+        .filter((x) => x.s > 0)
+        .sort((a, b) => b.s - a.s || a.r.n - b.r.n)
+        .slice(0, 12)
+        .map((x) => x.r);
+      render(results, terms);
+    }
+
+    function move(delta) {
+      const hits = list.querySelectorAll('[data-hit]');
+      if (!hits.length) return;
+      hits[active]?.classList.remove('is-active');
+      active = (active + delta + hits.length) % hits.length;
+      hits[active].classList.add('is-active');
+      hits[active].scrollIntoView({ block: 'nearest' });
+    }
+
+    input.addEventListener('input', () => {
+      load().then(run);
+      run();
+    });
+
+    overlay.querySelector('[data-search-close]').addEventListener('click', close);
+
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        move(1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        move(-1);
+      } else if (e.key === 'Enter') {
+        const hit = list.querySelectorAll('[data-hit]')[active];
+        if (hit) {
+          e.preventDefault();
+          window.location.href = hit.getAttribute('href');
+        }
+      }
+    });
+
+    document.querySelectorAll('[data-search-open]').forEach((b) =>
+      b.addEventListener('click', open)
+    );
+
+    window.__openSearch = open;
+  })();
+})();</script><script>(function(){const base = "/blog";
+
+      (() => {
+        const root = document.documentElement;
+
+        /* ---- theme ---------------------------------------------------- */
+        document.querySelector('[data-theme-toggle]')?.addEventListener('click', () => {
+          const light = root.classList.toggle('light');
+          try {
+            localStorage.setItem('refresher:theme', light ? 'light' : 'dark');
+          } catch (e) {}
+        });
+
+        /* ---- progress (localStorage) ---------------------------------- */
+        const KEY = 'refresher:progress';
+        const readSet = () => {
+          try {
+            return new Set(JSON.parse(localStorage.getItem(KEY) || '[]'));
+          } catch (e) {
+            return new Set();
+          }
+        };
+        const writeSet = (s) => {
+          try {
+            localStorage.setItem(KEY, JSON.stringify([...s]));
+          } catch (e) {}
+        };
+
+        function paintProgress() {
+          const done = readSet();
+          const ticks = document.querySelectorAll('[data-tick]');
+          // A module can own more than one tick (rail + contents card), so
+          // count distinct module ids rather than elements.
+          const ids = new Set();
+          ticks.forEach((t) => {
+            const id = t.getAttribute('data-tick');
+            ids.add(id);
+            if (done.has(id)) t.setAttribute('data-read', '');
+            else t.removeAttribute('data-read');
+          });
+          const n = [...ids].filter((id) => done.has(id)).length;
+          const total = ids.size || 1;
+          const fill = document.querySelector('[data-progress-fill]');
+          if (fill) fill.style.width = `${(n / total) * 100}%`;
+          const count = document.querySelector('[data-progress-count]');
+          if (count) count.textContent = String(n);
+          document.querySelectorAll('[data-mark]').forEach((btn) => {
+            const id = btn.getAttribute('data-mark');
+            const on = done.has(id);
+            btn.setAttribute('aria-pressed', String(on));
+            btn.textContent = on ? '✓ Reviewed' : 'Mark as reviewed';
+          });
+        }
+
+        document.querySelectorAll('[data-mark]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-mark');
+            const s = readSet();
+            s.has(id) ? s.delete(id) : s.add(id);
+            writeSet(s);
+            paintProgress();
+          });
+        });
+
+        paintProgress();
+
+        /* ---- scrollspy over h2s, mirrored into the rail --------------- */
+        const article = document.querySelector('[data-article]');
+        const heads = article ? [...article.querySelectorAll('h2[id]')] : [];
+        const subLinks = new Map(
+          [...document.querySelectorAll('[data-toc]')].map((a) => [
+            a.getAttribute('data-toc'),
+            a,
+          ])
+        );
+
+        if (heads.length && subLinks.size) {
+          let currentId = null;
+          const spy = () => {
+            let found = heads[0].id;
+            for (const h of heads) {
+              if (h.getBoundingClientRect().top <= 96) found = h.id;
+              else break;
+            }
+            if (found === currentId) return;
+            subLinks.get(currentId)?.classList.remove('is-current');
+            currentId = found;
+            const el = subLinks.get(currentId);
+            if (el) {
+              el.classList.add('is-current');
+              el.scrollIntoView({ block: 'nearest' });
+            }
+          };
+          spy();
+          addEventListener('scroll', spy, { passive: true });
+        }
+
+        /* ---- keyboard ------------------------------------------------- */
+        const stops = article
+          ? [...article.querySelectorAll('h2[id], h3[id]')]
+          : [];
+
+        function jump(delta) {
+          if (!stops.length) return;
+          // The heading we are "in": the last one scrolled past the threshold.
+          let cur = -1;
+          for (let i = 0; i < stops.length; i++) {
+            if (stops[i].getBoundingClientRect().top <= 100) cur = i;
+            else break;
+          }
+          const target = cur + delta;
+          if (target < 0) return scrollTo({ top: 0, behavior: 'smooth' });
+          if (target >= stops.length) return;
+          stops[target].scrollIntoView({ block: 'start' });
+        }
+
+        addEventListener('keydown', (e) => {
+          const tag = (e.target.tagName || '').toLowerCase();
+          if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+          if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+          if (e.key === '/') {
+            e.preventDefault();
+            window.__openSearch?.();
+          } else if (e.key === 'j') {
+            e.preventDefault();
+            jump(1);
+          } else if (e.key === 'k') {
+            e.preventDefault();
+            jump(-1);
+          } else if (e.key === '[' || e.key === ']') {
+            const sel = e.key === '[' ? '[data-prev]' : '[data-next]';
+            const a = document.querySelector(sel);
+            if (a) {
+              e.preventDefault();
+              window.location.href = a.getAttribute('href');
+            }
+          }
+        });
+
+        /* ---- narrow-screen rail --------------------------------------- */
+        const rail = document.querySelector('[data-rail]');
+        document.querySelector('[data-rail-toggle]')?.addEventListener('click', () => {
+          rail.classList.toggle('is-open');
+        });
+        rail?.addEventListener('click', (e) => {
+          if (e.target.closest('a')) rail.classList.remove('is-open');
+        });
+      })();
+    })();</script></body></html>

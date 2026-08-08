@@ -1,0 +1,300 @@
+---
+n: 2
+title: 'KDA, AttnRes, and the two-state problem'
+blurb: '69 of 93 layers keep a fixed-size recurrent state instead of a growing KV cache. That is what makes a million tokens affordable — and it creates the hardest engineering problem in the stack.'
+part: 'S'
+minutes: 17
+draft: false
+tags: ['Kimi Delta Attention', 'linear attention', 'recurrent state', 'MLA', 'AttnRes', 'prefix caching', 'copy-on-write', 'hybrid cache', 'checkpointing']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+The single most consequential thing about serving K3 is that **69 of its 93 layers do not have a KV
+cache**. Kimi Delta Attention is a linear-attention mechanism that maintains a *fixed-size recurrent
+state* — a matrix-valued summary updated in place at every token — rather than accumulating a key and
+value vector per position. The remaining 24 layers are gated MLA with a conventional paged KV cache,
+placed roughly every fourth position. The consequence for memory is exactly what you would hope: the
+part of your cache that grows with context is now a quarter of the layers instead of all of them, so
+a million-token context costs something like a quarter of what it would on a uniform full-attention
+model of the same depth. That is the design's whole purpose, and it is why K3 can advertise a 1M
+window without an absurd deployment.
+
+The consequence for *engineering* is that you now have two kinds of state with incompatible
+semantics living under one scheduler, and almost every serving feature you rely on was built assuming
+only the first kind. A paged KV cache is **append-only**: token $n$'s entry is written once and never
+modified, which is exactly what makes prefix caching trivial — two requests sharing a prefix share
+the physical pages, and a hash of the prefix is a valid cache key. A KDA recurrent state is
+**overwritten in place** at every token, so there is no per-token record to share. The state after
+token $n$ is a destructive function of the state after token $n-1$. You cannot point two requests at
+it, you cannot reconstruct an earlier state from a later one, and if you want to branch you must
+physically copy. Every engine building K3 support had to solve this, and Modules 4 and 5 are largely
+the story of the two different ways they did.
+
+The third component, **Attention Residuals**, is smaller but shows up in profiles. Instead of the
+usual residual accumulation, every sublayer uses a learned pseudo-query to weight RMS-normalised
+residual states from preceding layer blocks — attention over depth rather than over sequence. It buys
+representational quality; it costs memory traffic, because each layer now reads banked outputs from
+earlier layers rather than only its immediate predecessor. vLLM names "extra memory traffic from
+AttnRes reads/writes across 93 layers" as one of the bottlenecks it had to attack, and both engines
+ship a fused residual-add-plus-RMSNorm kernel specifically for it.
+
+<Callout type="bridge" title="a scratchpad you cannot snapshot">
+  The codesign series' Module 3 framed the memory question as *who decides placement*. KDA adds a
+  second question the framework did not need: *is the state addressable by position at all?* Paged KV
+  is content-addressable by token index, which is what permits sharing, eviction and offload at page
+  granularity. A recurrent state is addressable only as a whole, at one point in time. Every
+  KV-centric technique — prefix reuse, tiered offloading, disaggregated transfer — has to be
+  re-derived for an object with those properties.
+</Callout>
+
+## What the reports actually measured
+
+The attention stack, per [SGLang](https://www.lmsys.org/blog/2026-07-27-kimi-k3-day0-support/) and
+[vLLM](https://vllm.ai/blog/2026-07-27-k3):
+
+| Layer type       | Count | State per request      | Grows with context? |
+| ---------------- | ----- | ---------------------- | ------------------- |
+| KDA (linear)     | 69    | fixed-size recurrent   | **no**              |
+| Gated MLA        | 24    | paged KV, append-only  | yes                 |
+| Total            | 93    | hybrid                 | ~26% of layers grow |
+
+The two state types, and why they need different machinery:
+
+| | Paged KV (MLA) | Recurrent state (KDA) |
+| --- | --- | --- |
+| Written | once per token, append-only | **overwritten in place** |
+| Addressable by | token index | the request, as a whole |
+| Shareable across requests | yes, by page | only by **copying** |
+| Prefix cache key | hash of token prefix | requires a **checkpoint** |
+| Reconstruct earlier state | read the page | **replay from a checkpoint** |
+| Grows with context | linearly | not at all |
+| Offloadable | page at a time | whole state, or not at all |
+
+What each engine built to reconcile them:
+
+| Engine | Mechanism | Reported detail |
+| ------ | --------- | --------------- |
+| vLLM | one hybrid KV-cache manager | "paged KV blocks for the full-attention layers, and compact recurrent-state blocks for the KDA layers" under one scheduler |
+| vLLM | interval checkpointing | configurable, e.g. every 32 K tokens, plus automatic prompt-end retention |
+| vLLM | Marconi-style selective caching | caches on **second** prefix detection, so one-off prompts do not crowd the cache |
+| SGLang | one unified pool | KDA blocks allocated from one end, MLA KV from the other — no pre-sizing guess, no fragmentation |
+| SGLang | copy-on-write / snapshot / donate | the three operations that make a mutable state safely shareable |
+
+Speculative decoding has the same problem, and SGLang's numbers are the sharpest illustration:
+
+| Approach | State stored per draft step |
+| -------- | --------------------------- |
+| Naive KDA state snapshot | ~512 KB |
+| **ReplaySSM** (store raw inputs, replay accepted prefix) | ~16 KB — **32× less** |
+
+## Critical thinking
+
+<Probe q="Why does a mutable recurrent state break prefix caching, and how do you fix it?">
+
+Because prefix caching is built on the assumption that the state corresponding to a token prefix
+exists somewhere as a distinct object, and for KDA it does not.
+
+**Why it works for KV.** Request A processes tokens $1..n$ and writes KV entries for each. Request B
+arrives sharing the first $n$ tokens. The entries for $1..n$ are still sitting in their pages,
+unmodified, because KV is append-only — so B points at the same physical pages and skips the prefill
+entirely. The cache key is a hash of the prefix, and correctness is free.
+
+**Why it fails for KDA.** After processing tokens $1..n$, request A holds one recurrent state $S_n$.
+There is no $S_5$ or $S_{100}$ anywhere; each was destroyed when the next token overwrote it. So when
+B arrives sharing a 100-token prefix, there is nothing to share — and worse, if A is still running, A
+is *actively mutating* the only state that exists.
+
+**The fixes, in the order they compose:**
+
+- **Checkpointing.** Periodically snapshot the recurrent state so that some earlier states do exist.
+  vLLM does this on a configurable interval — every 32 K tokens, say — plus automatically at the end
+  of a prompt, which is the boundary most likely to be shared in agentic and chat workloads.
+- **Replay from the nearest checkpoint.** A request whose prefix does not land on a checkpoint
+  restores the nearest one below it and re-runs the intervening tokens. This is exactly the
+  recompute-versus-store trade from the codesign series' Module 7, with checkpoint interval as the
+  tuning knob: more checkpoints cost memory, fewer cost replay compute.
+- **Copy-on-write for branching.** Two requests continuing from the same checkpoint must not share a
+  mutable state, so the first divergence copies. SGLang names copy-on-write, snapshot and donate as
+  the operations it had to add.
+- **Selective caching.** Since checkpoints are expensive, do not create them for prefixes that will
+  never be reused. vLLM uses a Marconi-style policy of caching on *second* detection of a prefix,
+  which keeps one-off prompts from evicting genuinely shared ones.
+
+**The honest limitation**, which vLLM and SGLang both state: checkpoints exist only at aligned radix
+tree nodes and fixed intervals, so a request whose shared prefix ends at an unaligned position must
+replay from the checkpoint above it. With a 32 K interval, a request sharing 40 K tokens of prefix
+may replay up to 8 K of them. That is far better than prefilling 40 K, but it is not the free hit that
+prefix caching is on a pure-KV model — and it means your effective cache hit rate depends on how well
+your workload's shared prefixes align with your checkpoint interval, which is a tuning problem nobody
+had before.
+
+</Probe>
+
+<Probe q="Work out what the 69/24 split does to KV memory at 1M context.">
+
+Roughly a 4× reduction in the part that scales, and the reasoning matters more than the exact
+constant because published per-token figures are scarce.
+
+Take a hypothetical uniform-MLA model of the same depth. All 93 layers accumulate KV, so cache size is
+proportional to $93 \times S$ for context length $S$. K3 accumulates on 24 layers and holds a
+constant on the other 69, so its growing component is proportional to $24 \times S$ plus a fixed term.
+The ratio of growing terms is $24/93 \approx 0.26$ — call it a **4× reduction** in per-token cache
+cost, before accounting for MLA's own latent compression, which reduces it further.
+
+Two things follow, and they point in opposite directions:
+
+- **Long context becomes affordable, which is the point.** At 1 M tokens the cache is the dominant
+  memory consumer on any full-attention model; cutting it 4× is the difference between a 1 M window
+  being a marketing claim and a deployable configuration. Community estimates put single-user KV in
+  the range of a few GB to ~15 GB depending on context, which is tractable.
+- **The fixed term stops being negligible at *short* context.** The KDA state is constant per
+  request, so at 1 K tokens you pay it in full for very little benefit. That is the regime where a
+  hybrid model's memory advantage is smallest, and it interacts badly with high concurrency — many
+  short requests each carry a full recurrent state. The [community 16×H200
+  report](https://huggingface.co/moonshotai/Kimi-K3/discussions/136) measured a 7.95 GB per-GPU KV
+  pool supporting ~308,608 tokens, and that pool must cover both kinds of state.
+
+**Where the estimate is soft**, and I would not build a capacity plan on it without measuring:
+neither engine publishes bytes-per-token for the MLA layers or bytes-per-request for the KDA state,
+and both numbers depend on the MLA latent dimension and the KDA state rank, which are not in the
+published summaries. The 4× is a structural argument about layer counts, not a measurement. Module 3
+uses the one measured pool size that exists rather than deriving one.
+
+</Probe>
+
+<Probe q="Why is speculative decoding unusually hard on a hybrid model, and what is ReplaySSM?">
+
+Because speculation requires *rewinding* state when a draft is rejected, and a recurrent state cannot
+be rewound — only restored from a copy or recomputed.
+
+**The mechanics of the problem.** Speculative decoding drafts $k$ tokens, verifies them in one
+forward pass, accepts a prefix of length $j \le k$, and discards the rest. For KV that is trivial:
+the rejected entries are simply not committed, because KV is append-only and unaccepted pages are
+released. For KDA, running the draft *advanced the recurrent state through all $k$ tokens*,
+destroying the state at position $j$ that you now need. So the naive implementation snapshots the
+state before each draft step — and SGLang reports that snapshot at **~512 KB per draft step**, which
+at realistic batch sizes and draft lengths is a large amount of memory bandwidth spent on bookkeeping
+rather than on tokens.
+
+**ReplaySSM.** Instead of storing the state, store the *inputs* that produced it — roughly **16 KB,
+a 32× reduction**. The verification kernel additionally records the gate values, and a fold kernel
+replays the accepted prefix to reconstruct the state bit-identically. This is recompute-instead-of-
+store applied to speculation, and the "bit-identical" property is what makes it safe: an approximate
+reconstruction would silently diverge from the non-speculative result, which is the one thing
+speculative decoding must never do.
+
+**Why the payoff is worth the complexity here specifically.** K3's single-user decode is slow in
+absolute terms — around 113–118 tok/s — because each token activates 16 experts across an
+expert-parallel all-to-all, and that cost is nearly independent of how many tokens you produce per
+step. Speculation amortises it: verify several tokens in one pass and you pay the all-to-all once for
+several tokens. The reported gains are correspondingly large — vLLM's DSpark reaches **370 tok/s, a
+3.14×**, and SGLang reports **~423 tok/s from ~113**. On a dense model with cheap decode, a 3× from
+speculation would be nice; on K3 it is close to the difference between usable and not for interactive
+single-user work.
+
+**And the caveats both engines publish**, which are the useful part:
+
+- Acceptance length is workload-dependent: vLLM reports **~4.73 accepted tokens per step on
+  coding/low-entropy** work against **~2.61 on creative writing**. Your speedup varies by nearly 2×
+  depending on what users ask for.
+- SGLang's confidence-scheduled verification gives **+68% throughput at batch 256** but is
+  "break-even to mildly negative below batch size 8". The optimisation that helps your throughput
+  benchmark can hurt your low-latency single-user path.
+
+</Probe>
+
+<Probe q="AttnRes is a quality feature. What does it cost the serving stack?">
+
+Memory traffic and kernel-launch overhead, distributed across all 93 layers — which makes it a
+death-by-a-thousand-cuts problem rather than a single hot spot.
+
+**What it does.** Ordinary residual accumulation adds each sublayer's output into a single running
+stream. AttnRes instead banks every attention output and has each sublayer issue a learned
+pseudo-query to weight RMS-normalised residual states from *preceding layer blocks*. So a layer reads
+from several earlier layers' banked outputs rather than only from the immediately previous
+activation.
+
+**What that costs:**
+
+- **Extra reads per layer.** vLLM lists "extra memory traffic from AttnRes reads/writes across 93
+  layers" among the bottlenecks it targeted. Each read is small; there are 93 layers and several
+  reads each, and at decode — where the whole step is bandwidth-bound and the batch is small — this
+  is real.
+- **Extra kernel launches**, if implemented naively as separate add and norm operations. Both engines
+  ship a fused residual-add-plus-RMSNorm kernel "for supported shapes", and the qualifier is worth
+  noticing: the fusion does not cover every shape, so some configurations still pay the unfused path.
+- **Communication, under sequence parallelism.** SGLang shards "attention-residual traffic across
+  compute ranks", which means AttnRes state becomes something that must be collected rather than read
+  locally. vLLM's custom reduce-scatter and all-gather kernels — reported at **1.7×–4.5× over NCCL**
+  for prefill-size messages — exist substantially for this traffic.
+
+**The general shape**, and it is a good illustration of the codesign series' argument: AttnRes is a
+model-architecture decision whose cost lands entirely on the serving stack, is invisible in parameter
+counts and FLOP counts, and required custom kernels from two independent engine teams before the
+model ran at a competitive speed. It is exactly the kind of item that a hardware/software codesign
+loop is supposed to surface *before* the model ships, and its appearance in both engines' "bottlenecks
+we had to remove" lists suggests it did not.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="What is the KDA/MLA split and why does it dominate serving?">
+
+**69 KDA linear-attention layers and 24 gated-MLA layers out of 93**, with full attention roughly
+every fourth position. KDA keeps a **fixed-size recurrent state** that does not grow with context;
+MLA keeps a conventional paged KV cache that does. So only ~26% of layers contribute a
+context-scaling cache — roughly a 4× reduction in the growing term — which is what makes a 1M window
+deployable.
+
+</SelfCheck>
+
+<SelfCheck q="Why does a recurrent state break prefix caching, and what are the four fixes?">
+
+Paged KV is **append-only**, so entries for a shared prefix still exist and can be pointed at; a KDA
+state is **overwritten in place**, so no earlier state exists to share, and a running request is
+actively mutating the only copy. Fixes, composed: **interval checkpointing** (vLLM: e.g. every 32 K
+plus automatic prompt-end retention), **replay from the nearest checkpoint below** (the
+recompute-vs-store trade, with interval as the knob), **copy-on-write** on divergence (SGLang's
+copy-on-write / snapshot / donate), and **selective caching** (Marconi-style, cache on second
+detection so one-off prompts don't crowd it). Limitation: unaligned prefixes replay up to a full
+interval, so hit quality depends on how your workload's prefixes align.
+
+</SelfCheck>
+
+<SelfCheck q="Why is speculative decoding hard here, and what does ReplaySSM do?">
+
+Rejecting a draft requires rewinding state, and a recurrent state cannot be rewound — running the
+draft already advanced it through all $k$ tokens. Naive snapshotting costs **~512 KB per draft step**.
+**ReplaySSM** stores only the raw inputs (**~16 KB, 32× less**), records gate values in the
+verification kernel, and replays the accepted prefix in a fold kernel to reconstruct the state
+**bit-identically** — approximate reconstruction would silently diverge. Worth the complexity because
+K3's decode pays a 16-expert all-to-all per step almost regardless of tokens produced, so amortising
+it gives ~3.14× (vLLM, 370 tok/s) to ~423 tok/s (SGLang).
+
+</SelfCheck>
+
+<SelfCheck q="What varies the speculative-decoding speedup, per the published numbers?">
+
+**Workload entropy**: vLLM reports ~4.73 accepted tokens per step on coding versus ~2.61 on creative
+writing — nearly 2× different speedup for the same deployment. And **batch size**: SGLang's
+confidence-scheduled verification gives +68% at batch 256 but is "break-even to mildly negative" below
+batch 8, so the throughput optimisation can hurt the low-latency single-user path.
+
+</SelfCheck>
+
+<SelfCheck q="What does AttnRes cost the serving stack?">
+
+Extra memory traffic from banked reads across all **93 layers** (vLLM names it as a targeted
+bottleneck), extra kernel launches unless fused — both engines ship a fused residual-add + RMSNorm,
+but only "for supported shapes" — and communication under sequence parallelism, since AttnRes traffic
+gets sharded across ranks, which is much of why vLLM built custom reduce-scatter/all-gather kernels
+reported at **1.7–4.5× over NCCL**. A model-architecture choice whose entire cost lands on the serving
+stack and is invisible in parameter and FLOP counts.
+
+</SelfCheck>
