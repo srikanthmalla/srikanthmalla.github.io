@@ -60,7 +60,8 @@ public/fonts/                     latin-subset variable woff2, self-hosted
 3. Add a card to the blog index if it needs promoting elsewhere.
 
 Part ids must be unique across the whole collection, since one collection backs
-every series — ML Hardware uses A-E, Diffusion uses F-I.
+every series — ML Hardware uses A-E, Diffusion F-I, ML Software J-N, and
+HW/SW Codesign O-R.
 
 ## Adding a module
 
@@ -90,6 +91,7 @@ as an appendix rather than as part of the argument:
 | ml-hardware | `Numbers worth memorizing`      | latency ladders, ridge points — genuine recall targets |
 | diffusion   | `The formulas and the numbers`  | conversions, schedules, parameter values |
 | ml-software | `How it actually works`         | pipelines, kernels, costs, commands |
+| hw-sw-codesign | `The design space, quantified` | energy/bandwidth ladders, loop-nest notation, architecture comparisons |
 
 Every table in beat 2 opens with a sentence saying what it is for. A section
 that starts on a bare `|` reads as a dump; the lead-in is what makes it a beat.

@@ -1,0 +1,288 @@
+---
+n: 3
+title: 'Memory: capacity, bandwidth, and who decides placement'
+blurb: 'The hierarchy as a ladder of (capacity, bandwidth, latency, granularity, who-manages) tuples. Cache versus scratchpad as a codesign decision, why bandwidth costs area, and why granularity is what actually punishes you.'
+part: 'O'
+minutes: 18
+draft: false
+tags: ['memory hierarchy', 'scratchpad', 'cache', 'SRAM', 'HBM', 'VMEM', 'banking', 'granularity', 'TMA', 'coalescing']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+Memory is not a thing, it is a ladder, and each rung is fully described by five numbers: capacity,
+bandwidth, latency, access granularity, and who decides what sits there. The first three are the ones
+everybody quotes and the last two are the ones that determine whether your code works. **Granularity**
+is the minimum unit the level will transfer — a 32-byte sector, a 128-byte cache line, a 256-byte or
+larger DRAM burst — and it is what converts a strided access pattern from "slightly worse" into
+"eight times worse", because asking for four useful bytes out of a 32-byte sector wastes seven eighths
+of the bandwidth you paid for. **Who decides** is the codesign field. A cache and a scratchpad can be
+the same SRAM macro, laid out identically, at the same distance from the compute; what differs is
+whether the hardware infers residency from the access stream or the compiler states it.
+
+The reason that last field is a genuine design decision rather than a matter of taste is that the two
+options are optimal under different amounts of runtime uncertainty. A cache spends area and energy on
+tags, comparators and replacement state in exchange for behaving reasonably on an access pattern
+nobody predicted. A scratchpad spends none of that, makes every byte usable rather than
+statistically usable, and gives deterministic timing — in exchange for total dependence on the
+compiler having predicted correctly. ML is unusually favourable to the compiler, because its loop
+nests are affine, its bounds are known, and its reuse is enormous and statically analysable. That is
+why TPUs run on compiler-managed VMEM with no data caches at all, and why the GPU has been drifting
+the same way for a decade: shared memory was always a scratchpad, and Hopper's tensor memory
+accelerator is dedicated hardware for making explicitly-scheduled bulk transfers cheap.
+
+The third piece of the model is that capacity and bandwidth are not independent purchases, and they
+scale by different mechanisms. SRAM bandwidth comes from **banking** — more independent arrays, more
+ports, more wires — so it scales with area and is essentially something you can buy on-die if you are
+willing to spend the die. DRAM bandwidth comes from **pins and stacks**, so it scales with package
+beachfront and interposer area, which is a far harder limit and the reason HBM capacity and bandwidth
+move together in lockstep rather than independently. This asymmetry is why the on-chip levels have
+been growing fast (H100 has 50 MB of L2 and 256 KB of shared memory per SM; TPU v5e has 128 MiB of
+VMEM) while HBM bandwidth grows slowly, and it is the structural cause of the rising ridge point from
+Module 2. The mapping's job is to convert the abundant resource into a substitute for the scarce one.
+
+<Callout type="bridge" title="coalescing, generalised">
+  ML Hardware Module 2 made the case for coalesced access on a GPU: the memory system transacts in
+  fixed-size sectors, so a warp whose threads touch scattered addresses pays for bytes it discards.
+  That is the granularity field, at one rung of the ladder. The same argument applies at every rung
+  with a different constant — DRAM row activation, PCIe TLP size, network MTU — and in each case the
+  question is identical: what fraction of the minimum transfer did you actually use?
+</Callout>
+
+## The design space, quantified
+
+The ladder, with the two fields that are usually omitted:
+
+| Level               | Capacity      | Bandwidth  | Latency  | Granularity | Who manages     |
+| ------------------- | ------------- | ---------- | -------- | ----------- | --------------- |
+| Register file       | 256 KB / SM   | ~100 TB/s  | ~1 cycle | 4 B         | compiler        |
+| Shared mem / VMEM   | 256 KB / SM; 128 MiB (v5e) | ~10 TB/s | ~30 cyc | 4 B (banked) | **compiler**   |
+| L1                  | 128–256 KB    | ~10 TB/s   | ~30 cyc  | 32 B sector | hardware        |
+| L2                  | 50 MB (H100)  | ~5 TB/s    | ~200 cyc | 32–128 B    | hardware        |
+| HBM                 | 80–192 GB     | 3.35–8 TB/s | ~400 ns | 32 B sector, larger burst | hardware |
+| Host DRAM over PCIe | TB            | ~64 GB/s   | ~2 µs    | TLP         | software (DMA)  |
+
+What each level costs, which is why the ladder has the shape it has:
+
+| | On-die SRAM | HBM |
+| --- | --- | --- |
+| Bandwidth scales with | banks, ports — **area** | pins, stacks — **beachfront** |
+| Capacity scales with | area, directly | stack height, process |
+| Energy per byte | ~1 pJ | ~50 pJ |
+| Density | ~1 MB/mm² order | ~GB/stack |
+| Practical ceiling | die size and yield | interposer and package |
+
+Granularity, and what it costs to ignore it:
+
+| Access pattern              | Bytes requested | Bytes delivered | Efficiency |
+| --------------------------- | --------------- | --------------- | ---------- |
+| Contiguous, aligned         | 32 B            | 32 B            | 100%       |
+| Stride 2 (FP32)             | 4 B of 32 B     | 32 B            | 50%        |
+| Stride 8 (FP32)             | 4 B of 32 B     | 32 B            | 12.5%      |
+| Random gather (FP32)        | 4 B             | 32 B            | 12.5%      |
+| Random gather, DRAM row miss | 4 B            | 32 B + row activation | far worse |
+
+The last row is the one that surprises people: below the sector level there is a second granularity,
+the DRAM row, and a gather that also misses rows pays an activation penalty on top of the wasted
+sector.
+
+## Critical thinking
+
+<Probe q="When is a scratchpad the right answer and when is a cache, and what makes ML unusual?">
+
+The decision turns on exactly one quantity: **how much uncertainty remains at runtime**.
+
+A cache is insurance. You pay a continuous premium — tag arrays, comparators, replacement metadata,
+coherence traffic, and typically 5–10% of the array's area plus energy on every access — in exchange
+for a policy that adapts to an access pattern nobody predicted. The payoff is that unanticipated
+behaviour degrades rather than fails. That is worth a great deal when the access stream depends on
+data (pointer chasing, hash lookups, branchy control flow), and it is worth almost nothing when the
+stream is known at compile time.
+
+A scratchpad is the opposite bet. No tags, so no tag energy and no tag area; every byte is usable
+rather than statistically usable, which matters more than it sounds — a 128 KB cache holds
+substantially less than 128 KB of your working set once conflict misses and replacement policy are
+accounted for, while a 128 KB scratchpad holds 128 KB. Timing is deterministic, which is a
+prerequisite for static scheduling and for any hard-deadline system. And the compiler can implement
+policies a cache cannot express at all: keep this tile resident across the whole loop nest, evict
+that one immediately because it is streaming and will never be reused, double-buffer this one against
+the next iteration.
+
+**ML is unusually favourable to the scratchpad** because its three preconditions all hold at once.
+The loop bounds are known before execution; the index expressions are affine, so the exact access
+sequence is computable; and the reuse is both large and statically derivable from the loop structure.
+Very little else in computing has all three. That is why the TPU has no data caches — VMEM is
+programmer-controlled scratchpad, and XLA schedules every transfer — and why the GPU keeps adding
+scratchpad-shaped machinery: shared memory has always been one, `cp.async` made explicit staging
+cheap on Ampere, and Hopper's TMA is a dedicated engine for compiler-issued bulk tile copies with
+address generation in hardware.
+
+Two honest qualifications:
+
+- **Real designs are hybrids, deliberately.** A GPU has scratchpad (shared memory) *and* cache (L1,
+  L2) at nearly the same level, so a kernel can use explicit staging for the tensors it understands
+  and let the cache absorb everything else. This is the right engineering answer, because a real
+  model has some tensors with statically-known reuse and some without.
+- **The scratchpad's failure mode is not slowness.** When the compiler cannot prove a shape or an
+  index, it does not run slowly — it cannot generate the schedule at all, and must fall back. That
+  cliff is exactly Part Q, and it is the price of the whole strategy.
+
+</Probe>
+
+<Probe q="You can double the on-die SRAM or double the HBM bandwidth. Which, and what determines it?">
+
+Ask what the SRAM would be *for*, because the two purchases substitute for each other only through
+the mapping, and the exchange rate is bad.
+
+The relevant closed form, derived properly in Module 7: for a GEMM tiled at a level of capacity $C$,
+the traffic through that level scales as $O(N^3/\sqrt{C})$. Traffic falls as the **square root** of
+capacity. So doubling SRAM cuts traffic by a factor of $\sqrt 2 \approx 1.41$, whereas doubling HBM
+bandwidth cuts memory time by 2× directly. On that comparison alone, bandwidth wins for any workload
+already tiled sensibly, and it is the reason vendors spend so aggressively on HBM despite its cost.
+
+But the square-root law describes the *continuous* regime, and the decision is usually made on
+**thresholds**, where SRAM wins enormously:
+
+- **A working set that now fits entirely.** If doubling SRAM lets the whole weight tile, or the whole
+  KV block, or an entire small model live on-die, traffic does not fall by 1.41× — it falls to
+  roughly zero, because the data is fetched once instead of once per tile. Groq's architecture is
+  this threshold argument taken to its conclusion: enough SRAM to hold the model, and no HBM at all.
+- **You cannot buy HBM bandwidth freely.** SRAM bandwidth scales with banks and area, which is a
+  design decision. HBM bandwidth scales with stacks and beachfront, which is a packaging constraint
+  with a hard ceiling and a large cost per increment. Frequently "double the HBM bandwidth" is simply
+  not on the menu at any price, which settles the question.
+- **Energy.** ~1 pJ/byte against ~50 pJ/byte. In a power-limited design — which every large
+  accelerator is — moving traffic on-die is not merely faster, it is what lets the clocks stay up.
+
+So the decision rule: **if a threshold is within reach, take the SRAM; otherwise take the
+bandwidth.** And the codesign-specific version, which is the point of this module — you cannot answer
+the question without knowing the mapping, because the mapping decides both what the working set is
+and whether a threshold exists. That is the circular dependency from Module 1, made concrete enough
+to cost.
+
+</Probe>
+
+<Probe q="Why is access granularity a bigger practical problem than latency?">
+
+Because latency is hidable and wasted granularity is not.
+
+Latency has a standard defence available at every level: get more work in flight. Warps, out-of-order
+windows, prefetchers, double buffering, asynchronous copies — every one of these overlaps a long
+latency with useful work, and if you have enough independent work, latency effectively disappears.
+Little's law makes this quantitative: to sustain bandwidth $B$ at latency $L$ you need $B \times L$
+bytes in flight, and on an H100 that is roughly 3.35 TB/s × 400 ns ≈ **1.3 MB of memory requests
+outstanding at all times**. Large, but achievable, and it is what the whole SIMT machine is for.
+
+Wasted granularity has no such defence. If you request 4 useful bytes and the memory system delivers a
+32-byte sector, you have consumed 32 bytes of the bandwidth you paid for and used 4. No amount of
+concurrency recovers the other 28 — the bandwidth is *gone*, spent on bytes that were fetched and
+discarded. More parallelism makes you waste it faster. The only fix is changing the access pattern
+itself, which means changing the layout or the mapping.
+
+This has consequences that show up all over the stack, and it is worth seeing them as one phenomenon:
+
+- **Layout is a first-class mapping decision**, not an afterthought. NCHW versus NHWC, row versus
+  column major, blocked and tiled layouts, and the padding of leading dimensions to avoid bank
+  conflicts and channel aliasing are all granularity management.
+- **Gathers are expensive for a structural reason.** An embedding lookup or an unstructured sparse
+  access requests a handful of bytes per index from unrelated addresses. Each one costs a full sector
+  and possibly a DRAM row activation. This is why unstructured sparsity underdelivers so badly
+  (Module 9) — the FLOPs vanish but the *traffic* barely moves.
+- **Granularity compounds up the ladder.** 32-byte sector, then a DRAM row of a few kilobytes, then a
+  PCIe TLP, then a network MTU. A pattern that is merely inefficient at one level can be catastrophic
+  once it crosses a level with much coarser granularity, which is why the same code can be 20% slow
+  on-node and 10× slow across a network.
+
+The framing to keep: **latency is a concurrency problem, granularity is a layout problem, and only
+one of them has a general solution.**
+
+</Probe>
+
+<Probe q="Why has on-die memory grown so much faster than off-chip bandwidth, and what should software do about it?">
+
+Because they scale by different physical mechanisms, and only one of them tracks Moore's law.
+
+On-die SRAM capacity and bandwidth scale with **area**: more macros, more banks, more ports, all of
+which come from transistors that keep getting smaller and cheaper. HBM bandwidth scales with
+**package beachfront** — the physical perimeter available for stacks, the interposer routing, the
+number of TSVs and the achievable signalling rate. That does not shrink with the process node. The
+result is the numbers from Module 2: H100 at 989 BF16 TFLOP/s against 3.35 TB/s (~295 FLOP/byte),
+B200 at ~2.25 PFLOP/s against 8 TB/s (~280), TPU v6e at 920 TFLOP/s against 1.6 TB/s (~575). Compute
+grows faster; the ridge point climbs; and the required arithmetic intensity climbs with it.
+
+What software has to do in response is a coherent programme, not a list of tricks:
+
+- **Tile larger, and tile more levels.** A higher ridge point means the tile that saturates the
+  machine is bigger, which means it needs the bigger on-die capacity that the same trend is
+  providing. These two facts are the same fact.
+- **Fuse aggressively.** Every intermediate that reaches HBM and comes back is traffic charged
+  against a shrinking budget. Fusion converts it to SRAM traffic at ~1/50 the energy. This is why the
+  compiler modules in the ML Software series spend so much effort on fusion — it is a direct response
+  to this trend.
+- **Recompute rather than store.** When arithmetic is nearly free and bandwidth is scarce,
+  recomputing a value is cheaper than saving and reloading it. This is why AOTAutograd's min-cut
+  partition is a genuine optimisation rather than a memory-saving hack, and why FlashAttention
+  recomputes attention weights in the backward pass instead of materialising them.
+- **Send fewer bytes.** Module 10.
+
+The unifying statement: **the trend converts problems from "not enough FLOPs" into "not enough
+locality", and locality is a software property.** That is precisely why the mapping deserves a whole
+Part of this series, and why hardware teams increasingly measure their compilers rather than their
+peak numbers.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="What five numbers describe a memory level, and which two are usually omitted?">
+
+Capacity, bandwidth, latency, **access granularity**, and **who decides placement**. The last two are
+the omitted ones and they are the ones that decide whether code works: granularity turns a strided
+pattern into an 8× bandwidth loss, and who-decides is the codesign field distinguishing a cache from
+a scratchpad built out of identical SRAM.
+
+</SelfCheck>
+
+<SelfCheck q="What makes ML unusually suited to compiler-managed memory?">
+
+Three preconditions hold at once: loop bounds known before execution, affine index expressions so the
+access sequence is computable, and large statically-derivable reuse. Almost nothing else in computing
+has all three. Hence TPU VMEM with no data caches, and the GPU's drift the same way — shared memory,
+`cp.async`, and Hopper's TMA. The price is that when the compiler cannot prove a shape, the schedule
+is not slow, it is ungenerable.
+
+</SelfCheck>
+
+<SelfCheck q="Double the SRAM or double the HBM bandwidth — what decides it?">
+
+Whether a **capacity threshold** is in reach. In the continuous regime traffic falls only as
+$\sqrt{C}$, so doubling SRAM buys 1.41× while doubling bandwidth buys 2× — bandwidth wins. But if
+the extra SRAM makes a working set fit entirely, traffic drops to near zero rather than by 1.41×.
+Also: HBM bandwidth is often not purchasable at any price (beachfront), and SRAM is ~1 pJ/byte
+against HBM's ~50, which matters in a power-limited part.
+
+</SelfCheck>
+
+<SelfCheck q="Why is granularity a worse problem than latency?">
+
+Latency is hidable by concurrency — you need $B \times L$ bytes in flight, about 1.3 MB on an H100 —
+and with enough independent work it disappears. Wasted granularity is unrecoverable: request 4 bytes,
+receive a 32-byte sector, and 28 bytes of bandwidth are spent and discarded. More parallelism only
+wastes it faster. The sole fix is changing layout or access pattern. Latency is a concurrency
+problem; granularity is a layout problem; only one has a general solution.
+
+</SelfCheck>
+
+<SelfCheck q="Why does on-die memory grow faster than HBM bandwidth, and what does software owe in response?">
+
+SRAM scales with **area**, which tracks the process node; HBM bandwidth scales with **package
+beachfront**, which does not. So the ridge point climbs every generation. Software's response: tile
+larger and across more levels, fuse to keep intermediates off HBM, recompute instead of storing now
+that arithmetic is nearly free, and send fewer bytes via precision. The trend converts "not enough
+FLOPs" into "not enough locality" — and locality is a software property.
+
+</SelfCheck>

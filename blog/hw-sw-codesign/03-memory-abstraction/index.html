@@ -1,0 +1,648 @@
+<!DOCTYPE html><html lang="en" data-astro-cid-z4jru4n3><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>3. Memory: capacity, bandwidth, and who decides placement — ML Hardware/Software Codesign</title><meta name="description" content="The hierarchy as a ladder of (capacity, bandwidth, latency, granularity, who-manages) tuples. Cache versus scratchpad as a codesign decision, why bandwidth costs area, and why granularity is what actually punishes you."><link rel="icon" href="data:,"><script>
+      (() => {
+        try {
+          const t = localStorage.getItem('refresher:theme');
+          if (t === 'light') document.documentElement.classList.add('light');
+        } catch (e) {}
+      })();
+    </script><link rel="stylesheet" href="/blog/_astro/BaseLayout.B9q2yynj.css"><style>.wrap[data-astro-cid-5x65ok44]{max-width:68ch;margin-inline:auto;padding:3rem 1.25rem 6rem}@media (width>=1024px){.wrap[data-astro-cid-5x65ok44]{max-width:calc(68ch + 6rem);padding-inline:3rem}}.mhead[data-astro-cid-5x65ok44]{border-block-end:1px solid var(--rule);margin-block-end:.5rem;padding-block-end:1.75rem}.mhead-kicker[data-astro-cid-5x65ok44]{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint);margin:0 0 .85rem;font-size:.6875rem;font-weight:500}.mhead-n[data-astro-cid-5x65ok44]{color:var(--accent);font-weight:640}.mhead-dot[data-astro-cid-5x65ok44]{opacity:.5;padding-inline:.35rem}.mhead-title[data-astro-cid-5x65ok44]{font-family:var(--font-sans);letter-spacing:-.027em;color:var(--ink-strong);text-wrap:balance;margin:0;font-size:clamp(1.75rem,1.3rem + 1.9vw,2.375rem);font-weight:660;line-height:1.12}.mhead-blurb[data-astro-cid-5x65ok44]{color:var(--ink-muted);max-width:58ch;margin:.85rem 0 0;font-size:1.0625rem;line-height:1.6}.mfoot[data-astro-cid-5x65ok44]{border-block-start:1px solid var(--rule);margin-block-start:4rem;padding-block-start:1.75rem}.mark[data-astro-cid-5x65ok44]{font-family:var(--font-sans);border:1px solid var(--rule);background:var(--bg-raised);color:var(--ink-muted);cursor:pointer;border-radius:5px;padding:.4rem .85rem;font-size:.75rem;font-weight:550}.mark[data-astro-cid-5x65ok44]:hover{color:var(--ink-strong);border-color:var(--ink-faint)}.mark[data-astro-cid-5x65ok44][aria-pressed=true]{color:var(--bridge);border-color:color-mix(in oklab, var(--bridge) 45%, var(--rule))}.pager[data-astro-cid-5x65ok44]{grid-template-columns:1fr 1fr;gap:1rem;margin-block-start:2rem;display:grid}.pager-link[data-astro-cid-5x65ok44]{border:1px solid var(--rule);font-family:var(--font-sans);border-radius:6px;flex-direction:column;gap:.25rem;padding:.75rem .9rem;text-decoration:none;display:flex}.pager-link[data-astro-cid-5x65ok44]:hover{border-color:var(--ink-faint);background:var(--bg-raised)}.pager-link[data-astro-cid-5x65ok44].is-next{text-align:end}.pager-dir[data-astro-cid-5x65ok44]{text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);font-size:.6875rem}.pager-title[data-astro-cid-5x65ok44]{color:var(--ink-strong);font-size:.8125rem;font-weight:550;line-height:1.35}
+</style><style>.callout{border:1px solid var(--rule);border-inline-start-width:2px;border-radius:5px;margin-block:1.75rem;padding:.9rem 1.1rem 1rem;font-size:.9375rem;line-height:1.65}.callout-probe{border-inline-start-color:var(--probe);background:var(--probe-bg)}.callout-trap{border-inline-start-color:var(--trap);background:var(--trap-bg)}.callout-bridge{border-inline-start-color:var(--bridge);background:var(--bridge-bg)}.callout-label{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;align-items:center;gap:.45rem;margin:0 0 .5rem;font-size:.6875rem;font-weight:620;display:flex}.callout-probe .callout-label{color:var(--probe)}.callout-trap .callout-label{color:var(--trap)}.callout-bridge .callout-label{color:var(--bridge)}.callout-mark{background:currentColor;border-radius:50%;flex:none;width:5px;height:5px}.callout-title{text-transform:none;letter-spacing:0;color:var(--ink-muted);font-weight:500}.callout-body>:first-child{margin-block-start:0}.callout-body>:last-child{margin-block-end:0}.callout-body>*+*{margin-block-start:.75em}.probe{margin-block:1.75rem}.prose .probe-q{font-family:var(--font-sans);letter-spacing:-.01em;color:var(--ink-strong);margin:0 0 .6rem;padding-inline-start:1.15rem;font-size:1rem;font-weight:600;line-height:1.45;position:relative}.prose .probe-q:before{content:"›";color:var(--accent);font-weight:700;position:absolute;inset-inline-start:0}.probe-a{border-inline-start:1px solid var(--rule);margin-inline-start:.1rem;padding-inline-start:1.15rem}.probe-a>*+*{margin-block-start:1.15em}.probe-a>:first-child{margin-block-start:0}.probe-a>:last-child{margin-block-end:0}.selfcheck{border-block-start:1px solid var(--rule-soft)}.selfcheck:last-of-type{border-block-end:1px solid var(--rule-soft)}.prose>.selfcheck+.selfcheck{margin-block-start:0}.selfcheck>summary{cursor:pointer;color:var(--ink);align-items:baseline;gap:1rem;padding:.7rem .2rem;list-style:none;display:flex}.selfcheck>summary::-webkit-details-marker{display:none}.selfcheck>summary:hover{color:var(--ink-strong)}.selfcheck-q{flex:1}.selfcheck-q code{white-space:nowrap}.selfcheck-cue{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);flex:none;padding-block-start:.15rem;font-size:.6875rem;font-weight:600}.selfcheck>summary:hover .selfcheck-cue{color:var(--accent)}.selfcheck-cue-hide,.selfcheck[open] .selfcheck-cue-show{display:none}.selfcheck[open] .selfcheck-cue-hide{display:inline}.selfcheck-a{color:var(--ink-muted);border-inline-start:2px solid var(--rule);margin-block-end:.9rem;margin-inline-start:.2rem;padding:.15rem .2rem 1.05rem;padding-inline-start:1rem;font-size:.9375rem}.selfcheck-a>:first-child{margin-block-start:0}.selfcheck-a>:last-child{margin-block-end:0}.selfcheck-a>*+*{margin-block-start:.7em}.selfcheck-a strong{color:var(--ink)}
+</style></head><body data-astro-cid-z4jru4n3><a href="#content" class="skip" data-astro-cid-z4jru4n3>Skip to content</a><div class="shell" data-astro-cid-z4jru4n3><aside class="rail" data-rail data-astro-cid-z4jru4n3><nav class="rail-nav" aria-label="ML Hardware/Software Codesign contents" data-astro-cid-wv7whodv><div class="rail-head" data-astro-cid-wv7whodv><a href="/blog/" class="rail-up" data-astro-cid-wv7whodv>All series</a><a href="/blog/hw-sw-codesign/" class="rail-home" data-astro-cid-wv7whodv><span class="rail-home-title" data-astro-cid-wv7whodv>ML Hardware/Software Codesign</span><span class="rail-home-sub" data-astro-cid-wv7whodv>Compute, memory, interconnect — and the mapping between them</span></a><p class="rail-progress" data-astro-cid-wv7whodv><span class="rail-progress-bar" data-astro-cid-wv7whodv><span data-progress-fill data-astro-cid-wv7whodv></span></span><span class="rail-progress-text" data-astro-cid-wv7whodv><span data-progress-count data-astro-cid-wv7whodv>0</span>/14 reviewed</span></p></div><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part O</span>The three abstractions</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/01-the-codesign-contract/" class="rail-link" title="Why the hardware/software interface leaks for ML and not for most things, the three-resource abstraction that follows, and what &quot;balanced&quot; actually means when a single workload is only ever bottlenecked on one resource." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>1</span><span class="rail-title" data-astro-cid-wv7whodv>The codesign contract</span><span class="rail-tick" data-tick="hw-sw-codesign/01-the-codesign-contract" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/02-compute-abstraction/" class="rail-link" title="Peak FLOP/s is the least useful number about a compute unit. What matters is the native operation shape, the granularity at which it must be fed, and the two independent ways utilization dies." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>2</span><span class="rail-title" data-astro-cid-wv7whodv>Compute: the shape of the multiply</span><span class="rail-tick" data-tick="hw-sw-codesign/02-compute-abstraction" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/03-memory-abstraction/" class="rail-link is-active" aria-current="page" title="The hierarchy as a ladder of (capacity, bandwidth, latency, granularity, who-manages) tuples. Cache versus scratchpad as a codesign decision, why bandwidth costs area, and why granularity is what actually punishes you." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>3</span><span class="rail-title" data-astro-cid-wv7whodv>Memory: capacity, bandwidth, and who decides placement</span><span class="rail-tick" data-tick="hw-sw-codesign/03-memory-abstraction" aria-hidden="true" data-astro-cid-wv7whodv></span></a><ul class="rail-sub" data-rail-sub data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="#the-core-mental-model" class="rail-sub-link" data-toc="the-core-mental-model" data-astro-cid-wv7whodv>The core mental model</a></li><li data-astro-cid-wv7whodv><a href="#the-design-space-quantified" class="rail-sub-link" data-toc="the-design-space-quantified" data-astro-cid-wv7whodv>The design space, quantified</a></li><li data-astro-cid-wv7whodv><a href="#critical-thinking" class="rail-sub-link" data-toc="critical-thinking" data-astro-cid-wv7whodv>Critical thinking</a></li><li data-astro-cid-wv7whodv><a href="#self-check" class="rail-sub-link" data-toc="self-check" data-astro-cid-wv7whodv>Self-check</a></li></ul></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/04-interconnect-abstraction/" class="rail-link" title="An interconnect is a memory level you cannot store anything in. The same four numbers, topology in place of capacity, collectives as the access primitives — and the beachfront limit that drives everything else in the series." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>4</span><span class="rail-title" data-astro-cid-wv7whodv>Interconnect: memory at a longer distance</span><span class="rail-tick" data-tick="hw-sw-codesign/04-interconnect-abstraction" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part P</span>Mapping</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/05-mapping-problem/" class="rail-link" title="A mapping is four decisions: tiling, permutation, spatial assignment, binding. Which makes arithmetic intensity a property of the mapping rather than the algorithm — and makes the search space astronomically large." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>5</span><span class="rail-title" data-astro-cid-wv7whodv>The mapping problem, stated precisely</span><span class="rail-tick" data-tick="hw-sw-codesign/05-mapping-problem" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/06-dataflow-and-reuse/" class="rail-link" title="Weight-, output-, input- and row-stationary as four answers to one question — which tensor do you refuse to re-fetch. Why partial sums decide it, and why fixing a dataflow in RTL fixes one dimension of the mapspace for the life of the chip." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>6</span><span class="rail-title" data-astro-cid-wv7whodv>Dataflow: what stays still</span><span class="rail-tick" data-tick="hw-sw-codesign/06-dataflow-and-reuse" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/07-tiling/" class="rail-link" title="The one closed form worth memorizing: traffic falls as the square root of capacity, so doubling SRAM buys 1.41×. Multi-level tiling, double buffering as capacity spent on latency, and why the levels cannot be tiled independently." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>7</span><span class="rail-title" data-astro-cid-wv7whodv>Tiling the hierarchy</span><span class="rail-tick" data-tick="hw-sw-codesign/07-tiling" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/08-cost-models/" class="rail-link" title="How you evaluate a million mappings on hardware that does not exist yet. Analytic models versus autotuning, what each is systematically wrong about, and why for codesign the model’s accuracy is the chip’s accuracy." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>8</span><span class="rail-title" data-astro-cid-wv7whodv>Cost models and searching the mapspace</span><span class="rail-tick" data-tick="hw-sw-codesign/08-cost-models" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part Q</span>Where mappings break</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/09-sparsity-and-irregularity/" class="rail-link" title="Every static mapping assumes a dense rectangular iteration space. Three ways sparsity breaks that, why 90% unstructured rarely gives 10×, and the rule that hardware exploits sparsity only when the pattern is shaped to the array." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>9</span><span class="rail-title" data-astro-cid-wv7whodv>Sparsity and irregularity</span><span class="rail-tick" data-tick="hw-sw-codesign/09-sparsity-and-irregularity" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/10-numerics-as-codesign/" class="rail-link" title="Precision is the only knob that moves compute, memory and interconnect at once. Block scaling as the modern answer, why the block size must divide the array’s K-tile, and why &quot;what precision&quot; is the wrong question." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>10</span><span class="rail-title" data-astro-cid-wv7whodv>Numerics as a codesign knob</span><span class="rail-tick" data-tick="hw-sw-codesign/10-numerics-as-codesign" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/11-scale-out-mapping/" class="rail-link" title="DP, TP, PP, EP and SP are Module 5’s four decisions applied one level up, with the network as the memory level. Each strategy is priced by the collective it forces, and the placement rule falls out of the arithmetic." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>11</span><span class="rail-title" data-astro-cid-wv7whodv>Parallelism is mapping onto the interconnect</span><span class="rail-tick" data-tick="hw-sw-codesign/11-scale-out-mapping" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part R</span>In practice</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/12-case-attention/" class="rail-link" title="FlashAttention is a mapping result, not an algorithm result — identical FLOPs, one tensor re-bound. Prefill and decode as two points in the resource space with the same math, and GQA/MLA as model architecture bending to a memory constraint." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>12</span><span class="rail-title" data-astro-cid-wv7whodv>Case study: attention, mapped</span><span class="rail-tick" data-tick="hw-sw-codesign/12-case-attention" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/13-case-three-architectures/" class="rail-link" title="GPU, TPU and the static-SRAM machines differ mostly in one thing: who absorbs uncertainty at runtime. Read each on the three axes, and the flexibility/efficiency curve stops being a mystery." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>13</span><span class="rail-title" data-astro-cid-wv7whodv>Three architectures, read as three mappings</span><span class="rail-tick" data-tick="hw-sw-codesign/13-case-three-architectures" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/14-the-codesign-loop/" class="rail-link" title="Hardware is frozen two to three years before the workload it runs, so the compiler is the only thing that can adapt — and it is on the critical path of the chip’s value while being consistently underfunded relative to it." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>14</span><span class="rail-title" data-astro-cid-wv7whodv>The codesign loop, and where it fails</span><span class="rail-tick" data-tick="hw-sw-codesign/14-the-codesign-loop" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-other" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv>Other series</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>ML Hardware &amp; Low-Latency Systems</span></a></li><li data-astro-cid-wv7whodv><a href="/blog/diffusion/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>Diffusion</span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>ML Software &amp; Compilers</span></a></li></ul></section><div class="rail-foot" data-astro-cid-wv7whodv><p data-astro-cid-wv7whodv><kbd data-astro-cid-wv7whodv>j</kbd> <kbd data-astro-cid-wv7whodv>k</kbd> section · <kbd data-astro-cid-wv7whodv>/</kbd> search · <kbd data-astro-cid-wv7whodv>[</kbd><kbd data-astro-cid-wv7whodv>]</kbd> module</p></div></nav></aside><div class="col" data-astro-cid-z4jru4n3><header class="topbar" data-astro-cid-z4jru4n3><button class="icon-btn only-narrow" data-rail-toggle aria-label="Toggle contents" data-astro-cid-z4jru4n3><svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M1.5 3.5h12M1.5 7.5h12M1.5 11.5h12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg></button><p class="crumb" data-astro-cid-z4jru4n3>Part O · The three abstractions › Memory: capacity, bandwidth, and who decides placement</p><div class="topbar-actions" data-astro-cid-z4jru4n3><button class="search-btn" data-search-open aria-label="Search" data-astro-cid-z4jru4n3><span aria-hidden="true" data-astro-cid-z4jru4n3>⌕</span><span class="search-btn-label" data-astro-cid-z4jru4n3>Search</span><kbd data-astro-cid-z4jru4n3>/</kbd></button><button class="icon-btn" data-theme-toggle aria-label="Toggle theme" data-astro-cid-z4jru4n3><svg class="i-sun" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><circle cx="7.5" cy="7.5" r="3" stroke="currentColor" stroke-width="1.2" data-astro-cid-z4jru4n3></circle><path d="M7.5 .8v1.7M7.5 12.5v1.7M14.2 7.5h-1.7M2.5 7.5H.8M12.24 2.76l-1.2 1.2M3.96 11.04l-1.2 1.2M12.24 12.24l-1.2-1.2M3.96 3.96l-1.2-1.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg><svg class="i-moon" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M13 9.3A5.8 5.8 0 0 1 5.7 2 5.9 5.9 0 1 0 13 9.3Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" data-astro-cid-z4jru4n3></path></svg></button><a class="site-link" href="/" data-astro-cid-z4jru4n3>srikanthmalla.com</a></div></header><main id="content" data-astro-cid-z4jru4n3><article class="wrap" data-article data-astro-cid-5x65ok44><header class="mhead" data-astro-cid-5x65ok44><p class="mhead-kicker" data-astro-cid-5x65ok44><span class="mhead-n" data-astro-cid-5x65ok44>Module 3</span><span class="mhead-dot" data-astro-cid-5x65ok44>·</span>Part O — The three abstractions<span class="mhead-dot" data-astro-cid-5x65ok44>·</span>18 min</p><h1 class="mhead-title" data-astro-cid-5x65ok44>Memory: capacity, bandwidth, and who decides placement</h1><p class="mhead-blurb" data-astro-cid-5x65ok44>The hierarchy as a ladder of (capacity, bandwidth, latency, granularity, who-manages) tuples. Cache versus scratchpad as a codesign decision, why bandwidth costs area, and why granularity is what actually punishes you.</p></header><div class="prose" data-astro-cid-5x65ok44><h2 id="the-core-mental-model">The core mental model<a class="anchor" href="#the-core-mental-model" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>Memory is not a thing, it is a ladder, and each rung is fully described by five numbers: capacity,
+bandwidth, latency, access granularity, and who decides what sits there. The first three are the ones
+everybody quotes and the last two are the ones that determine whether your code works. <strong>Granularity</strong>
+is the minimum unit the level will transfer — a 32-byte sector, a 128-byte cache line, a 256-byte or
+larger DRAM burst — and it is what converts a strided access pattern from “slightly worse” into
+“eight times worse”, because asking for four useful bytes out of a 32-byte sector wastes seven eighths
+of the bandwidth you paid for. <strong>Who decides</strong> is the codesign field. A cache and a scratchpad can be
+the same SRAM macro, laid out identically, at the same distance from the compute; what differs is
+whether the hardware infers residency from the access stream or the compiler states it.</p>
+<p>The reason that last field is a genuine design decision rather than a matter of taste is that the two
+options are optimal under different amounts of runtime uncertainty. A cache spends area and energy on
+tags, comparators and replacement state in exchange for behaving reasonably on an access pattern
+nobody predicted. A scratchpad spends none of that, makes every byte usable rather than
+statistically usable, and gives deterministic timing — in exchange for total dependence on the
+compiler having predicted correctly. ML is unusually favourable to the compiler, because its loop
+nests are affine, its bounds are known, and its reuse is enormous and statically analysable. That is
+why TPUs run on compiler-managed VMEM with no data caches at all, and why the GPU has been drifting
+the same way for a decade: shared memory was always a scratchpad, and Hopper’s tensor memory
+accelerator is dedicated hardware for making explicitly-scheduled bulk transfers cheap.</p>
+<p>The third piece of the model is that capacity and bandwidth are not independent purchases, and they
+scale by different mechanisms. SRAM bandwidth comes from <strong>banking</strong> — more independent arrays, more
+ports, more wires — so it scales with area and is essentially something you can buy on-die if you are
+willing to spend the die. DRAM bandwidth comes from <strong>pins and stacks</strong>, so it scales with package
+beachfront and interposer area, which is a far harder limit and the reason HBM capacity and bandwidth
+move together in lockstep rather than independently. This asymmetry is why the on-chip levels have
+been growing fast (H100 has 50 MB of L2 and 256 KB of shared memory per SM; TPU v5e has 128 MiB of
+VMEM) while HBM bandwidth grows slowly, and it is the structural cause of the rising ridge point from
+Module 2. The mapping’s job is to convert the abundant resource into a substitute for the scarce one.</p>
+<aside class="callout callout-bridge"><p class="callout-label"><span class="callout-mark" aria-hidden="true"></span>Bridge to what you know<span class="callout-title"> · coalescing, generalised</span></p><div class="callout-body"><p>ML Hardware Module 2 made the case for coalesced access on a GPU: the memory system transacts in
+fixed-size sectors, so a warp whose threads touch scattered addresses pays for bytes it discards.
+That is the granularity field, at one rung of the ladder. The same argument applies at every rung
+with a different constant — DRAM row activation, PCIe TLP size, network MTU — and in each case the
+question is identical: what fraction of the minimum transfer did you actually use?</p></div></aside>
+<h2 id="the-design-space-quantified">The design space, quantified<a class="anchor" href="#the-design-space-quantified" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>The ladder, with the two fields that are usually omitted:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Level</th><th>Capacity</th><th>Bandwidth</th><th>Latency</th><th>Granularity</th><th>Who manages</th></tr></thead><tbody><tr><td>Register file</td><td>256 KB / SM</td><td>~100 TB/s</td><td>~1 cycle</td><td>4 B</td><td>compiler</td></tr><tr><td>Shared mem / VMEM</td><td>256 KB / SM; 128 MiB (v5e)</td><td>~10 TB/s</td><td>~30 cyc</td><td>4 B (banked)</td><td><strong>compiler</strong></td></tr><tr><td>L1</td><td>128–256 KB</td><td>~10 TB/s</td><td>~30 cyc</td><td>32 B sector</td><td>hardware</td></tr><tr><td>L2</td><td>50 MB (H100)</td><td>~5 TB/s</td><td>~200 cyc</td><td>32–128 B</td><td>hardware</td></tr><tr><td>HBM</td><td>80–192 GB</td><td>3.35–8 TB/s</td><td>~400 ns</td><td>32 B sector, larger burst</td><td>hardware</td></tr><tr><td>Host DRAM over PCIe</td><td>TB</td><td>~64 GB/s</td><td>~2 µs</td><td>TLP</td><td>software (DMA)</td></tr></tbody></table></div>
+<p>What each level costs, which is why the ladder has the shape it has:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th></th><th>On-die SRAM</th><th>HBM</th></tr></thead><tbody><tr><td>Bandwidth scales with</td><td>banks, ports — <strong>area</strong></td><td>pins, stacks — <strong>beachfront</strong></td></tr><tr><td>Capacity scales with</td><td>area, directly</td><td>stack height, process</td></tr><tr><td>Energy per byte</td><td>~1 pJ</td><td>~50 pJ</td></tr><tr><td>Density</td><td>~1 MB/mm² order</td><td>~GB/stack</td></tr><tr><td>Practical ceiling</td><td>die size and yield</td><td>interposer and package</td></tr></tbody></table></div>
+<p>Granularity, and what it costs to ignore it:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Access pattern</th><th>Bytes requested</th><th>Bytes delivered</th><th>Efficiency</th></tr></thead><tbody><tr><td>Contiguous, aligned</td><td>32 B</td><td>32 B</td><td>100%</td></tr><tr><td>Stride 2 (FP32)</td><td>4 B of 32 B</td><td>32 B</td><td>50%</td></tr><tr><td>Stride 8 (FP32)</td><td>4 B of 32 B</td><td>32 B</td><td>12.5%</td></tr><tr><td>Random gather (FP32)</td><td>4 B</td><td>32 B</td><td>12.5%</td></tr><tr><td>Random gather, DRAM row miss</td><td>4 B</td><td>32 B + row activation</td><td>far worse</td></tr></tbody></table></div>
+<p>The last row is the one that surprises people: below the sector level there is a second granularity,
+the DRAM row, and a gather that also misses rows pays an activation penalty on top of the wasted
+sector.</p>
+<h2 id="critical-thinking">Critical thinking<a class="anchor" href="#critical-thinking" aria-hidden="true" tabindex="-1">#</a></h2>
+<section class="probe"><h3 class="probe-q">When is a scratchpad the right answer and when is a cache, and what makes ML unusual?</h3><div class="probe-a"><p>The decision turns on exactly one quantity: <strong>how much uncertainty remains at runtime</strong>.</p><p>A cache is insurance. You pay a continuous premium — tag arrays, comparators, replacement metadata,
+coherence traffic, and typically 5–10% of the array’s area plus energy on every access — in exchange
+for a policy that adapts to an access pattern nobody predicted. The payoff is that unanticipated
+behaviour degrades rather than fails. That is worth a great deal when the access stream depends on
+data (pointer chasing, hash lookups, branchy control flow), and it is worth almost nothing when the
+stream is known at compile time.</p><p>A scratchpad is the opposite bet. No tags, so no tag energy and no tag area; every byte is usable
+rather than statistically usable, which matters more than it sounds — a 128 KB cache holds
+substantially less than 128 KB of your working set once conflict misses and replacement policy are
+accounted for, while a 128 KB scratchpad holds 128 KB. Timing is deterministic, which is a
+prerequisite for static scheduling and for any hard-deadline system. And the compiler can implement
+policies a cache cannot express at all: keep this tile resident across the whole loop nest, evict
+that one immediately because it is streaming and will never be reused, double-buffer this one against
+the next iteration.</p><p><strong>ML is unusually favourable to the scratchpad</strong> because its three preconditions all hold at once.
+The loop bounds are known before execution; the index expressions are affine, so the exact access
+sequence is computable; and the reuse is both large and statically derivable from the loop structure.
+Very little else in computing has all three. That is why the TPU has no data caches — VMEM is
+programmer-controlled scratchpad, and XLA schedules every transfer — and why the GPU keeps adding
+scratchpad-shaped machinery: shared memory has always been one, <code>cp.async</code> made explicit staging
+cheap on Ampere, and Hopper’s TMA is a dedicated engine for compiler-issued bulk tile copies with
+address generation in hardware.</p><p>Two honest qualifications:</p><ul>
+<li><strong>Real designs are hybrids, deliberately.</strong> A GPU has scratchpad (shared memory) <em>and</em> cache (L1,
+L2) at nearly the same level, so a kernel can use explicit staging for the tensors it understands
+and let the cache absorb everything else. This is the right engineering answer, because a real
+model has some tensors with statically-known reuse and some without.</li>
+<li><strong>The scratchpad’s failure mode is not slowness.</strong> When the compiler cannot prove a shape or an
+index, it does not run slowly — it cannot generate the schedule at all, and must fall back. That
+cliff is exactly Part Q, and it is the price of the whole strategy.</li>
+</ul></div></section>
+<section class="probe"><h3 class="probe-q">You can double the on-die SRAM or double the HBM bandwidth. Which, and what determines it?</h3><div class="probe-a"><p>Ask what the SRAM would be <em>for</em>, because the two purchases substitute for each other only through
+the mapping, and the exchange rate is bad.</p><p>The relevant closed form, derived properly in Module 7: for a GEMM tiled at a level of capacity <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>C</mi></mrow><annotation encoding="application/x-tex">C</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0715em">C</span></span></span></span>,
+the traffic through that level scales as <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>O</mi><mo stretchy="false">(</mo><msup><mi>N</mi><mn>3</mn></msup><mi mathvariant="normal">/</mi><msqrt><mi>C</mi></msqrt><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">O(N^3/\sqrt{C})</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.1767em;vertical-align:-0.25em"></span><span class="mord mathnormal" style="margin-right:0.0278em">O</span><span class="mopen">(</span><span class="mord"><span class="mord mathnormal" style="margin-right:0.109em">N</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141em"><span style="top:-3.063em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">3</span></span></span></span></span></span></span></span><span class="mord">/</span><span class="mord sqrt"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.9267em"><span class="svg-align" style="top:-3em"><span class="pstrut" style="height:3em"></span><span class="mord" style="padding-left:0.833em"><span class="mord mathnormal" style="margin-right:0.0715em">C</span></span></span><span style="top:-2.8867em"><span class="pstrut" style="height:3em"></span><span class="hide-tail" style="min-width:0.853em;height:1.08em"><svg xmlns="http://www.w3.org/2000/svg" width="400em" height="1.08em" viewBox="0 0 400000 1080" preserveAspectRatio="xMinYMin slice"><path d="M95,702
+c-2.7,0,-7.17,-2.7,-13.5,-8c-5.8,-5.3,-9.5,-10,-9.5,-14
+c0,-2,0.3,-3.3,1,-4c1.3,-2.7,23.83,-20.7,67.5,-54
+c44.2,-33.3,65.8,-50.3,66.5,-51c1.3,-1.3,3,-2,5,-2c4.7,0,8.7,3.3,12,10
+s173,378,173,378c0.7,0,35.3,-71,104,-213c68.7,-142,137.5,-285,206.5,-429
+c69,-144,104.5,-217.7,106.5,-221
+l0 -0
+c5.3,-9.3,12,-14,20,-14
+H400000v40H845.2724
+s-225.272,467,-225.272,467s-235,486,-235,486c-2.7,4.7,-9,7,-19,7
+c-6,0,-10,-1,-12,-3s-194,-422,-194,-422s-65,47,-65,47z
+M834 80h400000v40h-400000z"></path></svg></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.1133em"><span></span></span></span></span></span><span class="mclose">)</span></span></span></span>. Traffic falls as the <strong>square root</strong> of
+capacity. So doubling SRAM cuts traffic by a factor of <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msqrt><mn>2</mn></msqrt><mo>≈</mo><mn>1.41</mn></mrow><annotation encoding="application/x-tex">\sqrt 2 \approx 1.41</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.04em;vertical-align:-0.1328em"></span><span class="mord sqrt"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.9072em"><span class="svg-align" style="top:-3em"><span class="pstrut" style="height:3em"></span><span class="mord" style="padding-left:0.833em">2</span></span><span style="top:-2.8672em"><span class="pstrut" style="height:3em"></span><span class="hide-tail" style="min-width:0.853em;height:1.08em"><svg xmlns="http://www.w3.org/2000/svg" width="400em" height="1.08em" viewBox="0 0 400000 1080" preserveAspectRatio="xMinYMin slice"><path d="M95,702
+c-2.7,0,-7.17,-2.7,-13.5,-8c-5.8,-5.3,-9.5,-10,-9.5,-14
+c0,-2,0.3,-3.3,1,-4c1.3,-2.7,23.83,-20.7,67.5,-54
+c44.2,-33.3,65.8,-50.3,66.5,-51c1.3,-1.3,3,-2,5,-2c4.7,0,8.7,3.3,12,10
+s173,378,173,378c0.7,0,35.3,-71,104,-213c68.7,-142,137.5,-285,206.5,-429
+c69,-144,104.5,-217.7,106.5,-221
+l0 -0
+c5.3,-9.3,12,-14,20,-14
+H400000v40H845.2724
+s-225.272,467,-225.272,467s-235,486,-235,486c-2.7,4.7,-9,7,-19,7
+c-6,0,-10,-1,-12,-3s-194,-422,-194,-422s-65,47,-65,47z
+M834 80h400000v40h-400000z"></path></svg></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.1328em"><span></span></span></span></span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">1.41</span></span></span></span>, whereas doubling HBM
+bandwidth cuts memory time by 2× directly. On that comparison alone, bandwidth wins for any workload
+already tiled sensibly, and it is the reason vendors spend so aggressively on HBM despite its cost.</p><p>But the square-root law describes the <em>continuous</em> regime, and the decision is usually made on
+<strong>thresholds</strong>, where SRAM wins enormously:</p><ul>
+<li><strong>A working set that now fits entirely.</strong> If doubling SRAM lets the whole weight tile, or the whole
+KV block, or an entire small model live on-die, traffic does not fall by 1.41× — it falls to
+roughly zero, because the data is fetched once instead of once per tile. Groq’s architecture is
+this threshold argument taken to its conclusion: enough SRAM to hold the model, and no HBM at all.</li>
+<li><strong>You cannot buy HBM bandwidth freely.</strong> SRAM bandwidth scales with banks and area, which is a
+design decision. HBM bandwidth scales with stacks and beachfront, which is a packaging constraint
+with a hard ceiling and a large cost per increment. Frequently “double the HBM bandwidth” is simply
+not on the menu at any price, which settles the question.</li>
+<li><strong>Energy.</strong> ~1 pJ/byte against ~50 pJ/byte. In a power-limited design — which every large
+accelerator is — moving traffic on-die is not merely faster, it is what lets the clocks stay up.</li>
+</ul><p>So the decision rule: <strong>if a threshold is within reach, take the SRAM; otherwise take the
+bandwidth.</strong> And the codesign-specific version, which is the point of this module — you cannot answer
+the question without knowing the mapping, because the mapping decides both what the working set is
+and whether a threshold exists. That is the circular dependency from Module 1, made concrete enough
+to cost.</p></div></section>
+<section class="probe"><h3 class="probe-q">Why is access granularity a bigger practical problem than latency?</h3><div class="probe-a"><p>Because latency is hidable and wasted granularity is not.</p><p>Latency has a standard defence available at every level: get more work in flight. Warps, out-of-order
+windows, prefetchers, double buffering, asynchronous copies — every one of these overlaps a long
+latency with useful work, and if you have enough independent work, latency effectively disappears.
+Little’s law makes this quantitative: to sustain bandwidth <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>B</mi></mrow><annotation encoding="application/x-tex">B</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal" style="margin-right:0.0502em">B</span></span></span></span> at latency <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>L</mi></mrow><annotation encoding="application/x-tex">L</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal">L</span></span></span></span> you need <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>B</mi><mo>×</mo><mi>L</mi></mrow><annotation encoding="application/x-tex">B \times L</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.7667em;vertical-align:-0.0833em"></span><span class="mord mathnormal" style="margin-right:0.0502em">B</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal">L</span></span></span></span>
+bytes in flight, and on an H100 that is roughly 3.35 TB/s × 400 ns ≈ <strong>1.3 MB of memory requests
+outstanding at all times</strong>. Large, but achievable, and it is what the whole SIMT machine is for.</p><p>Wasted granularity has no such defence. If you request 4 useful bytes and the memory system delivers a
+32-byte sector, you have consumed 32 bytes of the bandwidth you paid for and used 4. No amount of
+concurrency recovers the other 28 — the bandwidth is <em>gone</em>, spent on bytes that were fetched and
+discarded. More parallelism makes you waste it faster. The only fix is changing the access pattern
+itself, which means changing the layout or the mapping.</p><p>This has consequences that show up all over the stack, and it is worth seeing them as one phenomenon:</p><ul>
+<li><strong>Layout is a first-class mapping decision</strong>, not an afterthought. NCHW versus NHWC, row versus
+column major, blocked and tiled layouts, and the padding of leading dimensions to avoid bank
+conflicts and channel aliasing are all granularity management.</li>
+<li><strong>Gathers are expensive for a structural reason.</strong> An embedding lookup or an unstructured sparse
+access requests a handful of bytes per index from unrelated addresses. Each one costs a full sector
+and possibly a DRAM row activation. This is why unstructured sparsity underdelivers so badly
+(Module 9) — the FLOPs vanish but the <em>traffic</em> barely moves.</li>
+<li><strong>Granularity compounds up the ladder.</strong> 32-byte sector, then a DRAM row of a few kilobytes, then a
+PCIe TLP, then a network MTU. A pattern that is merely inefficient at one level can be catastrophic
+once it crosses a level with much coarser granularity, which is why the same code can be 20% slow
+on-node and 10× slow across a network.</li>
+</ul><p>The framing to keep: <strong>latency is a concurrency problem, granularity is a layout problem, and only
+one of them has a general solution.</strong></p></div></section>
+<section class="probe"><h3 class="probe-q">Why has on-die memory grown so much faster than off-chip bandwidth, and what should software do about it?</h3><div class="probe-a"><p>Because they scale by different physical mechanisms, and only one of them tracks Moore’s law.</p><p>On-die SRAM capacity and bandwidth scale with <strong>area</strong>: more macros, more banks, more ports, all of
+which come from transistors that keep getting smaller and cheaper. HBM bandwidth scales with
+<strong>package beachfront</strong> — the physical perimeter available for stacks, the interposer routing, the
+number of TSVs and the achievable signalling rate. That does not shrink with the process node. The
+result is the numbers from Module 2: H100 at 989 BF16 TFLOP/s against 3.35 TB/s (~295 FLOP/byte),
+B200 at ~2.25 PFLOP/s against 8 TB/s (~280), TPU v6e at 920 TFLOP/s against 1.6 TB/s (~575). Compute
+grows faster; the ridge point climbs; and the required arithmetic intensity climbs with it.</p><p>What software has to do in response is a coherent programme, not a list of tricks:</p><ul>
+<li><strong>Tile larger, and tile more levels.</strong> A higher ridge point means the tile that saturates the
+machine is bigger, which means it needs the bigger on-die capacity that the same trend is
+providing. These two facts are the same fact.</li>
+<li><strong>Fuse aggressively.</strong> Every intermediate that reaches HBM and comes back is traffic charged
+against a shrinking budget. Fusion converts it to SRAM traffic at ~1/50 the energy. This is why the
+compiler modules in the ML Software series spend so much effort on fusion — it is a direct response
+to this trend.</li>
+<li><strong>Recompute rather than store.</strong> When arithmetic is nearly free and bandwidth is scarce,
+recomputing a value is cheaper than saving and reloading it. This is why AOTAutograd’s min-cut
+partition is a genuine optimisation rather than a memory-saving hack, and why FlashAttention
+recomputes attention weights in the backward pass instead of materialising them.</li>
+<li><strong>Send fewer bytes.</strong> Module 10.</li>
+</ul><p>The unifying statement: <strong>the trend converts problems from “not enough FLOPs” into “not enough
+locality”, and locality is a software property.</strong> That is precisely why the mapping deserves a whole
+Part of this series, and why hardware teams increasingly measure their compilers rather than their
+peak numbers.</p></div></section>
+<h2 id="self-check">Self-check<a class="anchor" href="#self-check" aria-hidden="true" tabindex="-1">#</a></h2>
+<details class="selfcheck"><summary><span class="selfcheck-q">What five numbers describe a memory level, and which two are usually omitted?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Capacity, bandwidth, latency, <strong>access granularity</strong>, and <strong>who decides placement</strong>. The last two are
+the omitted ones and they are the ones that decide whether code works: granularity turns a strided
+pattern into an 8× bandwidth loss, and who-decides is the codesign field distinguishing a cache from
+a scratchpad built out of identical SRAM.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">What makes ML unusually suited to compiler-managed memory?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Three preconditions hold at once: loop bounds known before execution, affine index expressions so the
+access sequence is computable, and large statically-derivable reuse. Almost nothing else in computing
+has all three. Hence TPU VMEM with no data caches, and the GPU’s drift the same way — shared memory,
+<code>cp.async</code>, and Hopper’s TMA. The price is that when the compiler cannot prove a shape, the schedule
+is not slow, it is ungenerable.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Double the SRAM or double the HBM bandwidth — what decides it?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Whether a <strong>capacity threshold</strong> is in reach. In the continuous regime traffic falls only as
+<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msqrt><mi>C</mi></msqrt></mrow><annotation encoding="application/x-tex">\sqrt{C}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.04em;vertical-align:-0.1133em"></span><span class="mord sqrt"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.9267em"><span class="svg-align" style="top:-3em"><span class="pstrut" style="height:3em"></span><span class="mord" style="padding-left:0.833em"><span class="mord mathnormal" style="margin-right:0.0715em">C</span></span></span><span style="top:-2.8867em"><span class="pstrut" style="height:3em"></span><span class="hide-tail" style="min-width:0.853em;height:1.08em"><svg xmlns="http://www.w3.org/2000/svg" width="400em" height="1.08em" viewBox="0 0 400000 1080" preserveAspectRatio="xMinYMin slice"><path d="M95,702
+c-2.7,0,-7.17,-2.7,-13.5,-8c-5.8,-5.3,-9.5,-10,-9.5,-14
+c0,-2,0.3,-3.3,1,-4c1.3,-2.7,23.83,-20.7,67.5,-54
+c44.2,-33.3,65.8,-50.3,66.5,-51c1.3,-1.3,3,-2,5,-2c4.7,0,8.7,3.3,12,10
+s173,378,173,378c0.7,0,35.3,-71,104,-213c68.7,-142,137.5,-285,206.5,-429
+c69,-144,104.5,-217.7,106.5,-221
+l0 -0
+c5.3,-9.3,12,-14,20,-14
+H400000v40H845.2724
+s-225.272,467,-225.272,467s-235,486,-235,486c-2.7,4.7,-9,7,-19,7
+c-6,0,-10,-1,-12,-3s-194,-422,-194,-422s-65,47,-65,47z
+M834 80h400000v40h-400000z"></path></svg></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.1133em"><span></span></span></span></span></span></span></span></span>, so doubling SRAM buys 1.41× while doubling bandwidth buys 2× — bandwidth wins. But if
+the extra SRAM makes a working set fit entirely, traffic drops to near zero rather than by 1.41×.
+Also: HBM bandwidth is often not purchasable at any price (beachfront), and SRAM is ~1 pJ/byte
+against HBM’s ~50, which matters in a power-limited part.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Why is granularity a worse problem than latency?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Latency is hidable by concurrency — you need <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>B</mi><mo>×</mo><mi>L</mi></mrow><annotation encoding="application/x-tex">B \times L</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.7667em;vertical-align:-0.0833em"></span><span class="mord mathnormal" style="margin-right:0.0502em">B</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.6833em"></span><span class="mord mathnormal">L</span></span></span></span> bytes in flight, about 1.3 MB on an H100 —
+and with enough independent work it disappears. Wasted granularity is unrecoverable: request 4 bytes,
+receive a 32-byte sector, and 28 bytes of bandwidth are spent and discarded. More parallelism only
+wastes it faster. The sole fix is changing layout or access pattern. Latency is a concurrency
+problem; granularity is a layout problem; only one has a general solution.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Why does on-die memory grow faster than HBM bandwidth, and what does software owe in response?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>SRAM scales with <strong>area</strong>, which tracks the process node; HBM bandwidth scales with <strong>package
+beachfront</strong>, which does not. So the ridge point climbs every generation. Software’s response: tile
+larger and across more levels, fuse to keep intermediates off HBM, recompute instead of storing now
+that arithmetic is nearly free, and send fewer bytes via precision. The trend converts “not enough
+FLOPs” into “not enough locality” — and locality is a software property.</p></div></details></div><footer class="mfoot" data-astro-cid-5x65ok44><button class="mark" data-mark="hw-sw-codesign/03-memory-abstraction" aria-pressed="false" data-astro-cid-5x65ok44>Mark as reviewed</button><nav class="pager" data-astro-cid-5x65ok44><a class="pager-link" href="/blog/hw-sw-codesign/02-compute-abstraction/" data-prev data-astro-cid-5x65ok44><span class="pager-dir" data-astro-cid-5x65ok44>← Previous</span><span class="pager-title" data-astro-cid-5x65ok44>2. Compute: the shape of the multiply</span></a><a class="pager-link is-next" href="/blog/hw-sw-codesign/04-interconnect-abstraction/" data-next data-astro-cid-5x65ok44><span class="pager-dir" data-astro-cid-5x65ok44>Next →</span><span class="pager-title" data-astro-cid-5x65ok44>4. Interconnect: memory at a longer distance</span></a></nav></footer></article></main></div></div><div class="search-overlay" data-search hidden data-astro-cid-ac66eqjo><div class="search-backdrop" data-search-close data-astro-cid-ac66eqjo></div><div class="search-panel" role="dialog" aria-modal="true" aria-label="Search modules" data-astro-cid-ac66eqjo><div class="search-input-row" data-astro-cid-ac66eqjo><span class="search-icon" aria-hidden="true" data-astro-cid-ac66eqjo>⌕</span><input type="text" class="search-input" placeholder="Search all modules…" autocomplete="off" spellcheck="false" data-search-input data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>esc</kbd></div><ul class="search-results" data-search-results data-astro-cid-ac66eqjo></ul><p class="search-empty" data-search-empty hidden data-astro-cid-ac66eqjo>No matches.</p><p class="search-hint" data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>↑</kbd><kbd data-astro-cid-ac66eqjo>↓</kbd> move · <kbd data-astro-cid-ac66eqjo>↵</kbd> open</p></div></div><script>(function(){const indexUrl = "/blog/search.json";
+
+  (() => {
+    const overlay = document.querySelector('[data-search]');
+    if (!overlay) return;
+    const input = overlay.querySelector('[data-search-input]');
+    const list = overlay.querySelector('[data-search-results]');
+    const empty = overlay.querySelector('[data-search-empty]');
+
+    let index = null;
+    let loading = null;
+    let active = 0;
+
+    const load = () => {
+      if (index) return Promise.resolve(index);
+      if (!loading) {
+        loading = fetch(indexUrl)
+          .then((r) => r.json())
+          .then((d) => (index = d))
+          .catch(() => (index = []));
+      }
+      return loading;
+    };
+
+    function open() {
+      overlay.hidden = false;
+      document.documentElement.style.overflow = 'hidden';
+      load().then(() => input.focus());
+      input.focus();
+      input.select();
+    }
+
+    function close() {
+      overlay.hidden = true;
+      document.documentElement.style.overflow = '';
+    }
+
+    function escapeHtml(s) {
+      return s.replace(
+        /[&<>"]/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]
+      );
+    }
+
+    // Excerpt around the first matched term, with the term marked.
+    function excerpt(text, terms) {
+      const lower = text.toLowerCase();
+      let at = -1;
+      for (const t of terms) {
+        const i = lower.indexOf(t);
+        if (i !== -1 && (at === -1 || i < at)) at = i;
+      }
+      if (at === -1) at = 0;
+      const start = Math.max(0, at - 60);
+      let slice = text.slice(start, start + 190);
+      if (start > 0) slice = '…' + slice;
+      if (start + 190 < text.length) slice += '…';
+      let html = escapeHtml(slice);
+      for (const t of terms) {
+        html = html.replace(
+          new RegExp(`(${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'),
+          '<mark>$1</mark>'
+        );
+      }
+      return html;
+    }
+
+    function score(rec, terms) {
+      let s = 0;
+      const hay = (rec.m + ' ' + rec.h + ' ' + (rec.s || '') + ' ' + (rec.k || '')).toLowerCase();
+      const body = rec.t.toLowerCase();
+      for (const t of terms) {
+        if (hay.includes(t)) s += 12;
+        const i = body.indexOf(t);
+        if (i !== -1) s += 4 + Math.max(0, 3 - Math.floor(i / 400));
+        else if (!hay.includes(t)) return 0; // every term must appear
+      }
+      return s;
+    }
+
+    function render(results, terms) {
+      active = 0;
+      list.innerHTML = results
+        .map(
+          (r, i) => `
+          <li>
+            <a href="${r.u}" class="search-hit${i === 0 ? ' is-active' : ''}" data-hit>
+              <span class="search-hit-crumb"><span class="search-hit-series">${escapeHtml(r.s||"")}</span><span class="search-hit-n">${r.n}</span>${escapeHtml(r.m)} <span class="search-hit-sep">›</span> ${escapeHtml(r.h)}</span>
+              <span class="search-hit-text">${excerpt(r.t, terms)}</span>
+            </a>
+          </li>`
+        )
+        .join('');
+      empty.hidden = results.length > 0;
+    }
+
+    function run() {
+      const q = input.value.trim().toLowerCase();
+      if (!q || !index) {
+        list.innerHTML = '';
+        empty.hidden = true;
+        return;
+      }
+      const terms = q.split(/\s+/).filter(Boolean);
+      const results = index
+        .map((r) => ({ r, s: score(r, terms) }))
+        .filter((x) => x.s > 0)
+        .sort((a, b) => b.s - a.s || a.r.n - b.r.n)
+        .slice(0, 12)
+        .map((x) => x.r);
+      render(results, terms);
+    }
+
+    function move(delta) {
+      const hits = list.querySelectorAll('[data-hit]');
+      if (!hits.length) return;
+      hits[active]?.classList.remove('is-active');
+      active = (active + delta + hits.length) % hits.length;
+      hits[active].classList.add('is-active');
+      hits[active].scrollIntoView({ block: 'nearest' });
+    }
+
+    input.addEventListener('input', () => {
+      load().then(run);
+      run();
+    });
+
+    overlay.querySelector('[data-search-close]').addEventListener('click', close);
+
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        move(1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        move(-1);
+      } else if (e.key === 'Enter') {
+        const hit = list.querySelectorAll('[data-hit]')[active];
+        if (hit) {
+          e.preventDefault();
+          window.location.href = hit.getAttribute('href');
+        }
+      }
+    });
+
+    document.querySelectorAll('[data-search-open]').forEach((b) =>
+      b.addEventListener('click', open)
+    );
+
+    window.__openSearch = open;
+  })();
+})();</script><script>(function(){const base = "/blog";
+
+      (() => {
+        const root = document.documentElement;
+
+        /* ---- theme ---------------------------------------------------- */
+        document.querySelector('[data-theme-toggle]')?.addEventListener('click', () => {
+          const light = root.classList.toggle('light');
+          try {
+            localStorage.setItem('refresher:theme', light ? 'light' : 'dark');
+          } catch (e) {}
+        });
+
+        /* ---- progress (localStorage) ---------------------------------- */
+        const KEY = 'refresher:progress';
+        const readSet = () => {
+          try {
+            return new Set(JSON.parse(localStorage.getItem(KEY) || '[]'));
+          } catch (e) {
+            return new Set();
+          }
+        };
+        const writeSet = (s) => {
+          try {
+            localStorage.setItem(KEY, JSON.stringify([...s]));
+          } catch (e) {}
+        };
+
+        function paintProgress() {
+          const done = readSet();
+          const ticks = document.querySelectorAll('[data-tick]');
+          // A module can own more than one tick (rail + contents card), so
+          // count distinct module ids rather than elements.
+          const ids = new Set();
+          ticks.forEach((t) => {
+            const id = t.getAttribute('data-tick');
+            ids.add(id);
+            if (done.has(id)) t.setAttribute('data-read', '');
+            else t.removeAttribute('data-read');
+          });
+          const n = [...ids].filter((id) => done.has(id)).length;
+          const total = ids.size || 1;
+          const fill = document.querySelector('[data-progress-fill]');
+          if (fill) fill.style.width = `${(n / total) * 100}%`;
+          const count = document.querySelector('[data-progress-count]');
+          if (count) count.textContent = String(n);
+          document.querySelectorAll('[data-mark]').forEach((btn) => {
+            const id = btn.getAttribute('data-mark');
+            const on = done.has(id);
+            btn.setAttribute('aria-pressed', String(on));
+            btn.textContent = on ? '✓ Reviewed' : 'Mark as reviewed';
+          });
+        }
+
+        document.querySelectorAll('[data-mark]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-mark');
+            const s = readSet();
+            s.has(id) ? s.delete(id) : s.add(id);
+            writeSet(s);
+            paintProgress();
+          });
+        });
+
+        paintProgress();
+
+        /* ---- scrollspy over h2s, mirrored into the rail --------------- */
+        const article = document.querySelector('[data-article]');
+        const heads = article ? [...article.querySelectorAll('h2[id]')] : [];
+        const subLinks = new Map(
+          [...document.querySelectorAll('[data-toc]')].map((a) => [
+            a.getAttribute('data-toc'),
+            a,
+          ])
+        );
+
+        if (heads.length && subLinks.size) {
+          let currentId = null;
+          const spy = () => {
+            let found = heads[0].id;
+            for (const h of heads) {
+              if (h.getBoundingClientRect().top <= 96) found = h.id;
+              else break;
+            }
+            if (found === currentId) return;
+            subLinks.get(currentId)?.classList.remove('is-current');
+            currentId = found;
+            const el = subLinks.get(currentId);
+            if (el) {
+              el.classList.add('is-current');
+              el.scrollIntoView({ block: 'nearest' });
+            }
+          };
+          spy();
+          addEventListener('scroll', spy, { passive: true });
+        }
+
+        /* ---- keyboard ------------------------------------------------- */
+        const stops = article
+          ? [...article.querySelectorAll('h2[id], h3[id]')]
+          : [];
+
+        function jump(delta) {
+          if (!stops.length) return;
+          // The heading we are "in": the last one scrolled past the threshold.
+          let cur = -1;
+          for (let i = 0; i < stops.length; i++) {
+            if (stops[i].getBoundingClientRect().top <= 100) cur = i;
+            else break;
+          }
+          const target = cur + delta;
+          if (target < 0) return scrollTo({ top: 0, behavior: 'smooth' });
+          if (target >= stops.length) return;
+          stops[target].scrollIntoView({ block: 'start' });
+        }
+
+        addEventListener('keydown', (e) => {
+          const tag = (e.target.tagName || '').toLowerCase();
+          if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+          if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+          if (e.key === '/') {
+            e.preventDefault();
+            window.__openSearch?.();
+          } else if (e.key === 'j') {
+            e.preventDefault();
+            jump(1);
+          } else if (e.key === 'k') {
+            e.preventDefault();
+            jump(-1);
+          } else if (e.key === '[' || e.key === ']') {
+            const sel = e.key === '[' ? '[data-prev]' : '[data-next]';
+            const a = document.querySelector(sel);
+            if (a) {
+              e.preventDefault();
+              window.location.href = a.getAttribute('href');
+            }
+          }
+        });
+
+        /* ---- narrow-screen rail --------------------------------------- */
+        const rail = document.querySelector('[data-rail]');
+        document.querySelector('[data-rail-toggle]')?.addEventListener('click', () => {
+          rail.classList.toggle('is-open');
+        });
+        rail?.addEventListener('click', (e) => {
+          if (e.target.closest('a')) rail.classList.remove('is-open');
+        });
+      })();
+    })();</script></body></html>

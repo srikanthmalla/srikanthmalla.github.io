@@ -1,0 +1,615 @@
+<!DOCTYPE html><html lang="en" data-astro-cid-z4jru4n3><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>1. The codesign contract — ML Hardware/Software Codesign</title><meta name="description" content="Why the hardware/software interface leaks for ML and not for most things, the three-resource abstraction that follows, and what &quot;balanced&quot; actually means when a single workload is only ever bottlenecked on one resource."><link rel="icon" href="data:,"><script>
+      (() => {
+        try {
+          const t = localStorage.getItem('refresher:theme');
+          if (t === 'light') document.documentElement.classList.add('light');
+        } catch (e) {}
+      })();
+    </script><link rel="stylesheet" href="/blog/_astro/BaseLayout.B9q2yynj.css"><style>.wrap[data-astro-cid-5x65ok44]{max-width:68ch;margin-inline:auto;padding:3rem 1.25rem 6rem}@media (width>=1024px){.wrap[data-astro-cid-5x65ok44]{max-width:calc(68ch + 6rem);padding-inline:3rem}}.mhead[data-astro-cid-5x65ok44]{border-block-end:1px solid var(--rule);margin-block-end:.5rem;padding-block-end:1.75rem}.mhead-kicker[data-astro-cid-5x65ok44]{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint);margin:0 0 .85rem;font-size:.6875rem;font-weight:500}.mhead-n[data-astro-cid-5x65ok44]{color:var(--accent);font-weight:640}.mhead-dot[data-astro-cid-5x65ok44]{opacity:.5;padding-inline:.35rem}.mhead-title[data-astro-cid-5x65ok44]{font-family:var(--font-sans);letter-spacing:-.027em;color:var(--ink-strong);text-wrap:balance;margin:0;font-size:clamp(1.75rem,1.3rem + 1.9vw,2.375rem);font-weight:660;line-height:1.12}.mhead-blurb[data-astro-cid-5x65ok44]{color:var(--ink-muted);max-width:58ch;margin:.85rem 0 0;font-size:1.0625rem;line-height:1.6}.mfoot[data-astro-cid-5x65ok44]{border-block-start:1px solid var(--rule);margin-block-start:4rem;padding-block-start:1.75rem}.mark[data-astro-cid-5x65ok44]{font-family:var(--font-sans);border:1px solid var(--rule);background:var(--bg-raised);color:var(--ink-muted);cursor:pointer;border-radius:5px;padding:.4rem .85rem;font-size:.75rem;font-weight:550}.mark[data-astro-cid-5x65ok44]:hover{color:var(--ink-strong);border-color:var(--ink-faint)}.mark[data-astro-cid-5x65ok44][aria-pressed=true]{color:var(--bridge);border-color:color-mix(in oklab, var(--bridge) 45%, var(--rule))}.pager[data-astro-cid-5x65ok44]{grid-template-columns:1fr 1fr;gap:1rem;margin-block-start:2rem;display:grid}.pager-link[data-astro-cid-5x65ok44]{border:1px solid var(--rule);font-family:var(--font-sans);border-radius:6px;flex-direction:column;gap:.25rem;padding:.75rem .9rem;text-decoration:none;display:flex}.pager-link[data-astro-cid-5x65ok44]:hover{border-color:var(--ink-faint);background:var(--bg-raised)}.pager-link[data-astro-cid-5x65ok44].is-next{text-align:end}.pager-dir[data-astro-cid-5x65ok44]{text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);font-size:.6875rem}.pager-title[data-astro-cid-5x65ok44]{color:var(--ink-strong);font-size:.8125rem;font-weight:550;line-height:1.35}
+</style><style>.callout{border:1px solid var(--rule);border-inline-start-width:2px;border-radius:5px;margin-block:1.75rem;padding:.9rem 1.1rem 1rem;font-size:.9375rem;line-height:1.65}.callout-probe{border-inline-start-color:var(--probe);background:var(--probe-bg)}.callout-trap{border-inline-start-color:var(--trap);background:var(--trap-bg)}.callout-bridge{border-inline-start-color:var(--bridge);background:var(--bridge-bg)}.callout-label{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;align-items:center;gap:.45rem;margin:0 0 .5rem;font-size:.6875rem;font-weight:620;display:flex}.callout-probe .callout-label{color:var(--probe)}.callout-trap .callout-label{color:var(--trap)}.callout-bridge .callout-label{color:var(--bridge)}.callout-mark{background:currentColor;border-radius:50%;flex:none;width:5px;height:5px}.callout-title{text-transform:none;letter-spacing:0;color:var(--ink-muted);font-weight:500}.callout-body>:first-child{margin-block-start:0}.callout-body>:last-child{margin-block-end:0}.callout-body>*+*{margin-block-start:.75em}.probe{margin-block:1.75rem}.prose .probe-q{font-family:var(--font-sans);letter-spacing:-.01em;color:var(--ink-strong);margin:0 0 .6rem;padding-inline-start:1.15rem;font-size:1rem;font-weight:600;line-height:1.45;position:relative}.prose .probe-q:before{content:"›";color:var(--accent);font-weight:700;position:absolute;inset-inline-start:0}.probe-a{border-inline-start:1px solid var(--rule);margin-inline-start:.1rem;padding-inline-start:1.15rem}.probe-a>*+*{margin-block-start:1.15em}.probe-a>:first-child{margin-block-start:0}.probe-a>:last-child{margin-block-end:0}.selfcheck{border-block-start:1px solid var(--rule-soft)}.selfcheck:last-of-type{border-block-end:1px solid var(--rule-soft)}.prose>.selfcheck+.selfcheck{margin-block-start:0}.selfcheck>summary{cursor:pointer;color:var(--ink);align-items:baseline;gap:1rem;padding:.7rem .2rem;list-style:none;display:flex}.selfcheck>summary::-webkit-details-marker{display:none}.selfcheck>summary:hover{color:var(--ink-strong)}.selfcheck-q{flex:1}.selfcheck-q code{white-space:nowrap}.selfcheck-cue{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);flex:none;padding-block-start:.15rem;font-size:.6875rem;font-weight:600}.selfcheck>summary:hover .selfcheck-cue{color:var(--accent)}.selfcheck-cue-hide,.selfcheck[open] .selfcheck-cue-show{display:none}.selfcheck[open] .selfcheck-cue-hide{display:inline}.selfcheck-a{color:var(--ink-muted);border-inline-start:2px solid var(--rule);margin-block-end:.9rem;margin-inline-start:.2rem;padding:.15rem .2rem 1.05rem;padding-inline-start:1rem;font-size:.9375rem}.selfcheck-a>:first-child{margin-block-start:0}.selfcheck-a>:last-child{margin-block-end:0}.selfcheck-a>*+*{margin-block-start:.7em}.selfcheck-a strong{color:var(--ink)}
+</style></head><body data-astro-cid-z4jru4n3><a href="#content" class="skip" data-astro-cid-z4jru4n3>Skip to content</a><div class="shell" data-astro-cid-z4jru4n3><aside class="rail" data-rail data-astro-cid-z4jru4n3><nav class="rail-nav" aria-label="ML Hardware/Software Codesign contents" data-astro-cid-wv7whodv><div class="rail-head" data-astro-cid-wv7whodv><a href="/blog/" class="rail-up" data-astro-cid-wv7whodv>All series</a><a href="/blog/hw-sw-codesign/" class="rail-home" data-astro-cid-wv7whodv><span class="rail-home-title" data-astro-cid-wv7whodv>ML Hardware/Software Codesign</span><span class="rail-home-sub" data-astro-cid-wv7whodv>Compute, memory, interconnect — and the mapping between them</span></a><p class="rail-progress" data-astro-cid-wv7whodv><span class="rail-progress-bar" data-astro-cid-wv7whodv><span data-progress-fill data-astro-cid-wv7whodv></span></span><span class="rail-progress-text" data-astro-cid-wv7whodv><span data-progress-count data-astro-cid-wv7whodv>0</span>/14 reviewed</span></p></div><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part O</span>The three abstractions</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/01-the-codesign-contract/" class="rail-link is-active" aria-current="page" title="Why the hardware/software interface leaks for ML and not for most things, the three-resource abstraction that follows, and what &quot;balanced&quot; actually means when a single workload is only ever bottlenecked on one resource." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>1</span><span class="rail-title" data-astro-cid-wv7whodv>The codesign contract</span><span class="rail-tick" data-tick="hw-sw-codesign/01-the-codesign-contract" aria-hidden="true" data-astro-cid-wv7whodv></span></a><ul class="rail-sub" data-rail-sub data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="#the-core-mental-model" class="rail-sub-link" data-toc="the-core-mental-model" data-astro-cid-wv7whodv>The core mental model</a></li><li data-astro-cid-wv7whodv><a href="#the-design-space-quantified" class="rail-sub-link" data-toc="the-design-space-quantified" data-astro-cid-wv7whodv>The design space, quantified</a></li><li data-astro-cid-wv7whodv><a href="#critical-thinking" class="rail-sub-link" data-toc="critical-thinking" data-astro-cid-wv7whodv>Critical thinking</a></li><li data-astro-cid-wv7whodv><a href="#self-check" class="rail-sub-link" data-toc="self-check" data-astro-cid-wv7whodv>Self-check</a></li></ul></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/02-compute-abstraction/" class="rail-link" title="Peak FLOP/s is the least useful number about a compute unit. What matters is the native operation shape, the granularity at which it must be fed, and the two independent ways utilization dies." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>2</span><span class="rail-title" data-astro-cid-wv7whodv>Compute: the shape of the multiply</span><span class="rail-tick" data-tick="hw-sw-codesign/02-compute-abstraction" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/03-memory-abstraction/" class="rail-link" title="The hierarchy as a ladder of (capacity, bandwidth, latency, granularity, who-manages) tuples. Cache versus scratchpad as a codesign decision, why bandwidth costs area, and why granularity is what actually punishes you." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>3</span><span class="rail-title" data-astro-cid-wv7whodv>Memory: capacity, bandwidth, and who decides placement</span><span class="rail-tick" data-tick="hw-sw-codesign/03-memory-abstraction" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/04-interconnect-abstraction/" class="rail-link" title="An interconnect is a memory level you cannot store anything in. The same four numbers, topology in place of capacity, collectives as the access primitives — and the beachfront limit that drives everything else in the series." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>4</span><span class="rail-title" data-astro-cid-wv7whodv>Interconnect: memory at a longer distance</span><span class="rail-tick" data-tick="hw-sw-codesign/04-interconnect-abstraction" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part P</span>Mapping</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/05-mapping-problem/" class="rail-link" title="A mapping is four decisions: tiling, permutation, spatial assignment, binding. Which makes arithmetic intensity a property of the mapping rather than the algorithm — and makes the search space astronomically large." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>5</span><span class="rail-title" data-astro-cid-wv7whodv>The mapping problem, stated precisely</span><span class="rail-tick" data-tick="hw-sw-codesign/05-mapping-problem" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/06-dataflow-and-reuse/" class="rail-link" title="Weight-, output-, input- and row-stationary as four answers to one question — which tensor do you refuse to re-fetch. Why partial sums decide it, and why fixing a dataflow in RTL fixes one dimension of the mapspace for the life of the chip." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>6</span><span class="rail-title" data-astro-cid-wv7whodv>Dataflow: what stays still</span><span class="rail-tick" data-tick="hw-sw-codesign/06-dataflow-and-reuse" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/07-tiling/" class="rail-link" title="The one closed form worth memorizing: traffic falls as the square root of capacity, so doubling SRAM buys 1.41×. Multi-level tiling, double buffering as capacity spent on latency, and why the levels cannot be tiled independently." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>7</span><span class="rail-title" data-astro-cid-wv7whodv>Tiling the hierarchy</span><span class="rail-tick" data-tick="hw-sw-codesign/07-tiling" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/08-cost-models/" class="rail-link" title="How you evaluate a million mappings on hardware that does not exist yet. Analytic models versus autotuning, what each is systematically wrong about, and why for codesign the model’s accuracy is the chip’s accuracy." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>8</span><span class="rail-title" data-astro-cid-wv7whodv>Cost models and searching the mapspace</span><span class="rail-tick" data-tick="hw-sw-codesign/08-cost-models" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part Q</span>Where mappings break</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/09-sparsity-and-irregularity/" class="rail-link" title="Every static mapping assumes a dense rectangular iteration space. Three ways sparsity breaks that, why 90% unstructured rarely gives 10×, and the rule that hardware exploits sparsity only when the pattern is shaped to the array." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>9</span><span class="rail-title" data-astro-cid-wv7whodv>Sparsity and irregularity</span><span class="rail-tick" data-tick="hw-sw-codesign/09-sparsity-and-irregularity" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/10-numerics-as-codesign/" class="rail-link" title="Precision is the only knob that moves compute, memory and interconnect at once. Block scaling as the modern answer, why the block size must divide the array’s K-tile, and why &quot;what precision&quot; is the wrong question." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>10</span><span class="rail-title" data-astro-cid-wv7whodv>Numerics as a codesign knob</span><span class="rail-tick" data-tick="hw-sw-codesign/10-numerics-as-codesign" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/11-scale-out-mapping/" class="rail-link" title="DP, TP, PP, EP and SP are Module 5’s four decisions applied one level up, with the network as the memory level. Each strategy is priced by the collective it forces, and the placement rule falls out of the arithmetic." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>11</span><span class="rail-title" data-astro-cid-wv7whodv>Parallelism is mapping onto the interconnect</span><span class="rail-tick" data-tick="hw-sw-codesign/11-scale-out-mapping" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part R</span>In practice</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/12-case-attention/" class="rail-link" title="FlashAttention is a mapping result, not an algorithm result — identical FLOPs, one tensor re-bound. Prefill and decode as two points in the resource space with the same math, and GQA/MLA as model architecture bending to a memory constraint." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>12</span><span class="rail-title" data-astro-cid-wv7whodv>Case study: attention, mapped</span><span class="rail-tick" data-tick="hw-sw-codesign/12-case-attention" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/13-case-three-architectures/" class="rail-link" title="GPU, TPU and the static-SRAM machines differ mostly in one thing: who absorbs uncertainty at runtime. Read each on the three axes, and the flexibility/efficiency curve stops being a mystery." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>13</span><span class="rail-title" data-astro-cid-wv7whodv>Three architectures, read as three mappings</span><span class="rail-tick" data-tick="hw-sw-codesign/13-case-three-architectures" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/14-the-codesign-loop/" class="rail-link" title="Hardware is frozen two to three years before the workload it runs, so the compiler is the only thing that can adapt — and it is on the critical path of the chip’s value while being consistently underfunded relative to it." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>14</span><span class="rail-title" data-astro-cid-wv7whodv>The codesign loop, and where it fails</span><span class="rail-tick" data-tick="hw-sw-codesign/14-the-codesign-loop" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-other" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv>Other series</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>ML Hardware &amp; Low-Latency Systems</span></a></li><li data-astro-cid-wv7whodv><a href="/blog/diffusion/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>Diffusion</span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>ML Software &amp; Compilers</span></a></li></ul></section><div class="rail-foot" data-astro-cid-wv7whodv><p data-astro-cid-wv7whodv><kbd data-astro-cid-wv7whodv>j</kbd> <kbd data-astro-cid-wv7whodv>k</kbd> section · <kbd data-astro-cid-wv7whodv>/</kbd> search · <kbd data-astro-cid-wv7whodv>[</kbd><kbd data-astro-cid-wv7whodv>]</kbd> module</p></div></nav></aside><div class="col" data-astro-cid-z4jru4n3><header class="topbar" data-astro-cid-z4jru4n3><button class="icon-btn only-narrow" data-rail-toggle aria-label="Toggle contents" data-astro-cid-z4jru4n3><svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M1.5 3.5h12M1.5 7.5h12M1.5 11.5h12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg></button><p class="crumb" data-astro-cid-z4jru4n3>Part O · The three abstractions › The codesign contract</p><div class="topbar-actions" data-astro-cid-z4jru4n3><button class="search-btn" data-search-open aria-label="Search" data-astro-cid-z4jru4n3><span aria-hidden="true" data-astro-cid-z4jru4n3>⌕</span><span class="search-btn-label" data-astro-cid-z4jru4n3>Search</span><kbd data-astro-cid-z4jru4n3>/</kbd></button><button class="icon-btn" data-theme-toggle aria-label="Toggle theme" data-astro-cid-z4jru4n3><svg class="i-sun" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><circle cx="7.5" cy="7.5" r="3" stroke="currentColor" stroke-width="1.2" data-astro-cid-z4jru4n3></circle><path d="M7.5 .8v1.7M7.5 12.5v1.7M14.2 7.5h-1.7M2.5 7.5H.8M12.24 2.76l-1.2 1.2M3.96 11.04l-1.2 1.2M12.24 12.24l-1.2-1.2M3.96 3.96l-1.2-1.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg><svg class="i-moon" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M13 9.3A5.8 5.8 0 0 1 5.7 2 5.9 5.9 0 1 0 13 9.3Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" data-astro-cid-z4jru4n3></path></svg></button><a class="site-link" href="/" data-astro-cid-z4jru4n3>srikanthmalla.com</a></div></header><main id="content" data-astro-cid-z4jru4n3><article class="wrap" data-article data-astro-cid-5x65ok44><header class="mhead" data-astro-cid-5x65ok44><p class="mhead-kicker" data-astro-cid-5x65ok44><span class="mhead-n" data-astro-cid-5x65ok44>Module 1</span><span class="mhead-dot" data-astro-cid-5x65ok44>·</span>Part O — The three abstractions<span class="mhead-dot" data-astro-cid-5x65ok44>·</span>16 min</p><h1 class="mhead-title" data-astro-cid-5x65ok44>The codesign contract</h1><p class="mhead-blurb" data-astro-cid-5x65ok44>Why the hardware/software interface leaks for ML and not for most things, the three-resource abstraction that follows, and what &quot;balanced&quot; actually means when a single workload is only ever bottlenecked on one resource.</p></header><div class="prose" data-astro-cid-5x65ok44><h2 id="the-core-mental-model">The core mental model<a class="anchor" href="#the-core-mental-model" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>Hardware/software codesign is not a virtue, it is a symptom. Most of computing works precisely
+because the interface between the two is opaque: you write C, the compiler emits instructions, and
+you almost never need to know the cache line size to get a correct and reasonably fast program. ML
+accelerators break that arrangement for two reasons at once, and it is the <em>conjunction</em> that
+matters. First, the interface <strong>leaks</strong>: performance is not composable, because the cost of an
+operation depends on decisions — tile sizes, layouts, residency — that live on the other side of the
+abstraction. You cannot cost a matrix multiply without knowing where its operands sit. Second, the
+workload is <strong>narrow and stable</strong>: essentially all of the arithmetic in deep learning is a handful of
+loop nests over dense rectangular tensors, and that has been true across a decade of otherwise
+violent model churn. Leakiness alone gives you a mess. Narrowness alone gives you an ASIC nobody
+needs. Together they give you a case where specialising the hardware to the loop nest, and the
+compiler to the hardware, pays for itself.</p>
+<p>Once you accept that, the useful move is to stop describing accelerators by their part numbers and
+start describing them by their resources. <strong>Every machine, at every level of the hierarchy, is three
+things: compute, memory, and interconnect.</strong> Compute transforms values. Memory holds values across
+time. Interconnect moves values across space. That is an exhaustive list, and the reason the
+decomposition is worth committing to is that each resource exposes the <em>same</em> small set of numbers
+to software — a capacity, a bandwidth, a latency, and a granularity — plus one more field that is
+the entire subject of this series: <strong>who decides placement</strong>, the hardware or the compiler. A cache
+and a scratchpad have nearly identical physics and completely different contracts. The difference is
+not the SRAM. It is who is responsible for what sits in it.</p>
+<p>The third piece is that compute is the only resource that creates value. Memory and interconnect are
+logistics, and the physics is brutally lopsided in a way that has not improved: an 8-bit integer
+multiply-accumulate costs about 0.2 pJ, while fetching its operands from DRAM costs on the order of
+hundreds of pJ per word. Arithmetic is free and <em>moving the operands to the arithmetic</em> is the
+entire cost. Every technique in this series — dataflow, tiling, stationarity, quantization, sharding
+— is a way of not moving data, and once you see them as a single family the field gets much smaller.
+The codesign problem is then stated compactly: choose the resource parameters and the mapping of the
+workload onto them <strong>jointly</strong>, because the optimum of either given the other is not the joint
+optimum. Design a memory system for the mapping you have, and you will get a chip that is excellent
+at a mapping nobody will use in three years.</p>
+<aside class="callout callout-bridge"><p class="callout-label"><span class="callout-mark" aria-hidden="true"></span>Bridge to what you know<span class="callout-title"> · you already believe this for one case</span></p><div class="callout-body"><p>Roofline (ML Hardware, Module 1) is exactly this argument restricted to two resources — compute
+and one memory level — and collapsed to a single ratio. Everything here is roofline with the
+hierarchy put back in, the interconnect added as a third axis, and the crucial admission that the
+operational intensity on the x-axis is not a property of your algorithm but of the mapping you
+chose. That admission is what makes it a design problem rather than a measurement.</p></div></aside>
+<h2 id="the-design-space-quantified">The design space, quantified<a class="anchor" href="#the-design-space-quantified" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>The energy numbers are the foundation of the whole series, so they are worth having exactly. These
+are Horowitz’s 45 nm figures, which are old enough that the absolute values have shrunk but the
+<em>ratios</em> — the only thing anyone reasons with — have held up remarkably well, because arithmetic
+scales with process and wires do not:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Operation</th><th>Energy (45 nm)</th><th>Relative to INT8 MAC</th></tr></thead><tbody><tr><td>INT8 add</td><td>0.03 pJ</td><td>0.15×</td></tr><tr><td>INT8 multiply-accumulate</td><td>~0.2 pJ</td><td>1×</td></tr><tr><td>FP16 multiply-accumulate</td><td>~1.5 pJ</td><td>~8×</td></tr><tr><td>FP32 add</td><td>0.9 pJ</td><td>4.5×</td></tr><tr><td>FP32 multiply-accumulate</td><td>~4.6 pJ</td><td>~23×</td></tr><tr><td>SRAM read, 8 KB</td><td>~10 pJ</td><td>~50×</td></tr><tr><td>SRAM read, 1 MB</td><td>~100 pJ</td><td>~500×</td></tr><tr><td><strong>DRAM access, 32 bit</strong></td><td><strong>~640 pJ</strong></td><td><strong>~3200×</strong></td></tr></tbody></table></div>
+<p>Read the last row against the second: one DRAM fetch pays for roughly three thousand INT8 MACs. If
+a value crosses the DRAM boundary and is used fewer than a few thousand times, the arithmetic it
+enabled was not the expensive part of the operation.</p>
+<p>The template every module fills in. Any resource, at any level, is described by these fields, and
+the last one is the codesign decision:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Field</th><th>Compute</th><th>Memory</th><th>Interconnect</th></tr></thead><tbody><tr><td>Capacity</td><td>parallel MACs</td><td>bytes</td><td>— (topology instead)</td></tr><tr><td>Bandwidth</td><td>ops/s</td><td>bytes/s</td><td>bytes/s, per link</td></tr><tr><td>Latency</td><td>pipeline depth</td><td>load-to-use</td><td>hop + serialisation</td></tr><tr><td>Granularity</td><td>native op shape</td><td>line / burst / sector</td><td>packet / message</td></tr><tr><td><strong>Who decides</strong></td><td>scheduler or compiler</td><td>cache or scratchpad</td><td>runtime or collective plan</td></tr></tbody></table></div>
+<p>And the span the mapping has to work across. Note that this is one continuous ladder, not three
+separate things — the point of Module 4:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Level</th><th>Bandwidth (order)</th><th>Latency (order)</th><th>Energy / byte (order)</th></tr></thead><tbody><tr><td>Register file</td><td>~100 TB/s</td><td>~1 ns</td><td>~0.1 pJ</td></tr><tr><td>SRAM (shared / VMEM)</td><td>~10 TB/s</td><td>~10 ns</td><td>~1 pJ</td></tr><tr><td>Last-level cache</td><td>~5 TB/s</td><td>~50 ns</td><td>~5 pJ</td></tr><tr><td>HBM</td><td>3–8 TB/s</td><td>~400 ns</td><td>~50 pJ</td></tr><tr><td>Scale-up link (NVLink)</td><td>~1 TB/s</td><td>~2 µs</td><td>~200 pJ</td></tr><tr><td>Scale-out (IB/Ethernet)</td><td>~50 GB/s</td><td>~5 µs</td><td>~1 nJ</td></tr></tbody></table></div>
+<p>Treat these as orders of magnitude rather than a datasheet — the useful content is that each rung
+costs roughly an order of magnitude more energy per byte than the one above it, and that the total
+span from register to network is about four orders in bandwidth and five in energy.</p>
+<h2 id="critical-thinking">Critical thinking<a class="anchor" href="#critical-thinking" aria-hidden="true" tabindex="-1">#</a></h2>
+<section class="probe"><h3 class="probe-q">Why do we codesign ML accelerators but not, say, database or web-server hardware?</h3><div class="probe-a"><p>Because codesign requires two conditions simultaneously, and most domains have at most one.</p><p><strong>The interface has to leak.</strong> For codesign to be worth anything, performance must depend on
+decisions that cross the hardware/software boundary. In ML it does, absolutely: the cost of a
+convolution varies by an order of magnitude depending on tiling and layout, and neither side can
+compute it alone. The hardware designer cannot say how much SRAM is enough without assuming a tiling;
+the compiler cannot choose a tiling without knowing the SRAM. That is a genuine circular dependency,
+and circular dependencies between teams are exactly what codesign exists to resolve.</p><p><strong>The workload has to be narrow and stable.</strong> Specialisation is a bet that the thing you specialised
+for still exists when the silicon arrives, two to three years later. Deep learning is an
+extraordinarily good bet by this standard: GEMM, convolution and attention are all the same shape —
+a perfectly nested affine loop over dense rectangular tensors with a reduction — and that has been
+stable since roughly 2012 even as architectures churned from AlexNet to ResNets to transformers to
+mixtures of experts. The <em>models</em> changed constantly; the <em>loop nest</em> barely moved.</p><p>Now apply the test elsewhere. A web server’s interface leaks too, but the workload is a sprawl of
+string handling, syscalls, TLS and branchy business logic with no dominant kernel to specialise
+for — narrowness fails. Databases are closer than people think, which is exactly why you <em>do</em> see
+specialisation there, in the narrow parts: hardware compression, encryption, checksum offload, and
+SmartNICs. The pattern holds. Specialisation follows narrowness wherever it appears.</p><p>The instructive negative case is graphics before shaders. Fixed-function pipelines were the right
+answer while the workload was narrow, and became the wrong answer the moment programmability
+mattered more than efficiency. That is the risk you take every time, and Module 14 is about what
+happens when the bet loses.</p></div></section>
+<section class="probe"><h3 class="probe-q">If a resource is not the bottleneck, is spending on it wasted?</h3><div class="probe-a"><p>For a single workload at a single operating point, yes — and that is why “balanced design” is a
+harder idea than it sounds.</p><p>Take one kernel. It has one binding constraint. If a decode-phase GEMV is memory-bandwidth-bound,
+then compute beyond what saturates the bandwidth produces exactly zero additional throughput. Adding
+FLOPs is not slightly wasteful, it is entirely wasteful. This is just Amdahl, and it is why “we
+doubled the tensor cores” so often shows up as a single-digit end-to-end gain.</p><p>The subtlety is that a <em>chip</em> does not run one kernel. It runs a mix, and different members of the
+mix bind on different resources — prefill is compute-bound, decode is memory-bound, all-reduce is
+interconnect-bound, and they can be the same model in the same request. So balance is a property of
+a design against a <strong>workload distribution</strong>, not against a workload. The design question is not
+“which resource is the bottleneck” but “what fraction of my expected work, weighted by how much I
+care about it, binds on each resource, and does the marginal transistor buy more in one place than
+another”.</p><p>Three consequences that follow, and are easy to miss:</p><ul>
+<li><strong>The mix is not fixed, because the mapping is a free variable.</strong> If you are memory-bound, a
+better mapping may make you compute-bound, at which point the compute you “wasted” money on starts
+paying. Provisioning is a bet on the mappings your compiler will eventually find, not on the ones
+it finds today.</li>
+<li><strong>Underprovisioning is asymmetric with overprovisioning.</strong> Too much compute is idle silicon: you
+paid area and leakage. Too little memory bandwidth is a hard ceiling that no software can lift for
+the chip’s entire life. Given uncertainty, err toward the resource software cannot work around.</li>
+<li><strong>Idle resources still cost the thing you actually care about.</strong> Area, power budget and yield are
+shared. Unused tensor cores are not free — they lower clocks through power limits and take die
+space that could have been SRAM, which is the resource that would have helped.</li>
+</ul><p>The sharp version: a balanced chip is one where no resource is the bottleneck <em>for a workload you
+care about that you cannot re-map away from</em>. Both qualifiers are doing work.</p></div></section>
+<section class="probe"><h3 class="probe-q">Data movement dominates energy. Why has that not been fixed?</h3><div class="probe-a"><p>Because it is not an engineering oversight, it is what the physics of wires does under scaling, and
+it has been getting worse rather than better for twenty years.</p><p>Transistors got cheaper, faster and lower-energy with each process node. Wires did not. The energy to
+move a bit is roughly proportional to the capacitance you must charge, which is proportional to the
+distance travelled, and shrinking a process does not shorten the distance from the edge of a die to a
+DRAM stack. So every node makes arithmetic cheaper while leaving off-chip movement roughly where it
+was. The ratio in the table above is not a snapshot; it is a trend line, and it has been widening the
+entire time.</p><p>What has actually been done about it, all of which is <em>reducing distance</em> rather than making
+distance cheap:</p><ul>
+<li><strong>Bring memory closer.</strong> HBM is DRAM stacked next to the die on an interposer rather than on a
+DIMM across a board — the same bits, a much shorter wire, which is why HBM’s energy per byte is
+several times better than DDR at far higher bandwidth. This is the single largest win available and
+it has been almost entirely spent.</li>
+<li><strong>Move data less, by keeping it still.</strong> Every dataflow and tiling technique in Part P. If a value
+crosses the expensive boundary once and is used a thousand times, you have amortised the 640 pJ.
+This is the lever software controls, and it is the reason mapping is worth this much attention.</li>
+<li><strong>Move fewer bytes.</strong> Quantization, which is Module 10 — the only knob that reduces traffic on all
+three resources at once.</li>
+<li><strong>Do not move it at all</strong>: processing-in-memory. Genuinely attacks the root cause, and has been
+ten years away for about twenty years, because DRAM processes are terrible for logic and because
+the programming model is a research problem rather than a product.</li>
+</ul><p>The honest summary is that the ratio is a boundary condition rather than a bug. It is <em>why</em> the
+three-resource abstraction is the right one — if arithmetic were the cost, you would only need to
+count FLOPs, roofline would be a straight line, and none of this would be interesting.</p></div></section>
+<section class="probe"><h3 class="probe-q">What does the “who decides placement” field actually change?</h3><div class="probe-a"><p>It relocates a decision between two parties with completely different information, and that is the
+central trade of the series.</p><p><strong>Hardware decides (a cache).</strong> The hardware observes the actual access stream and reacts to it. It
+has perfect information about what <em>did</em> happen and none about what <em>will</em>. It costs area and energy
+— tags, comparators, replacement state, coherence — and its behaviour is only statistically
+predictable, which is precisely the property that makes it unusable in a hard-deadline system. But it
+never falls off a cliff, because an unanticipated access pattern still works, just slower.</p><p><strong>Software decides (a scratchpad).</strong> The compiler knows the whole loop nest ahead of time, so for an
+affine, statically-shaped computation it can compute the <em>optimal</em> residency schedule. No tags, no
+tag energy, no misses, deterministic timing, and every byte of the array is usable. The catch is
+total: whatever the compiler failed to anticipate does not degrade gracefully, it fails. Dynamic
+shapes, data-dependent control flow and irregular access are not slow on a scratchpad, they are
+unrepresentable, and the compiler must fall back to something conservative.</p><p>ML is unusually favourable to the software side, which is why explicit management keeps winning
+ground: the loop bounds are known, the access patterns are affine, and the reuse is enormous and
+statically analysable. That is why TPUs use compiler-managed VMEM rather than caches, and why the
+GPU trend runs the same direction — shared memory has always been a scratchpad, and Hopper’s TMA is
+hardware for making the compiler’s explicit schedule cheap to express.</p><p>The general principle, which shows up again in Modules 3, 8 and 13: <strong>hardware management is
+insurance you pay for continuously, and its premium is worth it exactly in proportion to how much
+uncertainty is left at runtime.</strong> ML has less than almost anything else, so it buys less insurance —
+until the workload turns dynamic, at which point Part Q is about the bill arriving.</p></div></section>
+<h2 id="self-check">Self-check<a class="anchor" href="#self-check" aria-hidden="true" tabindex="-1">#</a></h2>
+<details class="selfcheck"><summary><span class="selfcheck-q">What two conditions make a domain worth codesigning, and why is each necessary?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>The interface must <strong>leak</strong> — performance depends on decisions crossing the hardware/software
+boundary, so neither side can optimise alone — and the workload must be <strong>narrow and stable</strong> enough
+that silicon specialised today is still relevant in two to three years. Leakiness alone gives you a
+mess with nothing to specialise for; narrowness alone gives you an ASIC that a general-purpose part
+would have handled fine. ML has both: an order-of-magnitude tiling dependence, and a decade of
+essentially one loop nest.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Give the three resources and the five fields each exposes.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p><strong>Compute, memory, interconnect</strong> — transform values, hold values across time, move values across
+space. Each exposes capacity, bandwidth, latency, granularity, and <strong>who decides placement</strong>
+(hardware or compiler). The last field is the codesign decision: a cache and a scratchpad are the
+same SRAM with different contracts.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Roughly how many INT8 MACs does one DRAM access pay for, and what follows?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>About <strong>3200</strong> — ~640 pJ against ~0.2 pJ. What follows is that arithmetic is not the cost of
+arithmetic: a value fetched from DRAM and used fewer than a few thousand times spent most of its
+energy on the fetch. Every technique in the series is therefore a way of <em>not moving data</em>, which
+makes them one family rather than a list.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Why is “balanced design” a statement about a distribution rather than a workload?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Because any single kernel binds on exactly one resource, so spending on the others is genuinely
+wasted for it — but a chip runs a mix (compute-bound prefill, memory-bound decode,
+interconnect-bound all-reduce) that binds differently in each part. Balance is therefore defined
+against a weighted distribution of work. Two qualifiers matter: the mapping is a free variable, so a
+better mapping can move where you bind; and underprovisioning memory bandwidth is a permanent
+ceiling while excess compute is merely idle, so err toward the resource software cannot route
+around.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Why has the data-movement energy gap not closed?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Because transistor energy scales with the process and wire energy scales with distance, which does
+not shrink — so the gap widens every node. It is a boundary condition, not a bug. The mitigations
+all reduce distance or bytes rather than making distance cheap: HBM (shorter wires, largely already
+spent), dataflow and tiling (move it once, use it many times), quantization (fewer bytes), and
+processing-in-memory (attacks the root cause, perennially not ready).</p></div></details></div><footer class="mfoot" data-astro-cid-5x65ok44><button class="mark" data-mark="hw-sw-codesign/01-the-codesign-contract" aria-pressed="false" data-astro-cid-5x65ok44>Mark as reviewed</button><nav class="pager" data-astro-cid-5x65ok44><span data-astro-cid-5x65ok44></span><a class="pager-link is-next" href="/blog/hw-sw-codesign/02-compute-abstraction/" data-next data-astro-cid-5x65ok44><span class="pager-dir" data-astro-cid-5x65ok44>Next →</span><span class="pager-title" data-astro-cid-5x65ok44>2. Compute: the shape of the multiply</span></a></nav></footer></article></main></div></div><div class="search-overlay" data-search hidden data-astro-cid-ac66eqjo><div class="search-backdrop" data-search-close data-astro-cid-ac66eqjo></div><div class="search-panel" role="dialog" aria-modal="true" aria-label="Search modules" data-astro-cid-ac66eqjo><div class="search-input-row" data-astro-cid-ac66eqjo><span class="search-icon" aria-hidden="true" data-astro-cid-ac66eqjo>⌕</span><input type="text" class="search-input" placeholder="Search all modules…" autocomplete="off" spellcheck="false" data-search-input data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>esc</kbd></div><ul class="search-results" data-search-results data-astro-cid-ac66eqjo></ul><p class="search-empty" data-search-empty hidden data-astro-cid-ac66eqjo>No matches.</p><p class="search-hint" data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>↑</kbd><kbd data-astro-cid-ac66eqjo>↓</kbd> move · <kbd data-astro-cid-ac66eqjo>↵</kbd> open</p></div></div><script>(function(){const indexUrl = "/blog/search.json";
+
+  (() => {
+    const overlay = document.querySelector('[data-search]');
+    if (!overlay) return;
+    const input = overlay.querySelector('[data-search-input]');
+    const list = overlay.querySelector('[data-search-results]');
+    const empty = overlay.querySelector('[data-search-empty]');
+
+    let index = null;
+    let loading = null;
+    let active = 0;
+
+    const load = () => {
+      if (index) return Promise.resolve(index);
+      if (!loading) {
+        loading = fetch(indexUrl)
+          .then((r) => r.json())
+          .then((d) => (index = d))
+          .catch(() => (index = []));
+      }
+      return loading;
+    };
+
+    function open() {
+      overlay.hidden = false;
+      document.documentElement.style.overflow = 'hidden';
+      load().then(() => input.focus());
+      input.focus();
+      input.select();
+    }
+
+    function close() {
+      overlay.hidden = true;
+      document.documentElement.style.overflow = '';
+    }
+
+    function escapeHtml(s) {
+      return s.replace(
+        /[&<>"]/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]
+      );
+    }
+
+    // Excerpt around the first matched term, with the term marked.
+    function excerpt(text, terms) {
+      const lower = text.toLowerCase();
+      let at = -1;
+      for (const t of terms) {
+        const i = lower.indexOf(t);
+        if (i !== -1 && (at === -1 || i < at)) at = i;
+      }
+      if (at === -1) at = 0;
+      const start = Math.max(0, at - 60);
+      let slice = text.slice(start, start + 190);
+      if (start > 0) slice = '…' + slice;
+      if (start + 190 < text.length) slice += '…';
+      let html = escapeHtml(slice);
+      for (const t of terms) {
+        html = html.replace(
+          new RegExp(`(${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'),
+          '<mark>$1</mark>'
+        );
+      }
+      return html;
+    }
+
+    function score(rec, terms) {
+      let s = 0;
+      const hay = (rec.m + ' ' + rec.h + ' ' + (rec.s || '') + ' ' + (rec.k || '')).toLowerCase();
+      const body = rec.t.toLowerCase();
+      for (const t of terms) {
+        if (hay.includes(t)) s += 12;
+        const i = body.indexOf(t);
+        if (i !== -1) s += 4 + Math.max(0, 3 - Math.floor(i / 400));
+        else if (!hay.includes(t)) return 0; // every term must appear
+      }
+      return s;
+    }
+
+    function render(results, terms) {
+      active = 0;
+      list.innerHTML = results
+        .map(
+          (r, i) => `
+          <li>
+            <a href="${r.u}" class="search-hit${i === 0 ? ' is-active' : ''}" data-hit>
+              <span class="search-hit-crumb"><span class="search-hit-series">${escapeHtml(r.s||"")}</span><span class="search-hit-n">${r.n}</span>${escapeHtml(r.m)} <span class="search-hit-sep">›</span> ${escapeHtml(r.h)}</span>
+              <span class="search-hit-text">${excerpt(r.t, terms)}</span>
+            </a>
+          </li>`
+        )
+        .join('');
+      empty.hidden = results.length > 0;
+    }
+
+    function run() {
+      const q = input.value.trim().toLowerCase();
+      if (!q || !index) {
+        list.innerHTML = '';
+        empty.hidden = true;
+        return;
+      }
+      const terms = q.split(/\s+/).filter(Boolean);
+      const results = index
+        .map((r) => ({ r, s: score(r, terms) }))
+        .filter((x) => x.s > 0)
+        .sort((a, b) => b.s - a.s || a.r.n - b.r.n)
+        .slice(0, 12)
+        .map((x) => x.r);
+      render(results, terms);
+    }
+
+    function move(delta) {
+      const hits = list.querySelectorAll('[data-hit]');
+      if (!hits.length) return;
+      hits[active]?.classList.remove('is-active');
+      active = (active + delta + hits.length) % hits.length;
+      hits[active].classList.add('is-active');
+      hits[active].scrollIntoView({ block: 'nearest' });
+    }
+
+    input.addEventListener('input', () => {
+      load().then(run);
+      run();
+    });
+
+    overlay.querySelector('[data-search-close]').addEventListener('click', close);
+
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        move(1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        move(-1);
+      } else if (e.key === 'Enter') {
+        const hit = list.querySelectorAll('[data-hit]')[active];
+        if (hit) {
+          e.preventDefault();
+          window.location.href = hit.getAttribute('href');
+        }
+      }
+    });
+
+    document.querySelectorAll('[data-search-open]').forEach((b) =>
+      b.addEventListener('click', open)
+    );
+
+    window.__openSearch = open;
+  })();
+})();</script><script>(function(){const base = "/blog";
+
+      (() => {
+        const root = document.documentElement;
+
+        /* ---- theme ---------------------------------------------------- */
+        document.querySelector('[data-theme-toggle]')?.addEventListener('click', () => {
+          const light = root.classList.toggle('light');
+          try {
+            localStorage.setItem('refresher:theme', light ? 'light' : 'dark');
+          } catch (e) {}
+        });
+
+        /* ---- progress (localStorage) ---------------------------------- */
+        const KEY = 'refresher:progress';
+        const readSet = () => {
+          try {
+            return new Set(JSON.parse(localStorage.getItem(KEY) || '[]'));
+          } catch (e) {
+            return new Set();
+          }
+        };
+        const writeSet = (s) => {
+          try {
+            localStorage.setItem(KEY, JSON.stringify([...s]));
+          } catch (e) {}
+        };
+
+        function paintProgress() {
+          const done = readSet();
+          const ticks = document.querySelectorAll('[data-tick]');
+          // A module can own more than one tick (rail + contents card), so
+          // count distinct module ids rather than elements.
+          const ids = new Set();
+          ticks.forEach((t) => {
+            const id = t.getAttribute('data-tick');
+            ids.add(id);
+            if (done.has(id)) t.setAttribute('data-read', '');
+            else t.removeAttribute('data-read');
+          });
+          const n = [...ids].filter((id) => done.has(id)).length;
+          const total = ids.size || 1;
+          const fill = document.querySelector('[data-progress-fill]');
+          if (fill) fill.style.width = `${(n / total) * 100}%`;
+          const count = document.querySelector('[data-progress-count]');
+          if (count) count.textContent = String(n);
+          document.querySelectorAll('[data-mark]').forEach((btn) => {
+            const id = btn.getAttribute('data-mark');
+            const on = done.has(id);
+            btn.setAttribute('aria-pressed', String(on));
+            btn.textContent = on ? '✓ Reviewed' : 'Mark as reviewed';
+          });
+        }
+
+        document.querySelectorAll('[data-mark]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-mark');
+            const s = readSet();
+            s.has(id) ? s.delete(id) : s.add(id);
+            writeSet(s);
+            paintProgress();
+          });
+        });
+
+        paintProgress();
+
+        /* ---- scrollspy over h2s, mirrored into the rail --------------- */
+        const article = document.querySelector('[data-article]');
+        const heads = article ? [...article.querySelectorAll('h2[id]')] : [];
+        const subLinks = new Map(
+          [...document.querySelectorAll('[data-toc]')].map((a) => [
+            a.getAttribute('data-toc'),
+            a,
+          ])
+        );
+
+        if (heads.length && subLinks.size) {
+          let currentId = null;
+          const spy = () => {
+            let found = heads[0].id;
+            for (const h of heads) {
+              if (h.getBoundingClientRect().top <= 96) found = h.id;
+              else break;
+            }
+            if (found === currentId) return;
+            subLinks.get(currentId)?.classList.remove('is-current');
+            currentId = found;
+            const el = subLinks.get(currentId);
+            if (el) {
+              el.classList.add('is-current');
+              el.scrollIntoView({ block: 'nearest' });
+            }
+          };
+          spy();
+          addEventListener('scroll', spy, { passive: true });
+        }
+
+        /* ---- keyboard ------------------------------------------------- */
+        const stops = article
+          ? [...article.querySelectorAll('h2[id], h3[id]')]
+          : [];
+
+        function jump(delta) {
+          if (!stops.length) return;
+          // The heading we are "in": the last one scrolled past the threshold.
+          let cur = -1;
+          for (let i = 0; i < stops.length; i++) {
+            if (stops[i].getBoundingClientRect().top <= 100) cur = i;
+            else break;
+          }
+          const target = cur + delta;
+          if (target < 0) return scrollTo({ top: 0, behavior: 'smooth' });
+          if (target >= stops.length) return;
+          stops[target].scrollIntoView({ block: 'start' });
+        }
+
+        addEventListener('keydown', (e) => {
+          const tag = (e.target.tagName || '').toLowerCase();
+          if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+          if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+          if (e.key === '/') {
+            e.preventDefault();
+            window.__openSearch?.();
+          } else if (e.key === 'j') {
+            e.preventDefault();
+            jump(1);
+          } else if (e.key === 'k') {
+            e.preventDefault();
+            jump(-1);
+          } else if (e.key === '[' || e.key === ']') {
+            const sel = e.key === '[' ? '[data-prev]' : '[data-next]';
+            const a = document.querySelector(sel);
+            if (a) {
+              e.preventDefault();
+              window.location.href = a.getAttribute('href');
+            }
+          }
+        });
+
+        /* ---- narrow-screen rail --------------------------------------- */
+        const rail = document.querySelector('[data-rail]');
+        document.querySelector('[data-rail-toggle]')?.addEventListener('click', () => {
+          rail.classList.toggle('is-open');
+        });
+        rail?.addEventListener('click', (e) => {
+          if (e.target.closest('a')) rail.classList.remove('is-open');
+        });
+      })();
+    })();</script></body></html>

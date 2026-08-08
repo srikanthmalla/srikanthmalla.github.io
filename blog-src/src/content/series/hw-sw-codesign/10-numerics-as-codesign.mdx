@@ -1,0 +1,321 @@
+---
+n: 10
+title: 'Numerics as a codesign knob'
+blurb: 'Precision is the only knob that moves compute, memory and interconnect at once. Block scaling as the modern answer, why the block size must divide the array’s K-tile, and why "what precision" is the wrong question.'
+part: 'Q'
+minutes: 18
+draft: false
+tags: ['FP8', 'FP4', 'MX formats', 'MXFP4', 'NVFP4', 'block scaling', 'E8M0', 'accumulator', 'KV cache', 'quantization', 'dynamic range']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+Precision is the only design knob in this series that moves all three resources simultaneously. Halve
+the bit width and you roughly halve the memory footprint and the bytes moved at every level of the
+hierarchy, halve the payload on every interconnect, and — because multiplier area and energy scale
+super-linearly with mantissa width — get somewhere between 2× and 4× the arithmetic throughput per
+unit of area. Nothing else does that. Tiling trades memory traffic for capacity; dataflow trades one
+tensor's traffic for another's; parallelism trades compute for communication. Precision moves the
+whole frontier outward, and the only currency it spends is accuracy. That is why it keeps being the
+thing that actually ships, generation after generation, and why "the next format" is a more reliable
+predictor of a hardware generation's gains than any microarchitectural change.
+
+The reason precision reduction did not simply continue downward forever is dynamic range. FP16 has 5
+exponent bits and a range of about $10^{\pm 5}$, which was already tight enough to require loss
+scaling. FP8 E4M3 has 4 exponent bits and a maximum of 448; FP4 E2M1 has *three representable
+magnitudes*. A tensor with any meaningful spread of magnitudes cannot be represented at these widths
+with a single scale factor, because the outliers that matter and the small values that also matter
+cannot both fit. The modern answer is **block scaling**: give every small group of elements its own
+shared exponent, so the format's dynamic range only has to cover the spread *within* a block rather
+than across the tensor. OCP's MX formats use blocks of 32 with an 8-bit power-of-two scale (E8M0);
+NVIDIA's NVFP4 uses blocks of 16 with an E4M3 scale plus a per-tensor FP32 factor. The narrow element
+type provides precision; the block scale provides range.
+
+And the codesign point that makes this a module rather than a footnote: **the block size is a
+hardware parameter, not a numerics parameter.** A block of 32 elements along the reduction dimension
+must line up with how the MAC array consumes $K$ — the scale has to be applied once per block, which
+means the block boundary must fall on a boundary the datapath already has. Choose 32 and it divides a
+128-deep systolic column and a 16-deep tensor core K-tile cleanly. Choose 48 and every array in
+existence needs a divider it does not have. The format was negotiated between numerics people who
+wanted small blocks for accuracy and architects who needed the block to divide their K-tile, and the
+answer lands where those constraints intersect. That is codesign in its most literal form, and it is
+why the format specifications came out of a consortium of hardware vendors rather than from a
+numerics paper.
+
+<Callout type="trap" title="“we quantized the model to 4 bits”">
+  That sentence names one number and hides four decisions. Which tensors — weights, activations, KV
+  cache, gradients, optimiser state? At what block granularity? With what scale type? And accumulating
+  into what? A model with 4-bit weights, BF16 activations and FP32 accumulation has a completely
+  different resource profile from one with 4-bit weights and activations, and the two are routinely
+  reported with the same label. The useful description is per-tensor-per-location, always.
+</Callout>
+
+## The design space, quantified
+
+The formats, and what each is actually for:
+
+| Format   | Element  | Block | Scale | Bytes/value (incl. scale) | Primary target       |
+| -------- | -------- | ----- | ----- | ------------------------- | -------------------- |
+| FP32     | E8M23    | —     | —     | 4                         | accumulation, master weights |
+| TF32     | E8M10    | —     | —     | 4 (stored), 19 b used     | drop-in for FP32 matmul |
+| BF16     | E8M7     | —     | —     | 2                         | the safe default     |
+| FP16     | E5M10    | —     | per-tensor | 2                    | precision over range |
+| FP8 E4M3 | E4M3     | —     | per-tensor | 1                    | forward activations, weights |
+| FP8 E5M2 | E5M2     | —     | per-tensor | 1                    | gradients (needs range) |
+| MXFP8    | E4M3/E5M2 | 32   | E8M0  | 1.03                      | training              |
+| MXFP6    | E2M3/E3M2 | 32   | E8M0  | 0.78                      | weights               |
+| MXFP4    | E2M1     | 32    | E8M0  | 0.53                      | weights, inference    |
+| NVFP4    | E2M1     | 16    | E4M3  | 0.56                      | Blackwell inference   |
+| INT8     | —        | per-channel | FP32 | 1                     | mature PTQ path       |
+
+Note MXFP4's real cost: 4 bits of payload plus 8 bits of scale per 32 elements is **4.25 bits per
+value**, not 4. The scale overhead is $\text{scale bits}/\text{block size}$, which is exactly why
+block size is contested.
+
+Which resource each choice buys, which is the framing that matters:
+
+| Decision                   | Compute | Memory | Interconnect | Accuracy risk |
+| -------------------------- | ------- | ------ | ------------ | ------------- |
+| Weights to 4-bit           | only if native | **large** | large | moderate      |
+| Activations to FP8         | **large** | moderate | moderate  | moderate      |
+| KV cache to FP8/INT8       | none    | **large** | none       | low           |
+| Gradients to BF16/FP8 on wire | none | none   | **large**    | moderate      |
+| Accumulate in FP32         | cost    | cost   | none         | **required**  |
+| Master weights in FP32     | none    | cost   | none         | required for training |
+
+Block size, and the tension:
+
+| Block size | Scale overhead (8-bit scale) | Accuracy | Divides K-tile of |
+| ---------- | ---------------------------- | -------- | ----------------- |
+| 16         | 0.5 bit/value                | best     | 16, 32, 128, 256  |
+| 32         | 0.25 bit/value               | good     | 32, 128, 256      |
+| 64         | 0.125 bit/value              | weaker   | 128, 256          |
+| Per-tensor | ~0                           | poor at ≤8 bits | anything    |
+
+## Critical thinking
+
+<Probe q="Why block scaling rather than a better narrow float?">
+
+Because the problem is not precision, it is **dynamic range**, and no redistribution of bits within a
+4- or 8-bit element solves it.
+
+An element format spends its bits between exponent (range) and mantissa (precision), and at 4 bits
+total there is nothing to spend. E2M1 gives you three exponent values and one mantissa bit — six
+representable magnitudes, positive and negative. A neural network tensor routinely spans several
+orders of magnitude, with a small number of outlier channels carrying much of the signal. Represent
+that with a single per-tensor scale and you must choose: scale so the outliers fit and everything
+else rounds to zero, or scale so the bulk is resolved and the outliers saturate. Both destroy the
+tensor, and shifting a bit from mantissa to exponent trades one failure for the other.
+
+Block scaling attacks the right variable. Within 32 adjacent elements the spread is far narrower than
+across the tensor, so a shared exponent per block absorbs the inter-block variation and the element
+format only has to represent the intra-block variation. The tensor's global range is carried by the
+scales; the local detail is carried by the elements. This is why the technique works at 4 bits when
+nothing else does, and it is also why it generalises — the same reasoning gives you per-channel INT8
+quantization, which is block scaling with the block equal to a channel.
+
+The design tension is now explicit and quantifiable:
+
+- **Smaller blocks are more accurate** — less spread inside a block — **and cost more scale storage**.
+  8 bits of scale over 16 elements is 0.5 bits per value, a 12.5% overhead on a 4-bit format. Over 32,
+  it is 0.25 bits, 6%.
+- **Smaller blocks cost more hardware.** The scale must be applied on every block boundary, so smaller
+  blocks mean more scale-application logic per unit of throughput and more scale bandwidth into the
+  MAC array.
+- **The scale's own format matters.** E8M0 is a pure power of two, so applying it is an exponent
+  addition — nearly free in hardware, and it never introduces rounding error of its own. NVFP4's E4M3
+  scale is more expressive (it can scale by non-powers of two, capturing the block's magnitude more
+  tightly) and requires a real multiply. That is a genuine hardware-versus-accuracy trade, made
+  differently by the OCP consortium and by NVIDIA, and it is the clearest example in the field of two
+  teams solving the same problem with different weights on the same two constraints.
+
+</Probe>
+
+<Probe q="Why must the block size divide the array's K-tile?">
+
+Because the shared scale has to be applied exactly once per block, and the only place it can be
+applied cheaply is a boundary the datapath already has.
+
+Consider a dot product of length $K$ accumulating in the array. With block scaling, the operands
+arrive as (element, block-scale) pairs, and the true product of two elements is
+$(s_a \cdot a) \times (s_b \cdot b) = (s_a s_b)(ab)$. The efficient implementation accumulates $ab$ in
+the narrow format across a whole block, then applies $s_a s_b$ once and adds into the wide
+accumulator. That requires the block boundary to coincide with a point where the array naturally
+breaks its reduction — which is the K-tile depth.
+
+If the block size divides the K-tile, this costs one scale multiply-add per block per output, which
+is negligible. If it does not:
+
+- **You need a divider or a variable-length counter** in the reduction control, on every lane. This is
+  not a small amount of logic and it sits in the critical path.
+- **Partial blocks straddle tile boundaries**, so a block's scale must be carried across a tile
+  boundary, which means extra state and a synchronisation the array was not built for.
+- **Or you apply the scale per element**, which defeats the entire point — the reason block scaling is
+  cheap is that the scale is amortised over the block.
+
+Which is why every shipping format has a power-of-two block size, and why 32 is the consensus: it
+divides the 128 and 256 depths of systolic arrays, divides the K = 16 tensor core tile in pairs, is a
+natural fit for a 32-lane warp, and lands in an acceptable place on the accuracy-versus-overhead
+curve. NVFP4's choice of 16 buys accuracy by paying more overhead, and it is viable precisely because
+NVIDIA controls both the format and the array and could co-design the two.
+
+The general principle, which is the reason this module is in the series: **a numerical format is a
+hardware interface.** It is negotiated against the array's reduction depth, the memory system's access
+granularity, and the register file's width — and a format designed without those constraints will
+either not be implemented or will be implemented badly. The MX specification coming out of a hardware
+consortium (AMD, Arm, Intel, Meta, Microsoft, NVIDIA, Qualcomm) rather than from a numerics group is
+not an accident of politics; it is what the problem requires.
+
+</Probe>
+
+<Probe q="Why is accumulation still FP32 when everything else is 4 or 8 bits?">
+
+Because the error in a dot product accumulates over $K$ terms while the error in a single element does
+not, and $K$ is thousands.
+
+The mechanism is straightforward. Each addition into the accumulator rounds. With $K$ sequential
+additions in a format with unit roundoff $u$, the worst-case relative error grows like $Ku$ and the
+random-walk expectation like $\sqrt K u$. For $K = 4096$: in FP16 ($u \approx 5 \times 10^{-4}$) the
+expected relative error is around 3%, which is not usable. In FP32 ($u \approx 6 \times 10^{-8}$) it
+is around $4 \times 10^{-6}$, which is fine. There is also a second, sharper failure mode — **swamping**
+— where the running sum grows large enough that small individual terms round to nothing when added,
+so they contribute exactly zero. In a narrow accumulator with a long reduction, a substantial fraction
+of the terms can simply be discarded, and the result is not noisy, it is systematically wrong.
+
+The consequences, which are exactly the ones people forget when they estimate quantization speedups:
+
+- **The accumulator is not quantized, so its cost does not fall.** Register pressure, accumulator
+  bandwidth and the psum traffic of Module 6 are unchanged when you go from BF16 to FP8. You halve the
+  operands and nothing else.
+- **The MAC's real shape is narrow × narrow → wide.** Which is why FP8 gives 2× rather than 4× on many
+  designs: the multiplier shrank quadratically, the adder tree and accumulator did not.
+- **Split-K makes it worse**, because each partial reduction is combined again afterward, adding
+  another rounding level — and combining in a narrow format is where multi-pass reductions actually
+  lose accuracy.
+
+The mitigations worth knowing:
+
+- **FP32 accumulate is the default and should stay so.** The cost is real and the alternative is
+  unreliable. Tensor cores accumulate in FP32 even for FP8 inputs, deliberately.
+- **Hierarchical accumulation.** Accumulate in a narrow format within a block, promote to wide at
+  block boundaries. This bounds the error to $\sqrt{\text{block}}$ rather than $\sqrt K$, and it is
+  another reason blocks are useful beyond scaling.
+- **Stochastic rounding**, primarily in training, which makes the accumulation error zero-mean rather
+  than biased and lets narrower accumulators survive longer. Cheap in hardware (an RNG per lane) and
+  increasingly common.
+- **Kahan or compensated summation** where accuracy matters more than throughput — rare in ML, standard
+  in HPC, and worth knowing exists.
+
+The framing to keep: **precision is not one decision, it is one decision per tensor per role.**
+Operands can be 4 bits because they are read once each; accumulators cannot, because they are touched
+$K$ times. Any statement about "the precision of the model" that does not distinguish the two is not
+saying anything.
+
+</Probe>
+
+<Probe q="Given a fixed accuracy budget, how do you spend it across the three resources?">
+
+Spend it wherever the binding constraint is, and recognise that the answer differs per phase of the
+same workload — which is why a single global precision setting is always leaving something on the
+table.
+
+Work the cases:
+
+**Decode-phase LLM inference.** Bound by memory bandwidth: every token reads the entire weight set,
+and the arithmetic intensity is roughly 2 FLOP per weight byte at batch 1 (Module 12). So spend the
+budget on **weight bit width**, and spend it aggressively — 4-bit weights give close to a 4× token
+rate against BF16, and it does not matter whether the hardware has a native FP4 MAC, because
+dequantizing to BF16 before a BF16 tensor core still delivers the full memory win. This is the case
+where "the format is emulated" is not an objection. The KV cache is the second target for exactly the
+same reason, and it is nearly free in accuracy terms. Activations barely matter: there is one token's
+worth of them.
+
+**Prefill and training.** Compute-bound, so spend the budget on the **operand format the MAC natively
+supports**. FP8 for the GEMM operands is the live choice; going narrower buys nothing unless the array
+supports it natively, since an emulated format costs unpack work on a compute-bound kernel. Weight
+footprint matters much less here because weights are reused across the whole batch.
+
+**Distributed training.** Often bound by the interconnect on the gradient all-reduce or the tensor
+parallel activations. Spend on the **wire format** — BF16 or FP8 gradients — which costs nothing in
+compute or memory and directly halves the bytes on the scarce resource. Note this is a place where the
+accuracy risk is unusually well understood, since gradient noise is already large relative to
+quantization noise.
+
+**Never spend it on**: the accumulator, the master weights during training, or the softmax and
+normalisation statistics. These are cheap in bytes and catastrophic in error, and they are where
+narrow-precision efforts most often fail for reasons the team then misattributes to the operand
+format.
+
+The decision procedure, compactly:
+
+1. Identify the binding resource **for the phase in question**.
+2. Choose the tensor whose bytes flow through that resource most.
+3. Reduce *its* precision, and only its precision.
+4. Verify against accuracy, then re-identify the binding resource — because you have probably moved
+   it, and the next reduction should target somewhere else entirely.
+
+Step 4 is the one that gets skipped, and it is why quantization efforts frequently show a big first
+win and nothing afterwards: the second change was aimed at the resource that stopped binding after the
+first one.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="Why is precision the highest-leverage codesign knob?">
+
+It is the only one that moves **all three resources at once**: halved footprint and traffic at every
+memory level, halved interconnect payload, and 2–4× arithmetic throughput since multiplier area and
+energy scale super-linearly with mantissa width. Every other knob trades one resource against another;
+precision moves the frontier outward, spending only accuracy.
+
+</SelfCheck>
+
+<SelfCheck q="What problem does block scaling solve, and what does it cost?">
+
+**Dynamic range**, not precision. At 4 bits there is nothing to redistribute — E2M1 has six
+representable magnitudes — so a single per-tensor scale must either clip the outliers or flush the
+bulk to zero. A shared exponent per small block means the element format only spans the *intra-block*
+spread while the scales carry the global range. Cost: scale storage of $\text{scale bits}/\text{block
+size}$ — MXFP4 is really **4.25 bits per value** — plus scale-application logic, more of it for
+smaller blocks.
+
+</SelfCheck>
+
+<SelfCheck q="Why must the block size divide the array's K-tile?">
+
+Because the shared scale is applied once per block, and cheaply only at a boundary the reduction
+datapath already has. If it divides, that is one scale multiply-add per block per output. If not, you
+need a divider or variable-length counter in the reduction control path, blocks straddle tile
+boundaries requiring carried state, or you apply the scale per element and lose the amortisation that
+was the whole point. Hence every shipping format uses a power of two, and 32 divides systolic depths
+of 128/256, pairs of the K=16 tensor core tile, and a 32-lane warp.
+
+</SelfCheck>
+
+<SelfCheck q="Why does FP32 accumulation survive when operands are 4 bits?">
+
+Because dot-product error accumulates over $K \approx 4096$ terms — growing like $\sqrt K u$, which is
+~3% in FP16 and ~$4\times10^{-6}$ in FP32 — and because of **swamping**, where a large running sum
+causes small terms to round to exactly zero, producing systematic rather than noisy error.
+Consequences: the accumulator's cost does not fall with operand precision, so register pressure and
+psum traffic are unchanged, and the MAC is narrow×narrow→wide, which is why FP8 often gives 2× rather
+than 4×.
+
+</SelfCheck>
+
+<SelfCheck q="How do you allocate a fixed accuracy budget across the three resources?">
+
+To the binding resource **for that phase**. Decode: weight bit width and KV cache, since it is
+bandwidth-bound at ~2 FLOP/byte — and emulated formats are fine here, because the win is memory.
+Prefill/training: the operand format the MAC supports **natively**, since emulation costs unpack work
+on a compute-bound kernel. Distributed training: the wire format for gradients and TP activations.
+Never: accumulators, master weights, or normalisation statistics. Then **re-identify the binding
+resource**, because the first reduction probably moved it — skipping that step is why quantization
+efforts show one big win and then nothing.
+
+</SelfCheck>

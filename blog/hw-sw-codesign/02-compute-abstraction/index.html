@@ -1,0 +1,639 @@
+<!DOCTYPE html><html lang="en" data-astro-cid-z4jru4n3><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>2. Compute: the shape of the multiply — ML Hardware/Software Codesign</title><meta name="description" content="Peak FLOP/s is the least useful number about a compute unit. What matters is the native operation shape, the granularity at which it must be fed, and the two independent ways utilization dies."><link rel="icon" href="data:,"><script>
+      (() => {
+        try {
+          const t = localStorage.getItem('refresher:theme');
+          if (t === 'light') document.documentElement.classList.add('light');
+        } catch (e) {}
+      })();
+    </script><link rel="stylesheet" href="/blog/_astro/BaseLayout.B9q2yynj.css"><style>.wrap[data-astro-cid-5x65ok44]{max-width:68ch;margin-inline:auto;padding:3rem 1.25rem 6rem}@media (width>=1024px){.wrap[data-astro-cid-5x65ok44]{max-width:calc(68ch + 6rem);padding-inline:3rem}}.mhead[data-astro-cid-5x65ok44]{border-block-end:1px solid var(--rule);margin-block-end:.5rem;padding-block-end:1.75rem}.mhead-kicker[data-astro-cid-5x65ok44]{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint);margin:0 0 .85rem;font-size:.6875rem;font-weight:500}.mhead-n[data-astro-cid-5x65ok44]{color:var(--accent);font-weight:640}.mhead-dot[data-astro-cid-5x65ok44]{opacity:.5;padding-inline:.35rem}.mhead-title[data-astro-cid-5x65ok44]{font-family:var(--font-sans);letter-spacing:-.027em;color:var(--ink-strong);text-wrap:balance;margin:0;font-size:clamp(1.75rem,1.3rem + 1.9vw,2.375rem);font-weight:660;line-height:1.12}.mhead-blurb[data-astro-cid-5x65ok44]{color:var(--ink-muted);max-width:58ch;margin:.85rem 0 0;font-size:1.0625rem;line-height:1.6}.mfoot[data-astro-cid-5x65ok44]{border-block-start:1px solid var(--rule);margin-block-start:4rem;padding-block-start:1.75rem}.mark[data-astro-cid-5x65ok44]{font-family:var(--font-sans);border:1px solid var(--rule);background:var(--bg-raised);color:var(--ink-muted);cursor:pointer;border-radius:5px;padding:.4rem .85rem;font-size:.75rem;font-weight:550}.mark[data-astro-cid-5x65ok44]:hover{color:var(--ink-strong);border-color:var(--ink-faint)}.mark[data-astro-cid-5x65ok44][aria-pressed=true]{color:var(--bridge);border-color:color-mix(in oklab, var(--bridge) 45%, var(--rule))}.pager[data-astro-cid-5x65ok44]{grid-template-columns:1fr 1fr;gap:1rem;margin-block-start:2rem;display:grid}.pager-link[data-astro-cid-5x65ok44]{border:1px solid var(--rule);font-family:var(--font-sans);border-radius:6px;flex-direction:column;gap:.25rem;padding:.75rem .9rem;text-decoration:none;display:flex}.pager-link[data-astro-cid-5x65ok44]:hover{border-color:var(--ink-faint);background:var(--bg-raised)}.pager-link[data-astro-cid-5x65ok44].is-next{text-align:end}.pager-dir[data-astro-cid-5x65ok44]{text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);font-size:.6875rem}.pager-title[data-astro-cid-5x65ok44]{color:var(--ink-strong);font-size:.8125rem;font-weight:550;line-height:1.35}
+</style><style>.callout{border:1px solid var(--rule);border-inline-start-width:2px;border-radius:5px;margin-block:1.75rem;padding:.9rem 1.1rem 1rem;font-size:.9375rem;line-height:1.65}.callout-probe{border-inline-start-color:var(--probe);background:var(--probe-bg)}.callout-trap{border-inline-start-color:var(--trap);background:var(--trap-bg)}.callout-bridge{border-inline-start-color:var(--bridge);background:var(--bridge-bg)}.callout-label{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.08em;align-items:center;gap:.45rem;margin:0 0 .5rem;font-size:.6875rem;font-weight:620;display:flex}.callout-probe .callout-label{color:var(--probe)}.callout-trap .callout-label{color:var(--trap)}.callout-bridge .callout-label{color:var(--bridge)}.callout-mark{background:currentColor;border-radius:50%;flex:none;width:5px;height:5px}.callout-title{text-transform:none;letter-spacing:0;color:var(--ink-muted);font-weight:500}.callout-body>:first-child{margin-block-start:0}.callout-body>:last-child{margin-block-end:0}.callout-body>*+*{margin-block-start:.75em}.probe{margin-block:1.75rem}.prose .probe-q{font-family:var(--font-sans);letter-spacing:-.01em;color:var(--ink-strong);margin:0 0 .6rem;padding-inline-start:1.15rem;font-size:1rem;font-weight:600;line-height:1.45;position:relative}.prose .probe-q:before{content:"›";color:var(--accent);font-weight:700;position:absolute;inset-inline-start:0}.probe-a{border-inline-start:1px solid var(--rule);margin-inline-start:.1rem;padding-inline-start:1.15rem}.probe-a>*+*{margin-block-start:1.15em}.probe-a>:first-child{margin-block-start:0}.probe-a>:last-child{margin-block-end:0}.selfcheck{border-block-start:1px solid var(--rule-soft)}.selfcheck:last-of-type{border-block-end:1px solid var(--rule-soft)}.prose>.selfcheck+.selfcheck{margin-block-start:0}.selfcheck>summary{cursor:pointer;color:var(--ink);align-items:baseline;gap:1rem;padding:.7rem .2rem;list-style:none;display:flex}.selfcheck>summary::-webkit-details-marker{display:none}.selfcheck>summary:hover{color:var(--ink-strong)}.selfcheck-q{flex:1}.selfcheck-q code{white-space:nowrap}.selfcheck-cue{font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);flex:none;padding-block-start:.15rem;font-size:.6875rem;font-weight:600}.selfcheck>summary:hover .selfcheck-cue{color:var(--accent)}.selfcheck-cue-hide,.selfcheck[open] .selfcheck-cue-show{display:none}.selfcheck[open] .selfcheck-cue-hide{display:inline}.selfcheck-a{color:var(--ink-muted);border-inline-start:2px solid var(--rule);margin-block-end:.9rem;margin-inline-start:.2rem;padding:.15rem .2rem 1.05rem;padding-inline-start:1rem;font-size:.9375rem}.selfcheck-a>:first-child{margin-block-start:0}.selfcheck-a>:last-child{margin-block-end:0}.selfcheck-a>*+*{margin-block-start:.7em}.selfcheck-a strong{color:var(--ink)}
+</style></head><body data-astro-cid-z4jru4n3><a href="#content" class="skip" data-astro-cid-z4jru4n3>Skip to content</a><div class="shell" data-astro-cid-z4jru4n3><aside class="rail" data-rail data-astro-cid-z4jru4n3><nav class="rail-nav" aria-label="ML Hardware/Software Codesign contents" data-astro-cid-wv7whodv><div class="rail-head" data-astro-cid-wv7whodv><a href="/blog/" class="rail-up" data-astro-cid-wv7whodv>All series</a><a href="/blog/hw-sw-codesign/" class="rail-home" data-astro-cid-wv7whodv><span class="rail-home-title" data-astro-cid-wv7whodv>ML Hardware/Software Codesign</span><span class="rail-home-sub" data-astro-cid-wv7whodv>Compute, memory, interconnect — and the mapping between them</span></a><p class="rail-progress" data-astro-cid-wv7whodv><span class="rail-progress-bar" data-astro-cid-wv7whodv><span data-progress-fill data-astro-cid-wv7whodv></span></span><span class="rail-progress-text" data-astro-cid-wv7whodv><span data-progress-count data-astro-cid-wv7whodv>0</span>/14 reviewed</span></p></div><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part O</span>The three abstractions</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/01-the-codesign-contract/" class="rail-link" title="Why the hardware/software interface leaks for ML and not for most things, the three-resource abstraction that follows, and what &quot;balanced&quot; actually means when a single workload is only ever bottlenecked on one resource." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>1</span><span class="rail-title" data-astro-cid-wv7whodv>The codesign contract</span><span class="rail-tick" data-tick="hw-sw-codesign/01-the-codesign-contract" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/02-compute-abstraction/" class="rail-link is-active" aria-current="page" title="Peak FLOP/s is the least useful number about a compute unit. What matters is the native operation shape, the granularity at which it must be fed, and the two independent ways utilization dies." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>2</span><span class="rail-title" data-astro-cid-wv7whodv>Compute: the shape of the multiply</span><span class="rail-tick" data-tick="hw-sw-codesign/02-compute-abstraction" aria-hidden="true" data-astro-cid-wv7whodv></span></a><ul class="rail-sub" data-rail-sub data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="#the-core-mental-model" class="rail-sub-link" data-toc="the-core-mental-model" data-astro-cid-wv7whodv>The core mental model</a></li><li data-astro-cid-wv7whodv><a href="#the-design-space-quantified" class="rail-sub-link" data-toc="the-design-space-quantified" data-astro-cid-wv7whodv>The design space, quantified</a></li><li data-astro-cid-wv7whodv><a href="#critical-thinking" class="rail-sub-link" data-toc="critical-thinking" data-astro-cid-wv7whodv>Critical thinking</a></li><li data-astro-cid-wv7whodv><a href="#self-check" class="rail-sub-link" data-toc="self-check" data-astro-cid-wv7whodv>Self-check</a></li></ul></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/03-memory-abstraction/" class="rail-link" title="The hierarchy as a ladder of (capacity, bandwidth, latency, granularity, who-manages) tuples. Cache versus scratchpad as a codesign decision, why bandwidth costs area, and why granularity is what actually punishes you." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>3</span><span class="rail-title" data-astro-cid-wv7whodv>Memory: capacity, bandwidth, and who decides placement</span><span class="rail-tick" data-tick="hw-sw-codesign/03-memory-abstraction" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/04-interconnect-abstraction/" class="rail-link" title="An interconnect is a memory level you cannot store anything in. The same four numbers, topology in place of capacity, collectives as the access primitives — and the beachfront limit that drives everything else in the series." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>4</span><span class="rail-title" data-astro-cid-wv7whodv>Interconnect: memory at a longer distance</span><span class="rail-tick" data-tick="hw-sw-codesign/04-interconnect-abstraction" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part P</span>Mapping</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/05-mapping-problem/" class="rail-link" title="A mapping is four decisions: tiling, permutation, spatial assignment, binding. Which makes arithmetic intensity a property of the mapping rather than the algorithm — and makes the search space astronomically large." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>5</span><span class="rail-title" data-astro-cid-wv7whodv>The mapping problem, stated precisely</span><span class="rail-tick" data-tick="hw-sw-codesign/05-mapping-problem" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/06-dataflow-and-reuse/" class="rail-link" title="Weight-, output-, input- and row-stationary as four answers to one question — which tensor do you refuse to re-fetch. Why partial sums decide it, and why fixing a dataflow in RTL fixes one dimension of the mapspace for the life of the chip." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>6</span><span class="rail-title" data-astro-cid-wv7whodv>Dataflow: what stays still</span><span class="rail-tick" data-tick="hw-sw-codesign/06-dataflow-and-reuse" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/07-tiling/" class="rail-link" title="The one closed form worth memorizing: traffic falls as the square root of capacity, so doubling SRAM buys 1.41×. Multi-level tiling, double buffering as capacity spent on latency, and why the levels cannot be tiled independently." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>7</span><span class="rail-title" data-astro-cid-wv7whodv>Tiling the hierarchy</span><span class="rail-tick" data-tick="hw-sw-codesign/07-tiling" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/08-cost-models/" class="rail-link" title="How you evaluate a million mappings on hardware that does not exist yet. Analytic models versus autotuning, what each is systematically wrong about, and why for codesign the model’s accuracy is the chip’s accuracy." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>8</span><span class="rail-title" data-astro-cid-wv7whodv>Cost models and searching the mapspace</span><span class="rail-tick" data-tick="hw-sw-codesign/08-cost-models" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part Q</span>Where mappings break</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/09-sparsity-and-irregularity/" class="rail-link" title="Every static mapping assumes a dense rectangular iteration space. Three ways sparsity breaks that, why 90% unstructured rarely gives 10×, and the rule that hardware exploits sparsity only when the pattern is shaped to the array." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>9</span><span class="rail-title" data-astro-cid-wv7whodv>Sparsity and irregularity</span><span class="rail-tick" data-tick="hw-sw-codesign/09-sparsity-and-irregularity" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/10-numerics-as-codesign/" class="rail-link" title="Precision is the only knob that moves compute, memory and interconnect at once. Block scaling as the modern answer, why the block size must divide the array’s K-tile, and why &quot;what precision&quot; is the wrong question." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>10</span><span class="rail-title" data-astro-cid-wv7whodv>Numerics as a codesign knob</span><span class="rail-tick" data-tick="hw-sw-codesign/10-numerics-as-codesign" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/11-scale-out-mapping/" class="rail-link" title="DP, TP, PP, EP and SP are Module 5’s four decisions applied one level up, with the network as the memory level. Each strategy is priced by the collective it forces, and the placement rule falls out of the arithmetic." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>11</span><span class="rail-title" data-astro-cid-wv7whodv>Parallelism is mapping onto the interconnect</span><span class="rail-tick" data-tick="hw-sw-codesign/11-scale-out-mapping" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-part" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv><span class="rail-part-letter" data-astro-cid-wv7whodv>Part R</span>In practice</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/12-case-attention/" class="rail-link" title="FlashAttention is a mapping result, not an algorithm result — identical FLOPs, one tensor re-bound. Prefill and decode as two points in the resource space with the same math, and GQA/MLA as model architecture bending to a memory constraint." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>12</span><span class="rail-title" data-astro-cid-wv7whodv>Case study: attention, mapped</span><span class="rail-tick" data-tick="hw-sw-codesign/12-case-attention" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/13-case-three-architectures/" class="rail-link" title="GPU, TPU and the static-SRAM machines differ mostly in one thing: who absorbs uncertainty at runtime. Read each on the three axes, and the flexibility/efficiency curve stops being a mystery." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>13</span><span class="rail-title" data-astro-cid-wv7whodv>Three architectures, read as three mappings</span><span class="rail-tick" data-tick="hw-sw-codesign/13-case-three-architectures" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li><li data-astro-cid-wv7whodv><a href="/blog/hw-sw-codesign/14-the-codesign-loop/" class="rail-link" title="Hardware is frozen two to three years before the workload it runs, so the compiler is the only thing that can adapt — and it is on the critical path of the chip’s value while being consistently underfunded relative to it." data-astro-cid-wv7whodv><span class="rail-n" data-astro-cid-wv7whodv>14</span><span class="rail-title" data-astro-cid-wv7whodv>The codesign loop, and where it fails</span><span class="rail-tick" data-tick="hw-sw-codesign/14-the-codesign-loop" aria-hidden="true" data-astro-cid-wv7whodv></span></a></li></ul></section><section class="rail-other" data-astro-cid-wv7whodv><h2 class="rail-part-title" data-astro-cid-wv7whodv>Other series</h2><ul class="rail-list" data-astro-cid-wv7whodv><li data-astro-cid-wv7whodv><a href="/blog/ml-hardware/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>ML Hardware &amp; Low-Latency Systems</span></a></li><li data-astro-cid-wv7whodv><a href="/blog/diffusion/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>Diffusion</span></a></li><li data-astro-cid-wv7whodv><a href="/blog/ml-software/" class="rail-link rail-other-link" data-astro-cid-wv7whodv><span class="rail-title" data-astro-cid-wv7whodv>ML Software &amp; Compilers</span></a></li></ul></section><div class="rail-foot" data-astro-cid-wv7whodv><p data-astro-cid-wv7whodv><kbd data-astro-cid-wv7whodv>j</kbd> <kbd data-astro-cid-wv7whodv>k</kbd> section · <kbd data-astro-cid-wv7whodv>/</kbd> search · <kbd data-astro-cid-wv7whodv>[</kbd><kbd data-astro-cid-wv7whodv>]</kbd> module</p></div></nav></aside><div class="col" data-astro-cid-z4jru4n3><header class="topbar" data-astro-cid-z4jru4n3><button class="icon-btn only-narrow" data-rail-toggle aria-label="Toggle contents" data-astro-cid-z4jru4n3><svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M1.5 3.5h12M1.5 7.5h12M1.5 11.5h12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg></button><p class="crumb" data-astro-cid-z4jru4n3>Part O · The three abstractions › Compute: the shape of the multiply</p><div class="topbar-actions" data-astro-cid-z4jru4n3><button class="search-btn" data-search-open aria-label="Search" data-astro-cid-z4jru4n3><span aria-hidden="true" data-astro-cid-z4jru4n3>⌕</span><span class="search-btn-label" data-astro-cid-z4jru4n3>Search</span><kbd data-astro-cid-z4jru4n3>/</kbd></button><button class="icon-btn" data-theme-toggle aria-label="Toggle theme" data-astro-cid-z4jru4n3><svg class="i-sun" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><circle cx="7.5" cy="7.5" r="3" stroke="currentColor" stroke-width="1.2" data-astro-cid-z4jru4n3></circle><path d="M7.5 .8v1.7M7.5 12.5v1.7M14.2 7.5h-1.7M2.5 7.5H.8M12.24 2.76l-1.2 1.2M3.96 11.04l-1.2 1.2M12.24 12.24l-1.2-1.2M3.96 3.96l-1.2-1.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" data-astro-cid-z4jru4n3></path></svg><svg class="i-moon" width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" data-astro-cid-z4jru4n3><path d="M13 9.3A5.8 5.8 0 0 1 5.7 2 5.9 5.9 0 1 0 13 9.3Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" data-astro-cid-z4jru4n3></path></svg></button><a class="site-link" href="/" data-astro-cid-z4jru4n3>srikanthmalla.com</a></div></header><main id="content" data-astro-cid-z4jru4n3><article class="wrap" data-article data-astro-cid-5x65ok44><header class="mhead" data-astro-cid-5x65ok44><p class="mhead-kicker" data-astro-cid-5x65ok44><span class="mhead-n" data-astro-cid-5x65ok44>Module 2</span><span class="mhead-dot" data-astro-cid-5x65ok44>·</span>Part O — The three abstractions<span class="mhead-dot" data-astro-cid-5x65ok44>·</span>17 min</p><h1 class="mhead-title" data-astro-cid-5x65ok44>Compute: the shape of the multiply</h1><p class="mhead-blurb" data-astro-cid-5x65ok44>Peak FLOP/s is the least useful number about a compute unit. What matters is the native operation shape, the granularity at which it must be fed, and the two independent ways utilization dies.</p></header><div class="prose" data-astro-cid-5x65ok44><h2 id="the-core-mental-model">The core mental model<a class="anchor" href="#the-core-mental-model" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>Peak FLOP/s tells you almost nothing, because it is the product of two things you cannot separate
+from it: how many multipliers exist, and the <em>shape</em> in which they insist on being fed. The second is
+the real interface. An H100 tensor core does not execute “a multiply”; its native instruction is a
+<code>m16n8k16</code> matrix operation, meaning a 16×8 output tile accumulating over 16 elements of reduction,
+issued warp-wide. A TPU MXU does not execute a multiply either; it executes a <code>[8,128] @ [128,128]</code>
+step through a 128×128 systolic array. These are not implementation details you can abstract over.
+They are the quantum of work, and any computation whose dimensions are not multiples of that quantum
+is padded to it and pays for the padding. <strong>The shape of the native operation is the compute
+abstraction; the FLOP/s number is a consequence of it.</strong></p>
+<p>That shape sets a minimum problem size below which the machine is structurally idle, and the minimum
+gets larger every generation. A 128×128 systolic array needs 128 rows of reduction and 128 columns of
+output to be full; feed it a GEMV — one column — and 127/128 of the array does nothing regardless of
+how good your memory system is. Move to v6e’s 256×256 array and the same GEMV wastes 255/256. This is
+why the batch-of-one regime is so punishing on large arrays, why decode is a different machine from
+prefill on the same silicon, and why “our accelerator does 900 TFLOP/s” and “our accelerator is fast
+at your workload” are close to unrelated claims. The relevant question about a compute unit is not
+its rate but its <strong>shape and its filling condition</strong>.</p>
+<p>There is a second, independent way to lose. Utilization dies from <em>shape mismatch</em> — your problem
+does not fill the array — and from <em>feed starvation</em> — the memory system cannot deliver operands fast
+enough to keep it busy. These are constantly conflated and they have opposite fixes. Shape mismatch
+is repaired by changing the problem or the mapping’s spatial assignment: batch more, fuse, pick
+different loop dimensions to unroll across the array. Starvation is repaired by improving reuse: tile
+so operands are fetched once and used many times. Diagnosing which one you have is the first thing to
+do with any disappointing number, and the diagnostic is simple — compute your achieved arithmetic
+intensity and compare it to the machine’s ridge point. Below the ridge you are starved; at or above
+it and still slow, you are shape-mismatched, and no amount of memory work will help.</p>
+<aside class="callout callout-trap"><p class="callout-label"><span class="callout-mark" aria-hidden="true"></span>Common trap<span class="callout-title"> · occupancy is utilization</span></p><div class="callout-body"><p>On a GPU these are different quantities and improving one can worsen the other. Occupancy is the
+fraction of the scheduler’s warp slots that are resident — a <em>latency-hiding</em> metric. Utilization
+is the fraction of peak arithmetic you achieve. High occupancy with low utilization is the normal
+state of a memory-bound kernel. And the usual way to raise arithmetic intensity is a larger tile,
+which consumes more registers and shared memory per thread block and therefore <em>lowers</em> occupancy.
+Chasing occupancy as a proxy for speed will walk you directly away from the tile size you want.</p></div></aside>
+<h2 id="the-design-space-quantified">The design space, quantified<a class="anchor" href="#the-design-space-quantified" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>The native operation shape, which is the number to actually know:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Unit</th><th>Native operation</th><th>Fills when</th></tr></thead><tbody><tr><td>Scalar FMA</td><td>1 MAC</td><td>always</td></tr><tr><td>SIMD lane group (AVX-512)</td><td>16 × FP32 MAC</td><td>vector length ≥ 16</td></tr><tr><td>CUDA core warp</td><td>32 × FP32 FMA</td><td>≥ 32 independent elements</td></tr><tr><td>Tensor core (Ampere→Hopper)</td><td><code>m16n8k16</code> per warp</td><td>M, N, K multiples of 16, 8, 16</td></tr><tr><td>TPU v4/v5 MXU</td><td><code>[8,128] @ [128,128]</code></td><td>K = 128, N = 128 multiples</td></tr><tr><td>TPU v6e MXU</td><td>256 × 256 systolic</td><td>K = 256, N = 256 multiples</td></tr></tbody></table></div>
+<p>Per-chip peaks, to keep the ratios honest — dense, no sparsity multiplier:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Chip</th><th>BF16 dense</th><th>FP8 dense</th><th>HBM BW</th><th>Ridge point (BF16)</th></tr></thead><tbody><tr><td>H100 SXM</td><td>989 TFLOP/s</td><td>~2 PFLOP/s</td><td>3.35 TB/s</td><td>~295 FLOP/byte</td></tr><tr><td>B200</td><td>~2.25 PFLOP/s</td><td>~4.5 PFLOP/s</td><td>8 TB/s</td><td>~280 FLOP/byte</td></tr><tr><td>TPU v5e</td><td>197 TFLOP/s</td><td>—</td><td>0.82 TB/s</td><td>~240 FLOP/byte</td></tr><tr><td>TPU v5p</td><td>459 TFLOP/s</td><td>—</td><td>2.8 TB/s</td><td>~164 FLOP/byte</td></tr><tr><td>TPU v6e</td><td>920 TFLOP/s</td><td>—</td><td>1.6 TB/s</td><td>~575 FLOP/byte</td></tr></tbody></table></div>
+<p>The ridge points are the thing to carry: you need on the order of <strong>200–600 FLOP per byte of HBM
+traffic</strong> to reach peak on any modern part, and the number has been rising, because compute scales
+faster than bandwidth. That single trend is what drives the rest of the series.</p>
+<p>What precision buys on the compute axis, and what it costs elsewhere:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th>Format</th><th>Relative MAC energy</th><th>Throughput vs BF16</th><th>Bytes/value</th></tr></thead><tbody><tr><td>FP32</td><td>~23×</td><td>0.5×</td><td>4</td></tr><tr><td>BF16</td><td>~8×</td><td>1×</td><td>2</td></tr><tr><td>FP8</td><td>~2×</td><td>2×</td><td>1</td></tr><tr><td>FP4</td><td>~1×</td><td>4×</td><td>0.5</td></tr><tr><td>INT8</td><td>1×</td><td>2×</td><td>1</td></tr></tbody></table></div>
+<h2 id="critical-thinking">Critical thinking<a class="anchor" href="#critical-thinking" aria-hidden="true" tabindex="-1">#</a></h2>
+<section class="probe"><h3 class="probe-q">Why does a 128×128 systolic array make a different trade than a warp of tensor cores?</h3><div class="probe-a"><p>They are two answers to “how do I amortise the cost of <em>controlling</em> a multiplier”, and they amortise
+different things.</p><p><strong>The systolic array amortises control and operand movement spatially.</strong> Weights are loaded into the
+PE grid and stay there; activations flow in from one edge and partial sums flow out the other, with
+each PE passing values to its neighbour. One control decision covers 16,384 multipliers, and — the
+part people miss — an operand fetched once from SRAM is used by an entire row or column of PEs
+through nearest-neighbour wires that are a few microns long. That is why the TPU’s energy per MAC is
+excellent: it has almost no instruction overhead and almost no long-wire operand traffic. The cost is
+rigidity. The array has one dataflow, cast in RTL, and the shape it wants is the shape you must
+provide.</p><p><strong>The tensor core amortises less, and keeps flexibility.</strong> It is a matrix unit sitting inside a SIMT
+core, fed from the register file, issued as an instruction by a warp scheduler. The operand shape is
+much smaller (<code>m16n8k16</code> versus 128×128), so the problem sizes that fill it are far smaller, and the
+surrounding machinery — predication, dynamic scheduling, address generation, a general memory
+hierarchy — means anything you can express in CUDA still runs. You pay for that in register file
+bandwidth, which becomes the real constraint (a tensor core operation reads its operands from the RF
+every time, rather than from a neighbour), and in instruction issue, which is why Hopper added
+warp-group-level operations and asynchronous copies to cut the per-operation overhead.</p><p>Concretely, the trade is:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="table-wrap"><table><thead><tr><th></th><th>Systolic array</th><th>Tensor core in SIMT</th></tr></thead><tbody><tr><td>Operand reuse</td><td>spatial, PE-to-PE, ~free</td><td>via register file and SMEM</td></tr><tr><td>Control per MAC</td><td>amortised over ~16 K</td><td>amortised over ~256</td></tr><tr><td>Fills at</td><td>large, aligned shapes</td><td>small, aligned shapes</td></tr><tr><td>Behaviour off the sweet spot</td><td>falls off a cliff</td><td>degrades</td></tr><tr><td>Dataflow</td><td>fixed in RTL</td><td>chosen by the kernel</td></tr></tbody></table></div><p>The interesting convergence is that both sides have been moving toward the middle. NVIDIA keeps
+enlarging the effective operation (warp-group MMA, tensor memory accelerator, distributed shared
+memory across an SM cluster) because the systolic-style amortisation is genuinely more efficient, and
+TPUs keep adding vector units and scalar cores beside the MXU because pure systolic cannot express
+everything a real model needs. Nobody thinks the endpoints are right.</p></div></section>
+<section class="probe"><h3 class="probe-q">Two kernels each hit 30% of peak. One is shape-mismatched, one is starved. How do you tell, and what do you do?</h3><div class="probe-a"><p>Compute achieved arithmetic intensity and compare it against the machine’s ridge point. That single
+comparison separates the cases, and it must be <em>achieved</em> intensity — actual bytes moved from HBM,
+from a profiler — not the algorithmic ideal.</p><p><strong>Starved</strong> shows up as achieved intensity below the ridge, with measured DRAM bandwidth near peak.
+The machine is doing exactly what it should; you asked for too many bytes per FLOP. The fixes are all
+mapping fixes: tile larger so operands are reused more before eviction, fuse adjacent operations so
+intermediates never reach HBM, change layout so accesses coalesce into full bursts, or reduce bytes
+with a smaller dtype. Buying a chip with more FLOPs does nothing whatsoever.</p><p><strong>Shape-mismatched</strong> shows up as intensity comfortably above the ridge with memory bandwidth mostly
+idle — the operands are there, and the arithmetic units are still not full. Now look at the tile
+dimensions against the native operation shape. The usual culprits are a small dimension (a GEMM with
+N = 3 on a unit that wants multiples of 8 or 128), a K dimension shorter than the array’s reduction
+depth, or a batch too small to fill the spatial assignment. The fixes are structural: batch more
+requests, pad and accept the waste, choose a <em>different loop dimension</em> to map across the array, or
+fuse several small operations into one large one (which is exactly what grouped and batched GEMM APIs
+exist to do).</p><p>Two refinements worth having, because the clean dichotomy fails in real profiles:</p><ul>
+<li><strong>Latency-bound is a third state</strong> and it looks like both. Neither compute nor bandwidth is
+saturated, because there is not enough work in flight to cover memory latency. The fix is more
+parallelism or deeper prefetching — more warps, deeper software pipelining, asynchronous copies —
+not tiling and not batching.</li>
+<li><strong>They interact.</strong> Raising intensity means bigger tiles; bigger tiles consume registers and shared
+memory; that can reduce the number of concurrent thread blocks below what is needed to hide
+latency, converting a starved kernel into a latency-bound one. This is why tile-size tuning has a
+sweet spot rather than a monotone direction, and it is the practical reason Module 8’s search
+exists at all.</li>
+</ul></div></section>
+<section class="probe"><h3 class="probe-q">Quantization gives 2× the FLOP/s. Why is the end-to-end speedup usually more than 2× — and sometimes far less?</h3><div class="probe-a"><p>Because precision is the one knob that moves all three resources simultaneously, and because the
+overheads it introduces are not on the same axis as the gains.</p><p><strong>Why more than 2×.</strong> Halving the bit width halves memory footprint and halves the bytes moved at
+every level of the hierarchy — HBM traffic, cache pressure, interconnect payload — at the same time
+as it doubles arithmetic throughput. For a memory-bound kernel the FLOP/s doubling is irrelevant and
+the traffic halving gives you the full 2× on its own. For a compute-bound kernel you get the
+arithmetic doubling <em>and</em> an improved ridge-point position. And there are second-order wins that are
+often the largest ones in practice: a model that now fits in HBM instead of spilling, a KV cache that
+fits so batch size doubles, or weights that fit in SRAM entirely, which is a change of memory level
+rather than a change of degree.</p><p><strong>Why sometimes far less.</strong> The gains are only realised if the format is native to the compute unit
+and the whole pipeline stays in it. The failure modes:</p><ul>
+<li><strong>Emulated formats.</strong> INT4 weights dequantized to BF16 before a BF16 tensor core sees them buys you
+memory traffic and <em>nothing</em> on compute — often the right trade for decode, but not a 2× on FLOPs.</li>
+<li><strong>Conversion overhead.</strong> Pack, unpack and scale application are real vector work. On a kernel that
+was already memory-bound this is free (it hides), and on a compute-bound one it eats the gain.</li>
+<li><strong>Accumulation is not quantized.</strong> You multiply in FP8 and accumulate in FP32, so the accumulator
+traffic and the register pressure are unchanged. Speedups on the multiply do not extend to the
+reduction.</li>
+<li><strong>Everything else in the model.</strong> Amdahl again: quantize the GEMMs and the softmax, layer norms,
+activations and elementwise ops are untouched. In a transformer these are a small share of FLOPs
+and a large share of <em>memory traffic</em>, so they cheerfully become the new bottleneck.</li>
+</ul><p>The general form, which is worth carrying into Module 10: a precision change is not “a speedup”, it
+is a simultaneous move on three axes with a fourth axis — accuracy — as the cost. Whether it pays
+depends entirely on which resource you were bound by before you made it, and the same change is a
+4× win in decode and a rounding error in prefill.</p></div></section>
+<section class="probe"><h3 class="probe-q">Why is peak FLOP/s still the headline number if it is this uninformative?</h3><div class="probe-a"><p>Because it is the only number that is comparable across vendors without disclosing anything, and
+because the alternatives are all workload-dependent in ways that make them arguable.</p><p>There is no honest way to compare an H100 and a TPU v5p on “effective throughput” without agreeing on
+a model, a batch size, a parallelism strategy, a software stack and a measurement methodology — and
+every one of those is a place where the benchmark can be shaped. Peak FLOP/s is arithmetic on a
+datasheet: multipliers × clock × operations per multiplier. It cannot be gamed except by counting
+things that should not be counted, which is exactly what happens.</p><p>The standard distortions, worth being able to spot instantly:</p><ul>
+<li><strong>Sparsity multipliers.</strong> Quoting the 2:4 structured-sparse rate as if it were the dense rate
+doubles the number for a feature most workloads do not use (Module 9). The H100’s “1979 TFLOP/s”
+is this — the dense BF16 figure is 989.</li>
+<li><strong>Lowest-precision quoting.</strong> Advertising the FP4 rate against a competitor’s BF16 rate is a 4×
+free lunch on a slide.</li>
+<li><strong>Boost clocks</strong> that no sustained workload holds under power and thermal limits.</li>
+</ul><p>The metric that actually replaced it inside serious teams is <strong>MFU</strong> — model FLOP/s utilization —
+achieved useful FLOP/s over peak, on your real model. It is honest because it prices in shape
+mismatch, starvation, communication stalls and pipeline bubbles all at once, and the numbers are
+sobering: large-scale LLM training typically lands in the 35–50% range, and decode-heavy inference
+frequently sits in the single digits, because decode is structurally memory-bound and no amount of
+compute helps.</p><p>Which is the argument for the whole series in one number. If a well-engineered system reaches 40% of
+peak, then the <em>mapping</em> is worth more than the remaining 60% of a hardware generation — and it is
+also why a vendor’s peak and your throughput can move in opposite directions across a generation, as
+larger arrays raise the peak while making the filling condition harder to meet.</p></div></section>
+<h2 id="self-check">Self-check<a class="anchor" href="#self-check" aria-hidden="true" tabindex="-1">#</a></h2>
+<details class="selfcheck"><summary><span class="selfcheck-q">What is the compute abstraction, if it is not FLOP/s?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>The <strong>native operation shape</strong> and the granularity at which it must be fed: <code>m16n8k16</code> per warp for a
+tensor core, <code>[8,128] @ [128,128]</code> for a TPU MXU, 256×256 for v6e. It is the quantum of work — any
+dimension not a multiple of it is padded and paid for. FLOP/s is a consequence of the shape and the
+clock, and it does not tell you the filling condition, which is what actually determines whether your
+problem runs fast.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Name the two independent ways utilization dies, and the one-step diagnostic.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p><strong>Shape mismatch</strong> (the problem does not fill the array) and <strong>feed starvation</strong> (memory cannot
+deliver operands fast enough). Diagnostic: compute achieved arithmetic intensity and compare to the
+ridge point. Below the ridge with DRAM near peak → starved, fix with tiling, fusion, layout,
+smaller dtype. Above the ridge with memory idle → shape-mismatched, fix by batching, padding, or
+changing which loop dimension is mapped spatially. A third state, latency-bound, shows neither
+saturated and needs more work in flight.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Roughly what arithmetic intensity does a modern accelerator need, and which way is it moving?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p><strong>200–600 FLOP per byte</strong> of HBM traffic, and rising, because compute per chip is scaling faster than
+memory bandwidth. H100 is around 295 FLOP/byte in BF16, TPU v6e around 575. The rising ridge point is
+the structural reason tiles keep getting bigger, precision keeps getting lower, and mapping keeps
+getting harder.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Why is occupancy not a proxy for utilization?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>Occupancy is resident warp slots — a latency-hiding metric. Utilization is achieved fraction of peak
+arithmetic. A memory-bound kernel routinely has high occupancy and low utilization, and the standard
+way to raise arithmetic intensity — a larger tile — consumes more registers and shared memory and
+therefore <em>reduces</em> occupancy. Optimising for occupancy walks you away from the tile size you want.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Give the systolic array versus tensor core trade in one sentence each.</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>The <strong>systolic array</strong> amortises control over ~16 K multipliers and moves operands PE-to-PE over
+micron-scale wires, which is why its energy per MAC is excellent — and it has one dataflow fixed in
+RTL and falls off a cliff on shapes that do not fill it. The <strong>tensor core</strong> amortises over ~256,
+fed from the register file inside a SIMT core, so it fills at much smaller shapes and degrades rather
+than cliffs — paying in register-file bandwidth and instruction issue.</p></div></details>
+<details class="selfcheck"><summary><span class="selfcheck-q">Why can a quantization that doubles FLOP/s deliver more than 2×, and when does it deliver almost nothing?</span><span class="selfcheck-cue" aria-hidden="true"><span class="selfcheck-cue-show">show</span><span class="selfcheck-cue-hide">hide</span></span></summary><div class="selfcheck-a"><p>More than 2× because it halves bytes at every level <em>and</em> doubles arithmetic, and because crossing a
+capacity threshold — model fits in HBM, KV cache fits so batch doubles, weights fit in SRAM — is a
+change of memory level rather than of degree. Almost nothing when the format is emulated (INT4
+dequantized to BF16 before a BF16 unit), when pack/unpack overhead eats a compute-bound kernel, when
+accumulation stays FP32 so the reduction is unchanged, or when the un-quantized remainder — softmax,
+norms, elementwise — becomes the bottleneck.</p></div></details></div><footer class="mfoot" data-astro-cid-5x65ok44><button class="mark" data-mark="hw-sw-codesign/02-compute-abstraction" aria-pressed="false" data-astro-cid-5x65ok44>Mark as reviewed</button><nav class="pager" data-astro-cid-5x65ok44><a class="pager-link" href="/blog/hw-sw-codesign/01-the-codesign-contract/" data-prev data-astro-cid-5x65ok44><span class="pager-dir" data-astro-cid-5x65ok44>← Previous</span><span class="pager-title" data-astro-cid-5x65ok44>1. The codesign contract</span></a><a class="pager-link is-next" href="/blog/hw-sw-codesign/03-memory-abstraction/" data-next data-astro-cid-5x65ok44><span class="pager-dir" data-astro-cid-5x65ok44>Next →</span><span class="pager-title" data-astro-cid-5x65ok44>3. Memory: capacity, bandwidth, and who decides placement</span></a></nav></footer></article></main></div></div><div class="search-overlay" data-search hidden data-astro-cid-ac66eqjo><div class="search-backdrop" data-search-close data-astro-cid-ac66eqjo></div><div class="search-panel" role="dialog" aria-modal="true" aria-label="Search modules" data-astro-cid-ac66eqjo><div class="search-input-row" data-astro-cid-ac66eqjo><span class="search-icon" aria-hidden="true" data-astro-cid-ac66eqjo>⌕</span><input type="text" class="search-input" placeholder="Search all modules…" autocomplete="off" spellcheck="false" data-search-input data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>esc</kbd></div><ul class="search-results" data-search-results data-astro-cid-ac66eqjo></ul><p class="search-empty" data-search-empty hidden data-astro-cid-ac66eqjo>No matches.</p><p class="search-hint" data-astro-cid-ac66eqjo><kbd data-astro-cid-ac66eqjo>↑</kbd><kbd data-astro-cid-ac66eqjo>↓</kbd> move · <kbd data-astro-cid-ac66eqjo>↵</kbd> open</p></div></div><script>(function(){const indexUrl = "/blog/search.json";
+
+  (() => {
+    const overlay = document.querySelector('[data-search]');
+    if (!overlay) return;
+    const input = overlay.querySelector('[data-search-input]');
+    const list = overlay.querySelector('[data-search-results]');
+    const empty = overlay.querySelector('[data-search-empty]');
+
+    let index = null;
+    let loading = null;
+    let active = 0;
+
+    const load = () => {
+      if (index) return Promise.resolve(index);
+      if (!loading) {
+        loading = fetch(indexUrl)
+          .then((r) => r.json())
+          .then((d) => (index = d))
+          .catch(() => (index = []));
+      }
+      return loading;
+    };
+
+    function open() {
+      overlay.hidden = false;
+      document.documentElement.style.overflow = 'hidden';
+      load().then(() => input.focus());
+      input.focus();
+      input.select();
+    }
+
+    function close() {
+      overlay.hidden = true;
+      document.documentElement.style.overflow = '';
+    }
+
+    function escapeHtml(s) {
+      return s.replace(
+        /[&<>"]/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]
+      );
+    }
+
+    // Excerpt around the first matched term, with the term marked.
+    function excerpt(text, terms) {
+      const lower = text.toLowerCase();
+      let at = -1;
+      for (const t of terms) {
+        const i = lower.indexOf(t);
+        if (i !== -1 && (at === -1 || i < at)) at = i;
+      }
+      if (at === -1) at = 0;
+      const start = Math.max(0, at - 60);
+      let slice = text.slice(start, start + 190);
+      if (start > 0) slice = '…' + slice;
+      if (start + 190 < text.length) slice += '…';
+      let html = escapeHtml(slice);
+      for (const t of terms) {
+        html = html.replace(
+          new RegExp(`(${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'),
+          '<mark>$1</mark>'
+        );
+      }
+      return html;
+    }
+
+    function score(rec, terms) {
+      let s = 0;
+      const hay = (rec.m + ' ' + rec.h + ' ' + (rec.s || '') + ' ' + (rec.k || '')).toLowerCase();
+      const body = rec.t.toLowerCase();
+      for (const t of terms) {
+        if (hay.includes(t)) s += 12;
+        const i = body.indexOf(t);
+        if (i !== -1) s += 4 + Math.max(0, 3 - Math.floor(i / 400));
+        else if (!hay.includes(t)) return 0; // every term must appear
+      }
+      return s;
+    }
+
+    function render(results, terms) {
+      active = 0;
+      list.innerHTML = results
+        .map(
+          (r, i) => `
+          <li>
+            <a href="${r.u}" class="search-hit${i === 0 ? ' is-active' : ''}" data-hit>
+              <span class="search-hit-crumb"><span class="search-hit-series">${escapeHtml(r.s||"")}</span><span class="search-hit-n">${r.n}</span>${escapeHtml(r.m)} <span class="search-hit-sep">›</span> ${escapeHtml(r.h)}</span>
+              <span class="search-hit-text">${excerpt(r.t, terms)}</span>
+            </a>
+          </li>`
+        )
+        .join('');
+      empty.hidden = results.length > 0;
+    }
+
+    function run() {
+      const q = input.value.trim().toLowerCase();
+      if (!q || !index) {
+        list.innerHTML = '';
+        empty.hidden = true;
+        return;
+      }
+      const terms = q.split(/\s+/).filter(Boolean);
+      const results = index
+        .map((r) => ({ r, s: score(r, terms) }))
+        .filter((x) => x.s > 0)
+        .sort((a, b) => b.s - a.s || a.r.n - b.r.n)
+        .slice(0, 12)
+        .map((x) => x.r);
+      render(results, terms);
+    }
+
+    function move(delta) {
+      const hits = list.querySelectorAll('[data-hit]');
+      if (!hits.length) return;
+      hits[active]?.classList.remove('is-active');
+      active = (active + delta + hits.length) % hits.length;
+      hits[active].classList.add('is-active');
+      hits[active].scrollIntoView({ block: 'nearest' });
+    }
+
+    input.addEventListener('input', () => {
+      load().then(run);
+      run();
+    });
+
+    overlay.querySelector('[data-search-close]').addEventListener('click', close);
+
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        move(1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        move(-1);
+      } else if (e.key === 'Enter') {
+        const hit = list.querySelectorAll('[data-hit]')[active];
+        if (hit) {
+          e.preventDefault();
+          window.location.href = hit.getAttribute('href');
+        }
+      }
+    });
+
+    document.querySelectorAll('[data-search-open]').forEach((b) =>
+      b.addEventListener('click', open)
+    );
+
+    window.__openSearch = open;
+  })();
+})();</script><script>(function(){const base = "/blog";
+
+      (() => {
+        const root = document.documentElement;
+
+        /* ---- theme ---------------------------------------------------- */
+        document.querySelector('[data-theme-toggle]')?.addEventListener('click', () => {
+          const light = root.classList.toggle('light');
+          try {
+            localStorage.setItem('refresher:theme', light ? 'light' : 'dark');
+          } catch (e) {}
+        });
+
+        /* ---- progress (localStorage) ---------------------------------- */
+        const KEY = 'refresher:progress';
+        const readSet = () => {
+          try {
+            return new Set(JSON.parse(localStorage.getItem(KEY) || '[]'));
+          } catch (e) {
+            return new Set();
+          }
+        };
+        const writeSet = (s) => {
+          try {
+            localStorage.setItem(KEY, JSON.stringify([...s]));
+          } catch (e) {}
+        };
+
+        function paintProgress() {
+          const done = readSet();
+          const ticks = document.querySelectorAll('[data-tick]');
+          // A module can own more than one tick (rail + contents card), so
+          // count distinct module ids rather than elements.
+          const ids = new Set();
+          ticks.forEach((t) => {
+            const id = t.getAttribute('data-tick');
+            ids.add(id);
+            if (done.has(id)) t.setAttribute('data-read', '');
+            else t.removeAttribute('data-read');
+          });
+          const n = [...ids].filter((id) => done.has(id)).length;
+          const total = ids.size || 1;
+          const fill = document.querySelector('[data-progress-fill]');
+          if (fill) fill.style.width = `${(n / total) * 100}%`;
+          const count = document.querySelector('[data-progress-count]');
+          if (count) count.textContent = String(n);
+          document.querySelectorAll('[data-mark]').forEach((btn) => {
+            const id = btn.getAttribute('data-mark');
+            const on = done.has(id);
+            btn.setAttribute('aria-pressed', String(on));
+            btn.textContent = on ? '✓ Reviewed' : 'Mark as reviewed';
+          });
+        }
+
+        document.querySelectorAll('[data-mark]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-mark');
+            const s = readSet();
+            s.has(id) ? s.delete(id) : s.add(id);
+            writeSet(s);
+            paintProgress();
+          });
+        });
+
+        paintProgress();
+
+        /* ---- scrollspy over h2s, mirrored into the rail --------------- */
+        const article = document.querySelector('[data-article]');
+        const heads = article ? [...article.querySelectorAll('h2[id]')] : [];
+        const subLinks = new Map(
+          [...document.querySelectorAll('[data-toc]')].map((a) => [
+            a.getAttribute('data-toc'),
+            a,
+          ])
+        );
+
+        if (heads.length && subLinks.size) {
+          let currentId = null;
+          const spy = () => {
+            let found = heads[0].id;
+            for (const h of heads) {
+              if (h.getBoundingClientRect().top <= 96) found = h.id;
+              else break;
+            }
+            if (found === currentId) return;
+            subLinks.get(currentId)?.classList.remove('is-current');
+            currentId = found;
+            const el = subLinks.get(currentId);
+            if (el) {
+              el.classList.add('is-current');
+              el.scrollIntoView({ block: 'nearest' });
+            }
+          };
+          spy();
+          addEventListener('scroll', spy, { passive: true });
+        }
+
+        /* ---- keyboard ------------------------------------------------- */
+        const stops = article
+          ? [...article.querySelectorAll('h2[id], h3[id]')]
+          : [];
+
+        function jump(delta) {
+          if (!stops.length) return;
+          // The heading we are "in": the last one scrolled past the threshold.
+          let cur = -1;
+          for (let i = 0; i < stops.length; i++) {
+            if (stops[i].getBoundingClientRect().top <= 100) cur = i;
+            else break;
+          }
+          const target = cur + delta;
+          if (target < 0) return scrollTo({ top: 0, behavior: 'smooth' });
+          if (target >= stops.length) return;
+          stops[target].scrollIntoView({ block: 'start' });
+        }
+
+        addEventListener('keydown', (e) => {
+          const tag = (e.target.tagName || '').toLowerCase();
+          if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+          if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+          if (e.key === '/') {
+            e.preventDefault();
+            window.__openSearch?.();
+          } else if (e.key === 'j') {
+            e.preventDefault();
+            jump(1);
+          } else if (e.key === 'k') {
+            e.preventDefault();
+            jump(-1);
+          } else if (e.key === '[' || e.key === ']') {
+            const sel = e.key === '[' ? '[data-prev]' : '[data-next]';
+            const a = document.querySelector(sel);
+            if (a) {
+              e.preventDefault();
+              window.location.href = a.getAttribute('href');
+            }
+          }
+        });
+
+        /* ---- narrow-screen rail --------------------------------------- */
+        const rail = document.querySelector('[data-rail]');
+        document.querySelector('[data-rail-toggle]')?.addEventListener('click', () => {
+          rail.classList.toggle('is-open');
+        });
+        rail?.addEventListener('click', (e) => {
+          if (e.target.closest('a')) rail.classList.remove('is-open');
+        });
+      })();
+    })();</script></body></html>

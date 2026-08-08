@@ -1,0 +1,304 @@
+---
+n: 8
+title: 'Cost models and searching the mapspace'
+blurb: 'How you evaluate a million mappings on hardware that does not exist yet. Analytic models versus autotuning, what each is systematically wrong about, and why for codesign the model’s accuracy is the chip’s accuracy.'
+part: 'P'
+minutes: 18
+draft: false
+tags: ['Timeloop', 'Accelergy', 'MAESTRO', 'cost model', 'autotuning', 'Ansor', 'AutoTVM', 'design space exploration', 'roofline', 'MFU']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+Module 5 established that the mapspace is astronomically large; this module is about the function you
+evaluate on it. There are exactly two ways to price a mapping, and they have opposite properties.
+**Analytic**: from the loop nest, compute how many times each tensor is accessed at each level —
+which for affine index expressions is a closed-form counting problem, not a simulation — then
+multiply by a per-access energy and latency table, and take the maximum over resources as the runtime
+bound. That is Timeloop, with Accelergy supplying the energy table from a technology model. It costs
+microseconds per mapping, so you can evaluate millions. **Empirical**: compile the mapping, run it on
+the machine, and time it. That is AutoTVM, Ansor and Triton's autotuner. It costs milliseconds to
+seconds per mapping, so you evaluate thousands, and the answer is exactly right for that machine.
+
+The trade looks like a simple accuracy-versus-speed choice and it is not, because of one asymmetry
+that dominates everything else in a codesign context: **the analytic model works on hardware that
+does not exist.** When you are choosing how much SRAM to put on a chip, there is no silicon to
+measure. The mapping study that sets your capacities, your bandwidths, your array dimensions and your
+NoC topology is run entirely on a model, two years before anyone can check it. Which produces the
+statement this module exists for: **the quality of your cost model is the quality of your chip.** A
+model that systematically undercounts DRAM traffic will recommend a design with too little bandwidth,
+that design will tape out, and the error surfaces eighteen months later as a part that cannot reach
+its own peak numbers.
+
+So the interesting question is not "which is more accurate" but "what is each one systematically
+wrong about". Analytic models are wrong about everything they abstract away — bank conflicts, DRAM
+row locality, scheduling, instruction overhead, cache replacement, clock throttling — and these
+errors are *biased*, not random: they all make the model optimistic, because every one of them is a
+way reality is worse than a perfect machine. Empirical measurement is wrong about nothing on the
+machine you measured and everything about the machine you did not, including the next generation and
+including your own hardware after a driver update. Knowing the direction of each error is what makes
+either usable.
+
+<Callout type="trap" title="a model validated on kernels is validated">
+  Analytic models are usually calibrated against isolated kernels, where they do well. The errors that
+  matter are the ones that only appear in composition: a kernel that is fine alone and thrashes L2
+  when it runs after another, a collective that contends with compute for the same memory bandwidth,
+  a clock that drops when several units are busy at once. A model that is 5% off per kernel and
+  ignores interference can be 40% off on the workload, and the workload is what you are provisioning
+  for.
+</Callout>
+
+## The design space, quantified
+
+The analytic pipeline, which is worth knowing as a structure:
+
+```
+workload (loop nest + tensor shapes)
+  └─ mapspace ──► enumerate factorisations × permutations × spatial × binding
+       └─ prune ──► capacity legality, divisibility, non-dominance
+            └─ for each mapping:
+                 ├─ access counts per tensor per level   (closed form, affine)
+                 ├─ × energy/access table  (Accelergy: technology + component models)
+                 └─ × latency/bandwidth per level ──► max over resources
+                      └─ report: energy, cycles, utilization, per-level traffic
+```
+
+What each method costs and covers:
+
+| | Analytic (Timeloop) | Learned proxy (Ansor) | Measured (autotune) |
+| --- | --- | --- | --- |
+| Per-mapping cost | ~µs | ~µs after training | ms–s |
+| Mappings evaluated | $10^{5}$–$10^{7}$ | $10^{4}$–$10^{6}$ | $10^{3}$–$10^{4}$ |
+| Needs silicon | **no** | yes, to train | yes |
+| Typical error | 10–30%, optimistic | 5–20% | 0% on that machine |
+| Transfers to new hardware | yes | retrain | no |
+
+What analytic models omit, and which direction the error runs — all optimistic:
+
+| Omitted effect            | Typical impact | Why the model misses it        |
+| ------------------------- | -------------- | ------------------------------ |
+| SRAM bank conflicts       | 1.1–2×         | assumes conflict-free banking  |
+| DRAM row locality         | 1.2–2×         | counts bytes, not activations  |
+| Cache replacement reality | 1.1–1.5×       | assumes ideal replacement      |
+| Instruction/issue overhead | 1.05–1.3×     | counts MACs, not instructions  |
+| Warp scheduling, tail effects | 1.1–1.5×    | assumes perfect load balance   |
+| Clock throttling          | 1.0–1.3×       | assumes nominal frequency      |
+| Kernel-to-kernel interference | 1.1–1.5×    | evaluates kernels in isolation |
+
+Compounded, this is why "we modelled 80% utilization" routinely becomes 40% MFU in production.
+
+## Critical thinking
+
+<Probe q="How can access counts be computed in closed form rather than simulated?">
+
+Because for a perfectly nested affine loop, the number of times a tensor is accessed at a level is a
+counting problem over the iteration space, and the counting has a formula.
+
+The mechanism. Fix a level $\ell$ with tile factors $(T_1, \dots, T_d)$ for the $d$ loops. A tensor
+$X$ is indexed by an affine function of a subset $S_X$ of the loop variables. Then:
+
+- The **tile footprint** of $X$ at level $\ell$ is the product of the tile extents over the
+  dimensions $X$ actually depends on. A weight tensor indexed by $(k, n)$ has footprint
+  $T_k \cdot T_n$, and is completely invariant to $T_m$.
+- The **number of times that tile is fetched** is the product of the extents of the loops *above*
+  level $\ell$ that $X$ does *not* depend on. A tensor invariant to the outer $m$ loop is fetched once
+  and reused $M$ times; a tensor that varies with $m$ is fetched $M$ times.
+- **Traffic** is footprint × fetch count, summed over tensors. Everything follows from which loop
+  variables appear in which index expression.
+
+That last bullet is the whole trick, and it is why the *permutation* decision from Module 5 falls
+directly out of the arithmetic: which loops sit above the level determines which tensors are
+invariant, which determines which are re-fetched. Reuse is not something you measure, it is something
+you read off the index expressions.
+
+**Why it is exact, and where exactness ends.** The counting is exact for perfectly nested loops with
+affine indices, static bounds, and no data-dependent control flow — because under those conditions
+the access sequence is fully determined by the loop structure. This is the same property that makes
+the polyhedral model work, and the same property that makes compiler-managed scratchpads viable
+(Module 3). ML's dense kernels satisfy it almost perfectly, which is why the whole approach works
+here and would not work for, say, a graph algorithm.
+
+It ends precisely where Part Q begins. Data-dependent indices (gather, embedding lookup,
+unstructured sparsity) make the footprint a random variable rather than a product. Dynamic shapes
+make the bounds symbolic. MoE routing makes the *extents themselves* depend on the data. In every one
+of those cases the closed form is replaced by an expectation with a variance the model does not
+report, and the mapping chosen from an expectation can be badly wrong for the realised value. That
+is the deep reason Part Q is hard: not that irregular workloads are slow, but that the entire
+apparatus for reasoning about them stops returning a number.
+
+</Probe>
+
+<Probe q="Analytic model errors are all optimistic. Why, and how do you work with that?">
+
+Because every omitted effect is a mechanism by which reality falls short of an idealisation, and
+there is no corresponding mechanism by which reality exceeds one.
+
+The model assumes conflict-free banking, ideal cache replacement, perfect load balance, nominal
+clocks, no instruction overhead, and no interference between kernels. Each assumption is the *best
+case* of the thing it abstracts. Real banking has conflicts; real replacement is LRU-ish and evicts
+things you wanted; real work distribution has tail effects; real clocks throttle. So the errors do not
+cancel — they compound multiplicatively in one direction, which is why the table above bottoms out
+at "modelled 80%, measured 40%".
+
+How to work with a systematically biased estimator, which is a more tractable situation than an
+unbiased noisy one:
+
+- **Use it for ranking, not for absolute numbers.** If the bias is roughly common-mode across
+  mappings, the model's *ordering* survives even when its magnitudes do not — and ordering is what
+  the search actually needs. This is the primary defence and it is why the approach works at all.
+- **Check that the bias is actually common-mode**, because sometimes it is not. A mapping whose
+  access pattern happens to be bank-conflict-free is penalised relative to one that is not, and the
+  model cannot see the difference, so it can invert the ranking of two close candidates. The
+  discipline is to take the top-$k$ from the model and measure those $k$, rather than trusting the
+  argmax.
+- **Calibrate against whatever silicon you do have.** Even for a new design, the previous generation
+  exists. Fit the per-access energies and the derating factors against measured kernels on it, and
+  carry the derating forward. This is standard practice in architecture teams and it is the
+  difference between a model that is 30% optimistic and one that is 10%.
+- **Model the variance, not just the mean, where you can.** Bank conflicts and load imbalance have
+  known worst cases. A model that reports "1000 cycles nominal, 1400 worst case" supports a much
+  better provisioning decision than one reporting 1000.
+- **Provision against the pessimistic end.** Since the error is one-sided, sizing a memory system from
+  the model's optimistic traffic estimate produces a chip that is bandwidth-starved. Applying an
+  explicit derating factor before committing capacities is not conservatism, it is bias correction.
+
+The meta-point worth carrying: a biased model with a known sign is a usable instrument. The dangerous
+model is one whose bias varies with the thing being compared — which is exactly what happens when
+you evaluate a *radically* different design point (a wafer-scale part, a fully static machine)
+against a model calibrated on GPUs.
+
+</Probe>
+
+<Probe q="If measurement is exact, why use models for production compilers at all?">
+
+Because measurement is exact and *expensive*, and the expense is structural rather than incidental.
+
+Autotuning a single kernel means compiling and timing thousands of configurations. Compilation is
+seconds; timing needs repeats to beat noise; and the space must be re-searched for every new shape,
+because a tile size tuned for $M=4096$ is wrong for $M=17$. In production that hits three hard walls:
+
+- **Shape explosion.** Dynamic batch sizes and sequence lengths mean the shapes are not known ahead
+  of time and there are far too many to tune each. This is the same problem the ML Software series
+  hits with dynamic shapes, from the other side.
+- **Compile-time budgets.** Nobody accepts an hour of autotuning on the first request. This is why
+  `torch.compile`'s `mode="max-autotune"` is opt-in and why its cache is so important.
+- **Portability.** Tuned results are per-device, per-driver, per-clock. A new SKU invalidates them.
+
+So real systems are layered, and the layering is the actual answer:
+
+1. **Closed forms and heuristics** for the common case — square tiles at $\sqrt{C/3}$, known-good
+   shapes. Free, and usually within 10–20% of optimal.
+2. **A learned cost model** trained on measurements, to rank candidates without running them. This is
+   Ansor's contribution: use measurement to train a proxy, then use the proxy to search broadly and
+   measure only the top candidates. It is the hybrid, and it is where the field landed.
+3. **Measurement of the top-$k$ only**, which recovers exactness where it matters while keeping the
+   cost bounded.
+4. **Caching**, aggressively, keyed on shape buckets rather than exact shapes.
+
+The division of labour that emerges across the whole field is worth stating plainly, because it is
+not the one people assume: **analytic models are for architects, hybrid learned models are for
+compilers, and pure measurement is for the final tuning of a handful of kernels that matter enough to
+justify it.** Timeloop is not competing with Ansor — they run at different times, for different
+decisions, by different teams, and confusing their roles is how a hardware team ends up
+under-provisioning a chip because "the autotuner will figure it out".
+
+</Probe>
+
+<Probe q="Your model says 80% utilization and the chip delivers 40% MFU. Where did it go?">
+
+Into a stack of effects, each individually forgivable, that multiply. Attributing them in order is
+the standard post-silicon exercise and the numbers are depressingly consistent across projects.
+
+Work down the levels:
+
+- **The model's own optimism, ~1.3–1.6×.** Bank conflicts, row locality, imperfect replacement,
+  issue overhead, tail effects. Every item in the table above. This is the part a better-calibrated
+  model would have caught, and it is typically the largest single contributor.
+- **Non-GEMM work, ~1.1–1.3×.** The model priced the GEMMs. The workload also has norms, softmaxes,
+  activations, residual adds, transposes and reshapes, which contribute few FLOPs and substantial
+  memory traffic. Amdahl on the part nobody modelled.
+- **Communication not overlapped, ~1.1–1.4×.** All-reduces, all-gathers and pipeline bubbles that the
+  single-chip model did not represent at all. Module 11.
+- **Shape mismatch on real shapes, ~1.05–1.3×.** The model evaluated aligned power-of-two shapes. The
+  workload has vocabulary sizes of 50,257 and sequence lengths of 1,013.
+- **The compiler not finding the mapping, ~1.1–1.5×.** The model assumed the *optimal* mapping. The
+  compiler that ships is not the one in the study, and this gap is the largest one nobody puts in a
+  slide. It is the subject of Module 14.
+
+Multiply the midpoints and 80% becomes something in the 30–45% range, which is exactly where
+large-scale training MFU actually lands.
+
+Two conclusions worth taking seriously:
+
+**Model the whole workload, not the kernel.** Almost every term above is an effect of composition —
+interference, non-GEMM remainder, communication, real shapes. A study that models GEMM in isolation
+is answering a question nobody asked. The architecture teams that get this right run *end-to-end*
+models with the layers, the collectives and the untuned remainder included, even though each
+component is modelled more crudely.
+
+**Budget for the compiler explicitly.** If the study assumes optimal mappings and the compiler
+reaches 70% of them, the design is provisioned for a machine nobody will run. The honest move is to
+carry a compiler-efficiency factor as a named term in the model — and then to notice that improving
+it is often cheaper per unit of delivered performance than any hardware change under consideration.
+That observation is the reason this series exists, and it is where Module 14 ends up.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="How does an analytic model price a mapping without simulating it?">
+
+Access counts for affine loop nests are a closed-form counting problem. A tensor's **tile footprint**
+at a level is the product of tile extents over the dimensions it depends on; its **fetch count** is
+the product of the extents of loops above that level it does *not* depend on; traffic is the product.
+Multiply by a per-access energy/latency table (Accelergy) and take the max over resources for a
+runtime bound. Reuse is read off the index expressions rather than measured.
+
+</SelfCheck>
+
+<SelfCheck q="Why is the analytic model's error one-sided, and how do you use a biased estimator?">
+
+Every omitted effect — bank conflicts, DRAM row locality, real replacement, issue overhead, load
+imbalance, throttling, interference — is a way reality falls short of an idealisation, so the errors
+compound optimistically rather than cancelling. Use it for **ranking rather than magnitudes**, verify
+the bias is common-mode by measuring the top-$k$ instead of trusting the argmax, calibrate deratings
+against the previous generation's silicon, and provision against the pessimistic end. A biased model
+with a known sign is usable; one whose bias varies with what you are comparing is not — which is why
+evaluating a radically different design point on a GPU-calibrated model is dangerous.
+
+</SelfCheck>
+
+<SelfCheck q="What is the asymmetry that makes analytic models essential for codesign specifically?">
+
+**They work on hardware that does not exist.** The mapping study that sets capacities, bandwidths,
+array dimensions and topology runs two years before there is silicon to measure, so the model is the
+only instrument available. Hence: the quality of the cost model is the quality of the chip, and its
+errors surface after tape-out.
+
+</SelfCheck>
+
+<SelfCheck q="Why don't production compilers just measure everything?">
+
+Shape explosion (a tile tuned for $M=4096$ is wrong for $M=17$, and dynamic shapes are not known
+ahead of time), compile-time budgets, and non-portability across SKU, driver and clock. So real
+systems layer: closed forms for the common case, a **learned cost model trained on measurements** to
+rank broadly, measurement of the top-$k$ only, and aggressive caching on shape buckets. Analytic is
+for architects, hybrid learned for compilers, pure measurement for the few kernels worth it.
+
+</SelfCheck>
+
+<SelfCheck q="Account for the gap between a modelled 80% and a measured 40% MFU.">
+
+Model optimism 1.3–1.6× (everything the analytic model abstracts away), non-GEMM work 1.1–1.3×,
+un-overlapped communication and pipeline bubbles 1.1–1.4×, shape mismatch on real (non-power-of-two)
+shapes 1.05–1.3×, and the compiler not finding the assumed-optimal mapping 1.1–1.5×. Multiplied, 80%
+becomes 30–45%. The two lessons: model the **whole workload** rather than the kernel, since nearly
+every term is a composition effect; and carry a **compiler-efficiency factor** as a named term,
+because improving it is often cheaper per unit of delivered performance than any hardware change on
+the table.
+
+</SelfCheck>

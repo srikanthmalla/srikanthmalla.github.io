@@ -1,0 +1,293 @@
+---
+n: 1
+title: 'The codesign contract'
+blurb: 'Why the hardware/software interface leaks for ML and not for most things, the three-resource abstraction that follows, and what "balanced" actually means when a single workload is only ever bottlenecked on one resource.'
+part: 'O'
+minutes: 16
+draft: false
+tags: ['codesign', 'abstraction', 'compute', 'memory', 'interconnect', 'balance', 'energy', 'Horowitz', 'specialisation']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+Hardware/software codesign is not a virtue, it is a symptom. Most of computing works precisely
+because the interface between the two is opaque: you write C, the compiler emits instructions, and
+you almost never need to know the cache line size to get a correct and reasonably fast program. ML
+accelerators break that arrangement for two reasons at once, and it is the *conjunction* that
+matters. First, the interface **leaks**: performance is not composable, because the cost of an
+operation depends on decisions — tile sizes, layouts, residency — that live on the other side of the
+abstraction. You cannot cost a matrix multiply without knowing where its operands sit. Second, the
+workload is **narrow and stable**: essentially all of the arithmetic in deep learning is a handful of
+loop nests over dense rectangular tensors, and that has been true across a decade of otherwise
+violent model churn. Leakiness alone gives you a mess. Narrowness alone gives you an ASIC nobody
+needs. Together they give you a case where specialising the hardware to the loop nest, and the
+compiler to the hardware, pays for itself.
+
+Once you accept that, the useful move is to stop describing accelerators by their part numbers and
+start describing them by their resources. **Every machine, at every level of the hierarchy, is three
+things: compute, memory, and interconnect.** Compute transforms values. Memory holds values across
+time. Interconnect moves values across space. That is an exhaustive list, and the reason the
+decomposition is worth committing to is that each resource exposes the *same* small set of numbers
+to software — a capacity, a bandwidth, a latency, and a granularity — plus one more field that is
+the entire subject of this series: **who decides placement**, the hardware or the compiler. A cache
+and a scratchpad have nearly identical physics and completely different contracts. The difference is
+not the SRAM. It is who is responsible for what sits in it.
+
+The third piece is that compute is the only resource that creates value. Memory and interconnect are
+logistics, and the physics is brutally lopsided in a way that has not improved: an 8-bit integer
+multiply-accumulate costs about 0.2 pJ, while fetching its operands from DRAM costs on the order of
+hundreds of pJ per word. Arithmetic is free and *moving the operands to the arithmetic* is the
+entire cost. Every technique in this series — dataflow, tiling, stationarity, quantization, sharding
+— is a way of not moving data, and once you see them as a single family the field gets much smaller.
+The codesign problem is then stated compactly: choose the resource parameters and the mapping of the
+workload onto them **jointly**, because the optimum of either given the other is not the joint
+optimum. Design a memory system for the mapping you have, and you will get a chip that is excellent
+at a mapping nobody will use in three years.
+
+<Callout type="bridge" title="you already believe this for one case">
+  Roofline (ML Hardware, Module 1) is exactly this argument restricted to two resources — compute
+  and one memory level — and collapsed to a single ratio. Everything here is roofline with the
+  hierarchy put back in, the interconnect added as a third axis, and the crucial admission that the
+  operational intensity on the x-axis is not a property of your algorithm but of the mapping you
+  chose. That admission is what makes it a design problem rather than a measurement.
+</Callout>
+
+## The design space, quantified
+
+The energy numbers are the foundation of the whole series, so they are worth having exactly. These
+are Horowitz's 45 nm figures, which are old enough that the absolute values have shrunk but the
+*ratios* — the only thing anyone reasons with — have held up remarkably well, because arithmetic
+scales with process and wires do not:
+
+| Operation                     | Energy (45 nm) | Relative to INT8 MAC |
+| ----------------------------- | -------------- | -------------------- |
+| INT8 add                      | 0.03 pJ        | 0.15×                |
+| INT8 multiply-accumulate      | ~0.2 pJ        | 1×                   |
+| FP16 multiply-accumulate      | ~1.5 pJ        | ~8×                  |
+| FP32 add                      | 0.9 pJ         | 4.5×                 |
+| FP32 multiply-accumulate      | ~4.6 pJ        | ~23×                 |
+| SRAM read, 8 KB               | ~10 pJ         | ~50×                 |
+| SRAM read, 1 MB               | ~100 pJ        | ~500×                |
+| **DRAM access, 32 bit**       | **~640 pJ**    | **~3200×**           |
+
+Read the last row against the second: one DRAM fetch pays for roughly three thousand INT8 MACs. If
+a value crosses the DRAM boundary and is used fewer than a few thousand times, the arithmetic it
+enabled was not the expensive part of the operation.
+
+The template every module fills in. Any resource, at any level, is described by these fields, and
+the last one is the codesign decision:
+
+| Field           | Compute                  | Memory                   | Interconnect            |
+| --------------- | ------------------------ | ------------------------ | ----------------------- |
+| Capacity        | parallel MACs            | bytes                    | — (topology instead)    |
+| Bandwidth       | ops/s                    | bytes/s                  | bytes/s, per link       |
+| Latency         | pipeline depth           | load-to-use              | hop + serialisation     |
+| Granularity     | native op shape          | line / burst / sector    | packet / message        |
+| **Who decides** | scheduler or compiler    | cache or scratchpad      | runtime or collective plan |
+
+And the span the mapping has to work across. Note that this is one continuous ladder, not three
+separate things — the point of Module 4:
+
+| Level                   | Bandwidth (order)  | Latency (order) | Energy / byte (order) |
+| ----------------------- | ------------------ | --------------- | --------------------- |
+| Register file           | ~100 TB/s          | ~1 ns           | ~0.1 pJ               |
+| SRAM (shared / VMEM)    | ~10 TB/s           | ~10 ns          | ~1 pJ                 |
+| Last-level cache        | ~5 TB/s            | ~50 ns          | ~5 pJ                 |
+| HBM                     | 3–8 TB/s           | ~400 ns         | ~50 pJ                |
+| Scale-up link (NVLink)  | ~1 TB/s            | ~2 µs           | ~200 pJ               |
+| Scale-out (IB/Ethernet) | ~50 GB/s           | ~5 µs           | ~1 nJ                 |
+
+Treat these as orders of magnitude rather than a datasheet — the useful content is that each rung
+costs roughly an order of magnitude more energy per byte than the one above it, and that the total
+span from register to network is about four orders in bandwidth and five in energy.
+
+## Critical thinking
+
+<Probe q="Why do we codesign ML accelerators but not, say, database or web-server hardware?">
+
+Because codesign requires two conditions simultaneously, and most domains have at most one.
+
+**The interface has to leak.** For codesign to be worth anything, performance must depend on
+decisions that cross the hardware/software boundary. In ML it does, absolutely: the cost of a
+convolution varies by an order of magnitude depending on tiling and layout, and neither side can
+compute it alone. The hardware designer cannot say how much SRAM is enough without assuming a tiling;
+the compiler cannot choose a tiling without knowing the SRAM. That is a genuine circular dependency,
+and circular dependencies between teams are exactly what codesign exists to resolve.
+
+**The workload has to be narrow and stable.** Specialisation is a bet that the thing you specialised
+for still exists when the silicon arrives, two to three years later. Deep learning is an
+extraordinarily good bet by this standard: GEMM, convolution and attention are all the same shape —
+a perfectly nested affine loop over dense rectangular tensors with a reduction — and that has been
+stable since roughly 2012 even as architectures churned from AlexNet to ResNets to transformers to
+mixtures of experts. The *models* changed constantly; the *loop nest* barely moved.
+
+Now apply the test elsewhere. A web server's interface leaks too, but the workload is a sprawl of
+string handling, syscalls, TLS and branchy business logic with no dominant kernel to specialise
+for — narrowness fails. Databases are closer than people think, which is exactly why you *do* see
+specialisation there, in the narrow parts: hardware compression, encryption, checksum offload, and
+SmartNICs. The pattern holds. Specialisation follows narrowness wherever it appears.
+
+The instructive negative case is graphics before shaders. Fixed-function pipelines were the right
+answer while the workload was narrow, and became the wrong answer the moment programmability
+mattered more than efficiency. That is the risk you take every time, and Module 14 is about what
+happens when the bet loses.
+
+</Probe>
+
+<Probe q="If a resource is not the bottleneck, is spending on it wasted?">
+
+For a single workload at a single operating point, yes — and that is why "balanced design" is a
+harder idea than it sounds.
+
+Take one kernel. It has one binding constraint. If a decode-phase GEMV is memory-bandwidth-bound,
+then compute beyond what saturates the bandwidth produces exactly zero additional throughput. Adding
+FLOPs is not slightly wasteful, it is entirely wasteful. This is just Amdahl, and it is why "we
+doubled the tensor cores" so often shows up as a single-digit end-to-end gain.
+
+The subtlety is that a *chip* does not run one kernel. It runs a mix, and different members of the
+mix bind on different resources — prefill is compute-bound, decode is memory-bound, all-reduce is
+interconnect-bound, and they can be the same model in the same request. So balance is a property of
+a design against a **workload distribution**, not against a workload. The design question is not
+"which resource is the bottleneck" but "what fraction of my expected work, weighted by how much I
+care about it, binds on each resource, and does the marginal transistor buy more in one place than
+another".
+
+Three consequences that follow, and are easy to miss:
+
+- **The mix is not fixed, because the mapping is a free variable.** If you are memory-bound, a
+  better mapping may make you compute-bound, at which point the compute you "wasted" money on starts
+  paying. Provisioning is a bet on the mappings your compiler will eventually find, not on the ones
+  it finds today.
+- **Underprovisioning is asymmetric with overprovisioning.** Too much compute is idle silicon: you
+  paid area and leakage. Too little memory bandwidth is a hard ceiling that no software can lift for
+  the chip's entire life. Given uncertainty, err toward the resource software cannot work around.
+- **Idle resources still cost the thing you actually care about.** Area, power budget and yield are
+  shared. Unused tensor cores are not free — they lower clocks through power limits and take die
+  space that could have been SRAM, which is the resource that would have helped.
+
+The sharp version: a balanced chip is one where no resource is the bottleneck *for a workload you
+care about that you cannot re-map away from*. Both qualifiers are doing work.
+
+</Probe>
+
+<Probe q="Data movement dominates energy. Why has that not been fixed?">
+
+Because it is not an engineering oversight, it is what the physics of wires does under scaling, and
+it has been getting worse rather than better for twenty years.
+
+Transistors got cheaper, faster and lower-energy with each process node. Wires did not. The energy to
+move a bit is roughly proportional to the capacitance you must charge, which is proportional to the
+distance travelled, and shrinking a process does not shorten the distance from the edge of a die to a
+DRAM stack. So every node makes arithmetic cheaper while leaving off-chip movement roughly where it
+was. The ratio in the table above is not a snapshot; it is a trend line, and it has been widening the
+entire time.
+
+What has actually been done about it, all of which is *reducing distance* rather than making
+distance cheap:
+
+- **Bring memory closer.** HBM is DRAM stacked next to the die on an interposer rather than on a
+  DIMM across a board — the same bits, a much shorter wire, which is why HBM's energy per byte is
+  several times better than DDR at far higher bandwidth. This is the single largest win available and
+  it has been almost entirely spent.
+- **Move data less, by keeping it still.** Every dataflow and tiling technique in Part P. If a value
+  crosses the expensive boundary once and is used a thousand times, you have amortised the 640 pJ.
+  This is the lever software controls, and it is the reason mapping is worth this much attention.
+- **Move fewer bytes.** Quantization, which is Module 10 — the only knob that reduces traffic on all
+  three resources at once.
+- **Do not move it at all**: processing-in-memory. Genuinely attacks the root cause, and has been
+  ten years away for about twenty years, because DRAM processes are terrible for logic and because
+  the programming model is a research problem rather than a product.
+
+The honest summary is that the ratio is a boundary condition rather than a bug. It is *why* the
+three-resource abstraction is the right one — if arithmetic were the cost, you would only need to
+count FLOPs, roofline would be a straight line, and none of this would be interesting.
+
+</Probe>
+
+<Probe q="What does the “who decides placement” field actually change?">
+
+It relocates a decision between two parties with completely different information, and that is the
+central trade of the series.
+
+**Hardware decides (a cache).** The hardware observes the actual access stream and reacts to it. It
+has perfect information about what *did* happen and none about what *will*. It costs area and energy
+— tags, comparators, replacement state, coherence — and its behaviour is only statistically
+predictable, which is precisely the property that makes it unusable in a hard-deadline system. But it
+never falls off a cliff, because an unanticipated access pattern still works, just slower.
+
+**Software decides (a scratchpad).** The compiler knows the whole loop nest ahead of time, so for an
+affine, statically-shaped computation it can compute the *optimal* residency schedule. No tags, no
+tag energy, no misses, deterministic timing, and every byte of the array is usable. The catch is
+total: whatever the compiler failed to anticipate does not degrade gracefully, it fails. Dynamic
+shapes, data-dependent control flow and irregular access are not slow on a scratchpad, they are
+unrepresentable, and the compiler must fall back to something conservative.
+
+ML is unusually favourable to the software side, which is why explicit management keeps winning
+ground: the loop bounds are known, the access patterns are affine, and the reuse is enormous and
+statically analysable. That is why TPUs use compiler-managed VMEM rather than caches, and why the
+GPU trend runs the same direction — shared memory has always been a scratchpad, and Hopper's TMA is
+hardware for making the compiler's explicit schedule cheap to express.
+
+The general principle, which shows up again in Modules 3, 8 and 13: **hardware management is
+insurance you pay for continuously, and its premium is worth it exactly in proportion to how much
+uncertainty is left at runtime.** ML has less than almost anything else, so it buys less insurance —
+until the workload turns dynamic, at which point Part Q is about the bill arriving.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="What two conditions make a domain worth codesigning, and why is each necessary?">
+
+The interface must **leak** — performance depends on decisions crossing the hardware/software
+boundary, so neither side can optimise alone — and the workload must be **narrow and stable** enough
+that silicon specialised today is still relevant in two to three years. Leakiness alone gives you a
+mess with nothing to specialise for; narrowness alone gives you an ASIC that a general-purpose part
+would have handled fine. ML has both: an order-of-magnitude tiling dependence, and a decade of
+essentially one loop nest.
+
+</SelfCheck>
+
+<SelfCheck q="Give the three resources and the five fields each exposes.">
+
+**Compute, memory, interconnect** — transform values, hold values across time, move values across
+space. Each exposes capacity, bandwidth, latency, granularity, and **who decides placement**
+(hardware or compiler). The last field is the codesign decision: a cache and a scratchpad are the
+same SRAM with different contracts.
+
+</SelfCheck>
+
+<SelfCheck q="Roughly how many INT8 MACs does one DRAM access pay for, and what follows?">
+
+About **3200** — ~640 pJ against ~0.2 pJ. What follows is that arithmetic is not the cost of
+arithmetic: a value fetched from DRAM and used fewer than a few thousand times spent most of its
+energy on the fetch. Every technique in the series is therefore a way of *not moving data*, which
+makes them one family rather than a list.
+
+</SelfCheck>
+
+<SelfCheck q="Why is “balanced design” a statement about a distribution rather than a workload?">
+
+Because any single kernel binds on exactly one resource, so spending on the others is genuinely
+wasted for it — but a chip runs a mix (compute-bound prefill, memory-bound decode,
+interconnect-bound all-reduce) that binds differently in each part. Balance is therefore defined
+against a weighted distribution of work. Two qualifiers matter: the mapping is a free variable, so a
+better mapping can move where you bind; and underprovisioning memory bandwidth is a permanent
+ceiling while excess compute is merely idle, so err toward the resource software cannot route
+around.
+
+</SelfCheck>
+
+<SelfCheck q="Why has the data-movement energy gap not closed?">
+
+Because transistor energy scales with the process and wire energy scales with distance, which does
+not shrink — so the gap widens every node. It is a boundary condition, not a bug. The mitigations
+all reduce distance or bytes rather than making distance cheap: HBM (shorter wires, largely already
+spent), dataflow and tiling (move it once, use it many times), quantization (fewer bytes), and
+processing-in-memory (attacks the root cause, perennially not ready).
+
+</SelfCheck>

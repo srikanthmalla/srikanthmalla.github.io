@@ -1,0 +1,320 @@
+---
+n: 13
+title: 'Three architectures, read as three mappings'
+blurb: 'GPU, TPU and the static-SRAM machines differ mostly in one thing: who absorbs uncertainty at runtime. Read each on the three axes, and the flexibility/efficiency curve stops being a mystery.'
+part: 'R'
+minutes: 19
+draft: false
+tags: ['GPU', 'TPU', 'Groq', 'Cerebras', 'SIMT', 'systolic', 'static scheduling', 'determinism', 'flexibility', 'wafer scale', 'XLA']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+Put a GPU, a TPU and a static-SRAM machine like Groq or Cerebras side by side on the three resource
+axes and the differences look large but arbitrary. Read them instead by the question of **who absorbs
+uncertainty at runtime**, and they turn out to be four points on one curve, each internally
+consistent. A GPU absorbs uncertainty in hardware: caches infer residency from the access stream, warp
+schedulers hide variable latency by swapping in other work, and dynamic allocation handles shapes
+nobody declared. That machinery costs area and energy on every single access, and it buys the property
+that an unanticipated workload runs — slower, but it runs. A TPU pushes uncertainty onto the compiler:
+VMEM is a scratchpad, XLA schedules every transfer, and the array wants declared shapes. Groq pushes
+it all the way: no caches, no dynamic scheduling, every instruction taking a known number of cycles,
+with the compiler owning the entire timeline down to the cycle. Cerebras attacks a different axis
+entirely — it removes a memory level by putting the whole model in on-wafer SRAM.
+
+That single ordering explains most of the observable differences. It explains why TPUs get better
+energy per FLOP and worse behaviour on shapes XLA did not expect. It explains why Groq gets
+extraordinary single-stream latency — no cache misses, no scheduling variance, so the tail is the mean
+— and why it needs many chips to hold a model, since 230 MB of SRAM per chip is the price of having no
+DRAM. It explains why GPUs are mediocre at the top of every one of these metrics and win anyway. And
+it maps directly onto Module 3's cache-versus-scratchpad argument, which is the same trade at a
+component level: hardware management is insurance, and its premium is worth paying exactly in
+proportion to the uncertainty remaining at runtime.
+
+The scoreboard is worth stating plainly, because it is the same conclusion the ML Software series
+reached about frameworks and it is not the one the efficiency numbers predict. **GPUs did not win by
+being the most efficient; they won by never falling off a cliff, and by having the ecosystem.** Every
+more-specialised design is better than a GPU on the workload it was designed for and worse — sometimes
+catastrophically, sometimes unable to run it at all — on the workload that arrived instead. Given that
+the dominant model architecture has changed roughly every three years while a chip takes two to three
+years to design, "degrades gracefully" has repeatedly beaten "optimal, for the previous workload".
+That is not an argument against specialisation; it is a statement of what specialisation must beat.
+
+<Callout type="bridge" title="the same argument as eager versus graph mode">
+  ML Software Module 1 argued that PyTorch beat TF1 on ergonomics and JAX on distribution, and that by
+  2018 the decision had moved from design to adoption. The hardware version is nearly identical: the
+  more-specialised machine is often right on the merits and loses because the ecosystem, the compiler
+  maturity and the tolerance for unanticipated workloads sit elsewhere. In both cases the design
+  argument and the market argument have different winners, and only one of them is decided by
+  engineering.
+</Callout>
+
+## The design space, quantified
+
+The four designs on the three axes:
+
+| | GPU (H100) | TPU (v5p) | Groq LPU | Cerebras WSE-3 |
+| --- | --- | --- | --- | --- |
+| Compute shape | `m16n8k16` per warp | 128×128 MXU ×4 | vector/matrix units | fine-grained cores |
+| Peak BF16 | 989 TFLOP/s | 459 TFLOP/s | — | — |
+| On-chip memory | 50 MB L2 + 228 KB/SM | 128 MiB VMEM | 230 MB SRAM | **44 GB SRAM** |
+| Off-chip memory | 80 GB HBM3 @ 3.35 TB/s | 96 GB HBM @ 2.8 TB/s | **none** | none |
+| On-chip BW | ~10 TB/s | ~20 TB/s | ~80 TB/s | **~21 PB/s** |
+| Interconnect | NVLink 900 GB/s, switched | ICI 90 GB/s/link, 3D torus | proprietary mesh | on-wafer fabric |
+| Scheduling | dynamic, hardware | static, compiler | **fully static, cycle-exact** | static dataflow |
+| Caches | yes, L1/L2 | **none for data** | **none** | none |
+
+Who owns which decision:
+
+| Decision                | GPU              | TPU              | Groq             |
+| ----------------------- | ---------------- | ---------------- | ---------------- |
+| Data residency          | hardware + kernel | **compiler**     | **compiler**     |
+| Instruction timing      | hardware scheduler | hardware, some static | **compiler, cycle-exact** |
+| Latency hiding          | warp swapping    | static overlap   | static overlap   |
+| Shape handling          | runtime dispatch | recompile per shape | recompile per shape |
+| Failure on the unexpected | slower         | recompile, or fall back | **cannot compile** |
+
+The trade, priced:
+
+| Property                      | Dynamic (GPU) | Static (TPU, Groq) |
+| ----------------------------- | ------------- | ------------------ |
+| Area spent on control         | high          | low                |
+| Energy per useful MAC         | higher        | lower              |
+| Latency variance              | high          | **near zero**      |
+| Behaviour on unanticipated shape | degrades   | **cliff**          |
+| Compiler complexity           | moderate      | **very high**      |
+| Time-to-first-working-model   | hours         | weeks              |
+
+## Critical thinking
+
+<Probe q="Read the four designs as one curve. What is the curve's axis?">
+
+The axis is **how much uncertainty remains at runtime**, and every architectural difference is a
+consequence of where a design sits on it.
+
+Uncertainty in an ML workload comes from a short list: which addresses will be touched, how long each
+operation will take, what shapes will arrive, and how much work each unit will get. Someone must
+absorb each of these — either hardware, at runtime, with mechanisms that cost area and energy on every
+operation; or the compiler, ahead of time, with analysis that costs nothing at runtime but fails when
+its assumptions are violated.
+
+Position the four:
+
+- **GPU — hardware absorbs nearly all of it.** Caches infer residency; warp schedulers hide variable
+  latency by swapping; dynamic allocation and runtime dispatch handle shapes; the work distributor
+  balances load across SMs. Consequence: high control overhead, high latency variance, and a machine
+  that runs almost anything you write.
+- **TPU — the compiler absorbs residency and most scheduling.** VMEM is a scratchpad, so XLA decides
+  every transfer; the systolic array has a fixed dataflow with no runtime choices. Consequence: better
+  energy per MAC, and a recompile whenever shapes change — which is why `jit` retracing on new shapes
+  is such a visible part of the TPU experience rather than an implementation detail.
+- **Groq — the compiler absorbs everything, including time.** No caches, no dynamic scheduling, every
+  instruction taking a known cycle count, and the compiler emits a cycle-exact timeline for the entire
+  machine including its inter-chip communication. Consequence: latency variance close to zero, which
+  is a genuinely differentiated property; and a compiler that must succeed completely or not at all.
+- **Cerebras — a different axis, and it is worth being clear about that.** Its distinctive move is not
+  static scheduling but *removing a memory level*: 44 GB of SRAM at ~21 PB/s with no DRAM, so the
+  entire model lives at the top of the hierarchy. It attacks the beachfront limit by declining to have
+  a package boundary in the data path at all.
+
+The three consequences of moving right along the curve, all of which follow rather than being separate
+design choices:
+
+1. **Efficiency improves.** Removing tags, schedulers and predictors removes their area and their
+   per-access energy. This is real and it is why the specialised parts have better numbers.
+2. **The failure mode changes from degradation to a cliff.** Dynamic hardware handles the unexpected
+   slowly; static hardware cannot handle it. This is the entire risk of moving right.
+3. **The compiler's difficulty grows superlinearly.** A GPU compiler that emits a mediocre schedule
+   produces a slow program. A Groq compiler that emits a wrong schedule produces a wrong program. The
+   engineering cost of the right-hand side is mostly software, and it is routinely underestimated —
+   which is Module 14.
+
+</Probe>
+
+<Probe q="Groq's determinism — what does it actually buy, and what does it cost?">
+
+It buys the property that the tail equals the mean, which is worth a great deal in a narrow set of
+situations and nothing at all in the rest.
+
+**What determinism means here.** No caches, so no cache misses. No dynamic scheduling, so no
+scheduling variance. No DRAM, so no refresh, no row conflicts, no bank contention. Every instruction
+takes a known number of cycles, and the compiler emits a static timeline for the whole machine —
+including chip-to-chip transfers, which are scheduled to arrive on a known cycle rather than
+synchronised. The result is that a given input takes the same number of cycles every time, and p99
+latency equals p50.
+
+**What that is worth.** ML Hardware Module 5 made the case at length: in a system where you must
+answer within a deadline, the worst case is the specification, and a mean that is excellent with a
+p99.9 that is not does not qualify. Eliminating variance rather than reducing it is a categorically
+different property from being fast on average, and it is why the architecture is interesting for
+real-time inference and why it produces such striking single-stream token rates — there is no batching
+required to hide anything, because there is nothing to hide.
+
+**What it costs, and the costs are steep:**
+
+- **No DRAM means capacity is the binding constraint.** 230 MB of SRAM per chip means a 70 B model at
+  8 bits needs several hundred chips just to hold the weights. You are buying capacity in units of
+  entire chips, which is why the economics are dominated by whether the model fits the deployment you
+  can afford. The trade is explicit: SRAM gives you bandwidth and latency at a large multiple of the
+  cost per byte.
+- **The compiler must succeed completely.** A cycle-exact static schedule is not something you can
+  partially produce. Anything the compiler cannot analyse — a data-dependent shape, a dynamic control
+  flow, an unfamiliar operator — is not slow, it is uncompilable. Every item in Part Q is an existential
+  problem rather than a performance problem.
+- **Utilisation is set at compile time.** With no dynamic scheduling, load imbalance cannot be
+  corrected at runtime. If the static schedule leaves a unit idle in some phase, it is idle.
+- **MoE is exactly the wrong workload.** Data-dependent routing, dynamic expert shapes and
+  data-dependent all-to-all sizes are the three things a fully static machine cannot represent. That
+  the field moved toward MoE right as these architectures matured is the single clearest illustration
+  of the timing risk in Module 14.
+
+The fair summary: determinism is a real and rare property, and the architecture that achieves it makes
+sense for latency-critical inference on models that fit. It is not a general-purpose position on the
+curve, and its designers do not claim it is. The risk is not that the engineering is wrong — it is
+that the set of workloads matching its assumptions is chosen by other people.
+
+</Probe>
+
+<Probe q="TPUs have better energy per FLOP than GPUs. Why has that not been decisive?">
+
+Because energy per FLOP is a component metric and the decision is made on system and ecosystem
+metrics, where the advantage shrinks and then reverses.
+
+**The advantage is real.** No data caches (no tag energy on any access), a systolic array amortising
+control over 16,384 MACs with PE-to-PE operand movement, no speculation, no dynamic scheduling, and a
+compiler that plans every transfer. Each of these removes energy that a GPU spends on every operation.
+On a large, well-shaped, XLA-friendly GEMM the TPU is genuinely more efficient, and Google's internal
+economics reflect that.
+
+**Why it does not settle the question:**
+
+- **Achieved utilization, not peak efficiency, is what you pay for.** Efficiency at 100% utilization is
+  irrelevant if your workload runs at 30%. The static machine's utilization is more sensitive to shape
+  mismatch, and the moment the workload has shapes the compiler did not anticipate — a new attention
+  variant, a ragged batch, an MoE layer — the gap narrows or inverts. Module 8's whole-workload point.
+- **The remainder is where the time goes.** The GEMMs are the efficient part on both machines. Norms,
+  softmax, elementwise chains, data loading, sharding and collectives are the rest, and the advantage
+  there is much smaller because those are memory-bound and both machines are limited by the same HBM
+  physics.
+- **The compiler is the product.** A TPU without XLA is unusable in a way a GPU without a compiler is
+  not, because you can always hand-write CUDA. That means the delivered performance of a TPU is
+  whatever XLA achieves on your model — excellent on the shapes Google runs, and a research project on
+  the ones it does not. There is no escape hatch equivalent to writing a kernel, which is a
+  qualitative difference and not just a maturity gap.
+- **The ecosystem decides adoption, and it is not close.** Almost every model is written against
+  PyTorch and CUDA. Almost every kernel innovation — FlashAttention, paged attention, quantization
+  kernels — lands on CUDA first and is ported later if at all. The specialised part is always some
+  months behind on exactly the techniques that produce the largest wins, and those months are a
+  moving target.
+
+The honest reading is that TPUs are a genuine success by any reasonable standard — they run a very
+large fraction of one of the world's largest ML workloads, extremely economically — and that success
+comes from Google controlling the model, the compiler, the framework and the datacentre, which is to
+say from *internalising the entire codesign loop*. That is the real lesson, and it is the strongest
+argument in this series for why codesign is an organisational question as much as a technical one. A
+vendor selling a specialised chip to customers who own their own models is trying to do codesign
+across a boundary where the information does not flow, and Module 14 is about what that costs.
+
+</Probe>
+
+<Probe q="You are designing a new accelerator today. What does this comparison tell you to do?">
+
+Pick your position on the uncertainty curve deliberately, and then be honest about the two things that
+actually decide the outcome — neither of which is on your architecture diagram.
+
+**On the curve itself:**
+
+- **Do not sit at the far static end unless you own the workload.** The efficiency there is real and so
+  is the cliff, and the cliff is only safe if you control what runs. Google can be static because
+  Google writes the models. A vendor cannot, and pretending otherwise is the most common way these
+  projects fail.
+- **Be static where the workload has been stable for a decade, dynamic where it has moved recently.**
+  Deep reductions over dense tiles have been stable since 2012 — commit to them. Batch composition,
+  sequence length, expert routing and sparsity structure have all moved within one design cycle — leave
+  those to runtime. This is Module 6's rule with the evidence attached.
+- **Buy capacity thresholds, not incremental capacity.** From Module 7, incremental SRAM buys
+  $\sqrt2$ per doubling; a threshold where the working set fits buys everything. Ask what would have to
+  fit for your target workload, and whether you can get there. If you cannot, spend on bandwidth
+  instead and stop.
+- **Design for decode, because everyone designs for training and then deploys.** Decode is
+  memory-bound with intensity equal to the batch, so bandwidth and capacity matter far more than
+  FLOPs, and a large array actively hurts by raising the batch needed to fill it (Module 12).
+
+**And the two things that decide it:**
+
+1. **Budget the compiler as the primary deliverable.** The chip's delivered value is
+   $\text{peak} \times \text{what the compiler reaches}$, and on a new architecture the second factor
+   starts near 0.2. Every project underestimates this, and it is the single most reliable predictor of
+   whether a good design becomes a good product. If the compiler team is smaller than the RTL team,
+   the plan is already wrong.
+2. **Ask who else has to change for this to work.** If your design requires model authors to adopt a
+   sparsity pattern, a precision format, or a shape constraint, you have a dependency on an
+   organisation with a different objective function. 2:4 sparsity is in every datacentre NVIDIA GPU
+   since Ampere and is little used, for exactly this reason (Module 9). Features that require nobody
+   else to change are worth several times features that do.
+
+The closing judgement, which is uncomfortable and I think correct: **the highest-return decision
+available to most accelerator projects is not architectural.** It is to spend more on the compiler, on
+framework integration, and on making the machine degrade rather than cliff — because those are what
+convert a peak number into delivered performance, and they are consistently underfunded relative to
+the silicon they are meant to make usable.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="What single axis orders GPU, TPU, Groq and Cerebras?">
+
+**How much uncertainty remains at runtime, and who absorbs it.** GPU: hardware absorbs nearly all
+(caches, warp scheduling, dynamic dispatch) at the cost of area and per-access energy. TPU: the
+compiler absorbs residency and scheduling (VMEM scratchpad, XLA, fixed dataflow). Groq: the compiler
+absorbs everything including time, cycle-exact. Cerebras sits on a different axis — it removes a
+memory level, putting 44 GB of model in on-wafer SRAM at ~21 PB/s with no DRAM at all.
+
+</SelfCheck>
+
+<SelfCheck q="Name the three things that follow from moving toward the static end.">
+
+Efficiency improves (no tags, schedulers or predictors, so their area and per-access energy
+disappear); the failure mode changes from **degradation to a cliff** (dynamic hardware runs the
+unexpected slowly, static hardware cannot run it); and the compiler's difficulty grows superlinearly
+— a bad GPU schedule is slow, a wrong static schedule is wrong.
+
+</SelfCheck>
+
+<SelfCheck q="What does Groq's determinism buy and cost?">
+
+Buys **p99 = p50** — no caches, no scheduling variance, no DRAM, a cycle-exact static timeline
+including inter-chip transfers. Eliminating variance is categorically different from being fast on
+average and is what deadline systems require. Costs: no DRAM means capacity binds, so a 70 B model at
+8 bits needs hundreds of chips; the compiler must succeed *completely*, making every item in Part Q
+existential rather than a slowdown; utilization is fixed at compile time; and MoE — data-dependent
+routing, shapes and all-to-all sizes — is precisely what a fully static machine cannot represent.
+
+</SelfCheck>
+
+<SelfCheck q="Why hasn't the TPU's energy-per-FLOP advantage been decisive?">
+
+Because achieved utilization beats peak efficiency, and static machines are more sensitive to
+unanticipated shapes; because the non-GEMM remainder is memory-bound on both machines and limited by
+the same HBM physics; because the compiler *is* the product with no hand-written-kernel escape hatch;
+and because kernel innovations land on CUDA first. The real lesson is that TPUs succeed because Google
+owns the model, framework, compiler and datacentre — **internalising the whole codesign loop** — which
+a vendor selling to customers who own their own models cannot do.
+
+</SelfCheck>
+
+<SelfCheck q="What are the two non-architectural decisions that determine whether a new accelerator succeeds?">
+
+**Budget the compiler as the primary deliverable** — delivered value is peak × what the compiler
+reaches, and that second factor starts near 0.2 on new hardware; if the compiler team is smaller than
+the RTL team the plan is already wrong. And **ask who else must change** — a design requiring model
+authors to adopt a sparsity pattern, format or shape constraint depends on an organisation with a
+different objective, which is why 2:4 has shipped everywhere since Ampere and is little used. Features
+requiring nobody else to change are worth several times those that do.
+
+</SelfCheck>

@@ -1,0 +1,297 @@
+---
+n: 6
+title: 'Dataflow: what stays still'
+blurb: 'Weight-, output-, input- and row-stationary as four answers to one question — which tensor do you refuse to re-fetch. Why partial sums decide it, and why fixing a dataflow in RTL fixes one dimension of the mapspace for the life of the chip.'
+part: 'P'
+minutes: 17
+draft: false
+tags: ['dataflow', 'weight stationary', 'output stationary', 'row stationary', 'Eyeriss', 'systolic array', 'partial sums', 'reuse', 'TPU']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+"Dataflow" is a grand word for a narrow question: **which tensor do you refuse to re-fetch?** A
+reduction-shaped operation touches three tensors — two inputs and one output that accumulates — and
+the cheap levels of the hierarchy cannot hold all three. So you pick one to hold still and let the
+others stream past it. Hold the weights and you have a weight-stationary design; hold the
+accumulating output and you have output-stationary; hold the input activations and you have
+input-stationary. Eyeriss's row-stationary is a fourth answer that holds a *row* of each, chosen to
+exploit convolution's overlapping windows. This is not a taxonomy imposed on the field from outside —
+it is the enumeration of the choices available, and it is exactly the permutation decision from
+Module 5 made concrete in hardware.
+
+The thing that decides it, and that the naming obscures, is **partial sums**. In a reduction of depth
+$K$, each output is touched $K$ times. Weights and inputs are each read once per multiply, but the
+accumulator is read *and written* on every step, which makes psum traffic the largest of the three by
+a factor of roughly two for the same access count — and unlike the inputs, it cannot be shared
+between PEs without moving it. So the first question in any dataflow design is not "where do the
+weights go" but "where do the partial sums live, and how do they get combined". Output-stationary
+answers by keeping them in a register and never moving them. Systolic arrays answer by forwarding
+them PE-to-PE down a column, so they move only one hop each. Every design that ignores this question
+discovers it later, as the thing consuming its energy budget.
+
+Then the codesign point, which is the sharpest statement in this Part. **A dataflow fixed in RTL
+fixes one dimension of the mapspace for the life of the chip.** A 128×128 systolic array is
+weight-stationary permanently — no compiler will ever make it output-stationary, because the wires
+between PEs run in a fixed direction. That buys you enormous efficiency: no instruction overhead, no
+long-wire operand traffic, a MAC that costs close to the theoretical minimum. And it means that when
+the workload's shape moves — batch sizes fall because you are now serving rather than training,
+reduction depths shrink because you are running an MoE expert rather than a dense layer — you cannot
+follow it. The chip does not get slower gracefully; a specific class of shapes simply stops being
+efficient, and the only remedy is a different chip.
+
+<Callout type="bridge" title="this is Module 5's permutation, cast in metal">
+  Choosing `k` innermost gives you output-stationary; `m` innermost gives you weight-stationary. In a
+  compiler that is a loop-order decision you revisit per kernel. In an accelerator the corresponding
+  choice is made once, in the direction the operand wires run, and it is the reason a systolic array
+  wants large batches: it has already committed to the permutation that only pays off when $M$ is
+  big.
+</Callout>
+
+## The design space, quantified
+
+The four canonical dataflows, and what each is actually buying:
+
+| Dataflow            | Stationary        | Streams              | Psums                    | Best when            |
+| ------------------- | ----------------- | -------------------- | ------------------------ | -------------------- |
+| Weight-stationary   | weights, in PE    | activations          | forwarded PE-to-PE       | large batch, deep reduction |
+| Output-stationary   | psums, in PE      | weights, activations | never move               | long $K$, small tiles |
+| Input-stationary    | activations       | weights              | forwarded or written back | many filters, one input |
+| Row-stationary      | a row of each     | diagonals            | accumulated across PEs   | convolution windows  |
+
+Where the traffic goes, per MAC, for a reduction of depth $K$ over $M$ rows:
+
+| Tensor          | Reads          | Writes         | Shareable across PEs? |
+| --------------- | -------------- | -------------- | --------------------- |
+| Weights         | $MK$           | 0              | yes — broadcast along a row |
+| Activations     | $MK$           | 0              | yes — broadcast along a column |
+| **Partial sums** | $MK$          | **$MK$**       | **no — must be moved to be combined** |
+
+Which is the whole argument in one table: psums are the only tensor with write traffic and the only
+one that cannot be broadcast.
+
+Real designs and the choice they made:
+
+| Design                  | Dataflow                | Array         | Why                          |
+| ----------------------- | ----------------------- | ------------- | ---------------------------- |
+| TPU MXU                 | weight-stationary       | 128×128 (256×256 on v6e) | maximal weight reuse across batch |
+| GPU tensor core         | output-stationary       | `m16n8k16` per warp | psums live in the register file |
+| Eyeriss (v1)            | row-stationary          | 12×14 PEs     | convolution window overlap   |
+| Eyeriss v2              | flexible, NoC-selected  | —             | dataflow chosen per layer    |
+| Groq                    | fully compiler-scheduled | —            | no fixed dataflow; a static timeline |
+
+Relative energy per MAC, normalised — the reason anyone cares:
+
+| Access level              | Relative energy |
+| ------------------------- | --------------- |
+| PE-local register         | 1×              |
+| Neighbour PE (spatial)    | ~2×             |
+| Shared on-chip buffer     | ~6×             |
+| DRAM                      | ~200×           |
+
+## Critical thinking
+
+<Probe q="Why do partial sums, not weights, determine the dataflow choice?">
+
+Because they are the only tensor with write traffic and the only one that cannot be broadcast, which
+makes them roughly twice as expensive per access and impossible to amortise the way the inputs are.
+
+Count it out for a tile computing $M$ outputs with reduction depth $K$. Weights are read $MK$ times
+but each weight value is *shared* across all $M$ rows, so with a broadcast wire down a row of PEs one
+fetch serves many multipliers. Activations are the same, shared along the other axis. Partial sums
+have no such structure: each is read and written $K$ times, and two PEs computing contributions to
+the *same* output must physically combine their values, which means a data movement no broadcast can
+avoid.
+
+So the dataflow question resolves into "what happens to the psums", and each design answers it
+differently:
+
+- **Output-stationary** keeps the psum in a PE-local register for the whole reduction. It moves
+  exactly once, when the reduction completes. This is optimal for psum traffic, and it is why GPU
+  tensor cores accumulate in the register file — the accumulator never leaves.
+- **Weight-stationary systolic** forwards psums down a column, one hop per PE. Each partial sum moves
+  $K$ times but always to an adjacent PE over a wire of a few microns, which at ~2× a local register
+  access is nearly free. This is the trick that makes systolic arrays energy-efficient: they did not
+  eliminate psum movement, they made each movement as short as physically possible.
+- **Input-stationary** typically writes psums back to a buffer, which is the expensive option and the
+  main reason it is rarely the primary dataflow.
+
+The general principle worth extracting: **in a reduction, optimise the accumulator first.** It
+generalises well beyond accelerators — it is why `k` innermost is the standard GEMM loop order, why
+split-K reductions need a separate combining pass and are used only when they buy parallelism worth
+the extra traffic, and why the atomics in a poorly written reduction kernel dominate its runtime.
+
+The corollary that catches people: a dataflow with excellent weight reuse and bad psum handling loses
+to one with mediocre weight reuse and good psum handling, whenever $K$ is large. Since $K$ is the
+model dimension in a transformer — thousands — that is essentially always in modern workloads.
+
+</Probe>
+
+<Probe q="Why is a systolic array weight-stationary, and what does that commit the TPU to?">
+
+Because the operand wires run in fixed directions, and that physical fact is the dataflow.
+
+In a 128×128 MXU, weights are pre-loaded into the PE grid and remain there. Activations enter from
+one edge and propagate across; partial sums propagate down and exit at the other edge. Each PE does
+one multiply-accumulate per cycle and passes two values to neighbours. There is no instruction, no
+address computation, and no operand fetch from a shared buffer — the operands arrive because the
+neighbour sent them. That is where the efficiency comes from, and it is also why the design cannot be
+anything but weight-stationary: to make it output-stationary you would have to run the psums the
+other way, and the wires do not go that way.
+
+What it commits the TPU to, concretely:
+
+- **A big $M$.** The cost of loading a weight tile into the array is amortised over the rows of
+  activations pushed through it afterwards. With a batch of 1024, that load is invisible; with a
+  batch of 1, you paid 128 cycles of weight load for 128 cycles of useful work. This is the single
+  biggest reason TPUs are excellent at training and awkward at low-batch decode, and it is a *dataflow*
+  consequence, not a memory consequence.
+- **$K$ and $N$ that are multiples of 128.** The array's dimensions are the reduction depth and the
+  output width. Anything else pads.
+- **A compiler that plans weight loading.** Because the array must be filled before it is useful,
+  overlapping the load of the next weight tile with the compute of the current one is mandatory, not
+  an optimisation. XLA does this, and it is one of the places where the compiler-managed VMEM of
+  Module 3 earns its keep — the schedule is static, so the overlap is exact.
+
+The strategic reading is more interesting than the mechanical one. Google made this commitment in
+2015, when the workload was inference on dense fully-connected and convolutional layers at large
+batch, and it was exactly right for that. It remained right through the transformer transition,
+somewhat by luck, because attention and feedforward layers are also large GEMMs with deep reductions.
+It is under the most pressure now, from the two places where modern workloads are *not* big dense
+GEMMs: low-batch decode, and MoE, where each expert sees a fraction of the tokens and the effective
+$M$ per expert collapses. Watching what the next generations do about that is the clearest live
+example of the codesign loop in Module 14.
+
+</Probe>
+
+<Probe q="Eyeriss's row-stationary beat the others on convolution. Why, and why did it not become the standard?">
+
+It won because it exploited a reuse pattern the other three did not see, and it did not generalise
+because that pattern is specific to convolution.
+
+**The insight.** The three classic dataflows each optimise reuse of one tensor. Convolution has a
+reuse structure none of them captures: sliding windows overlap, so adjacent output pixels share input
+activations, and the same filter row is applied to many input rows. Row-stationary maps *one row of
+the filter and one row of the input* to each PE, so within a PE you get the sliding-window reuse for
+free; along a PE row you get filter reuse; along a diagonal you get input reuse; and psums accumulate
+vertically across PEs. It exploits all three reuse dimensions simultaneously rather than picking one,
+and Eyeriss measured substantially better energy per inference than weight- or output-stationary
+baselines on AlexNet and VGG.
+
+**Why it did not become the standard**, and this is the instructive part:
+
+- **It is convolution-specific.** The whole construction is built on the 2D sliding window. A GEMM has
+  no window overlap, so row-stationary degenerates to something close to output-stationary with extra
+  control. When the workload moved to transformers, the advantage evaporated — a beautifully
+  demonstrated case of specialising for a reuse structure that stopped being present.
+- **It costs control and interconnect.** The mapping is intricate: a flexible NoC to deliver the
+  right rows to the right PEs, per-PE configuration, and multicast patterns. That area and energy is
+  paid on every workload, including the ones that do not benefit.
+- **The competition changed the terms.** Row-stationary optimises energy per MAC at a fixed array. The
+  industry instead bought enormous HBM bandwidth and enormous SRAM, which made the DRAM-traffic
+  problem that row-stationary attacked much less binding.
+
+The lesson generalises, and it is worth stating as the risk of this entire Part: **a dataflow is a bet
+on a reuse structure.** Row-stationary bet on sliding windows. Weight-stationary bet on large batch.
+Output-stationary bet on deep reductions. The first bet lost within five years, the second is under
+pressure now, and the third is holding because $K$ keeps growing. Eyeriss v2's response — make the
+dataflow selectable per layer, at the cost of a more expensive NoC — is the honest engineering answer
+and also an admission that the bet is not safe to make.
+
+</Probe>
+
+<Probe q="Should a new accelerator fix its dataflow or make it flexible?">
+
+Fix it if you can name the shapes with confidence, and buy flexibility in proportion to how uncertain
+you are — but recognise the historical base rate, which is unkind to confidence.
+
+**The case for fixing.** All the efficiency is here. A fixed dataflow needs no per-PE configuration,
+no flexible NoC, no dynamic routing; operands arrive by dedicated wires; control is amortised over
+the whole array. That is the difference between a MAC that costs near its theoretical energy and one
+that costs several times that. It is also simpler to verify, easier to clock fast, and much easier to
+write a compiler for, because one dimension of Module 5's mapspace is gone.
+
+**The case for flexibility.** The workload will move. It has moved every three to five years for a
+decade — dense conv, to residual networks, to transformers, to MoE and long-context attention — and
+each transition changed the dominant shape. A configurable NoC costs on the order of 10–30% in area
+and some energy per access, which is a real price. But the failure it prevents is not a 30%
+regression, it is a chip that is structurally bad at the workload that turned out to matter, which is
+a total loss.
+
+The decision rule that survives contact with practice:
+
+1. **Fix what has been stable for a decade.** Deep reductions and dense rectangular tiles are safe
+   bets: every architecture since 2012 has them. Build for that.
+2. **Keep soft what has changed within one chip's design cycle.** Batch size, reduction depth,
+   sparsity structure and routing behaviour have all moved recently. Anything whose *shape* depends
+   on those should be a compiler decision, not a wire direction.
+3. **Prefer flexibility that costs area over flexibility that costs energy per access.** A wider
+   crossbar you sometimes use is much cheaper over the chip's life than an extra level of muxing on
+   every operand.
+4. **Ask what happens when the bet loses.** A design that degrades to 60% efficiency on an
+   unanticipated shape is fine. One that degrades to 5% — because the array cannot be filled at all —
+   is a different kind of risk, and it is the reason large arrays deserve more scrutiny than their
+   peak numbers suggest.
+
+Which is ML Hardware Module 12's closing argument arriving from a different direction: the winning
+designs are rarely the most efficient ones, they are the ones that are efficient *enough* and can
+still be pointed at next year's workload. Efficiency you cannot redirect has a short half-life.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="What single question does a dataflow answer, and what are the four standard answers?">
+
+**Which tensor do you refuse to re-fetch**, given that the cheap levels cannot hold all three.
+Weight-stationary (hold the weights, stream activations), output-stationary (hold the accumulating
+psums), input-stationary (hold activations, stream filters), and row-stationary (hold a row of each,
+built for convolution's sliding-window overlap). It is Module 5's permutation decision cast in
+hardware.
+
+</SelfCheck>
+
+<SelfCheck q="Why are partial sums the deciding tensor?">
+
+They are the only tensor with **write** traffic — read and written on every one of $K$ reduction steps
+— and the only one that **cannot be broadcast**, since two PEs contributing to the same output must
+physically combine values. Weights and activations are each shared along an array axis by one fetch.
+So the design rule is: in a reduction, optimise the accumulator first. A dataflow with great weight
+reuse and bad psum handling loses whenever $K$ is large, which in a transformer is always.
+
+</SelfCheck>
+
+<SelfCheck q="What does a systolic array's weight-stationary dataflow commit the TPU to?">
+
+A **large $M$** — the weight-tile load is amortised over the activation rows pushed through, so batch
+1 pays 128 cycles of load for 128 cycles of work, which is why TPUs are strong at training and
+awkward at decode. Also $K$ and $N$ as multiples of 128 (256 on v6e), and a compiler that overlaps
+the next weight load with the current compute, which the static VMEM schedule makes exact. The
+pressure now comes from low-batch decode and MoE, where per-expert $M$ collapses.
+
+</SelfCheck>
+
+<SelfCheck q="Why did row-stationary win on convolution and not become standard?">
+
+It exploited all three of convolution's reuse dimensions at once — sliding-window overlap within a
+PE, filter reuse along a row, input reuse along a diagonal, psums accumulating vertically — rather
+than optimising one tensor. It did not generalise because the construction rests on the 2D sliding
+window, which transformers do not have; it costs a flexible NoC and per-PE configuration on every
+workload; and the industry bought its way out of the DRAM-traffic problem with HBM and large SRAM
+instead.
+
+</SelfCheck>
+
+<SelfCheck q="Give the rule for whether to fix a dataflow in RTL.">
+
+Fix what has been stable for a decade (deep reductions, dense rectangular tiles); keep soft what has
+moved within one design cycle (batch size, reduction depth, sparsity structure, routing). Prefer
+flexibility that costs area over flexibility that costs energy per access. And ask what happens when
+the bet loses — degrading to 60% is survivable, degrading to 5% because the array cannot be filled is
+not, which is why large arrays warrant more scrutiny than their peak numbers suggest.
+
+</SelfCheck>

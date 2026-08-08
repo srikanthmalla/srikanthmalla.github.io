@@ -1,0 +1,328 @@
+---
+n: 5
+title: 'The mapping problem, stated precisely'
+blurb: 'A mapping is four decisions: tiling, permutation, spatial assignment, binding. Which makes arithmetic intensity a property of the mapping rather than the algorithm — and makes the search space astronomically large.'
+part: 'P'
+minutes: 18
+draft: false
+tags: ['mapping', 'loop nest', 'iteration space', 'tiling', 'permutation', 'spatial assignment', 'binding', 'mapspace', 'arithmetic intensity', 'polyhedral']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+Every workload in this series is a perfectly nested loop over an **iteration space**, with tensors
+read and written through affine index expressions. A GEMM is three loops over $(m, n, k)$; a 2D
+convolution is seven over $(n, k, c, p, q, r, s)$; attention is a GEMM, a softmax and another GEMM.
+The iteration space says *what must be computed* and says nothing whatever about order, placement or
+parallelism — those are free, subject only to the dependences. A **mapping** is a choice of all of
+them, and it decomposes cleanly into exactly four decisions:
+
+1. **Tiling** — how each loop is split into a factor per memory level. A loop of extent 1024 becomes
+   $4 \times 8 \times 32$ across DRAM, SRAM and registers. The tile factors determine the working set
+   at each level, which must fit its capacity.
+2. **Permutation** — the loop order within each level. Which loop is outermost decides which tensor
+   is re-fetched and which stays put, so permutation is where reuse is actually decided.
+3. **Spatial assignment** — which loop dimensions are unrolled *across* parallel hardware rather than
+   iterated in time. This is what maps onto PE arrays, warps, cores and devices.
+4. **Binding** — which tensor lives at which level, and for how long. Weights resident in SRAM,
+   activations streaming, partial sums in registers.
+
+Everything a compiler, a kernel author, or a distributed-training strategy does is a choice of these
+four. `torch.compile` picking a fusion group and a tile size is a mapping. FlashAttention is a
+mapping. Tensor parallelism is a mapping, with the interconnect as the memory level. Once you have
+this vocabulary the field stops being a list of tricks.
+
+The consequence worth putting in bold: **arithmetic intensity is a property of the mapping, not of
+the algorithm.** A GEMM performs $2MNK$ FLOPs no matter what, but the bytes it moves through any
+given level depend entirely on the tile sizes chosen at that level — from $O(MNK)$ if you re-fetch
+everything to $O(MN + MK + NK)$ if it all fits. The same multiply can sit anywhere from far left to
+far right on a roofline plot. This is why the roofline picture, taken alone, misleads: it invites you
+to read operational intensity off the algorithm, when in fact it is the output of a design decision
+you have not made yet. Move the x-axis position, and you have changed which resource binds.
+
+And the reason this is hard rather than merely tedious: the space of legal mappings is enormous. For
+a single convolution layer the count of (tiling × permutation × spatial × binding) choices routinely
+exceeds $10^{10}$, the objective is non-convex with hard cliffs at capacity boundaries, and the
+evaluation function is either an approximate analytic model or an expensive measurement. That is
+Module 8. This module is about what is being searched.
+
+<Callout type="trap" title="reading operational intensity off the algorithm">
+  "Attention is memory-bound" and "GEMM is compute-bound" are statements about *typical mappings at
+  typical shapes*, not about the operations. Attention at long context with a bad mapping is
+  memory-bound; FlashAttention makes the identical FLOPs compute-bound by changing the binding of one
+  tensor. If you find yourself asserting an operation's intensity without stating the tile sizes, you
+  have skipped the step where the answer is determined.
+</Callout>
+
+## The design space, quantified
+
+The notation used throughout the rest of the series. A GEMM $C[M,N] = A[M,K] \times B[K,N]$, mapped
+to three levels:
+
+```
+for m2 in range(M2):              # DRAM level  (temporal)
+  for n2 in range(N2):
+    for k2 in range(K2):
+      for m1 in range(M1):        # SRAM level  (temporal)
+        for n1 in range(N1):
+          parallel_for k1 in range(K1):   # spatial: across PEs
+            for m0 in range(M0):  # register level
+              for n0 in range(N0):
+                C[m,n] += A[m,k] * B[k,n]
+```
+
+with $M = M2 \cdot M1 \cdot M0$ and so on. The mapping *is* the tuple of factors, the loop order at
+each level, which loops carry `parallel_for`, and the binding of $A$, $B$, $C$ to levels.
+
+What each decision controls:
+
+| Decision           | Controls                              | Constrained by                  |
+| ------------------ | ------------------------------------- | ------------------------------- |
+| Tile factors       | working set per level, reuse depth    | capacity at each level          |
+| Permutation        | which tensor is re-fetched            | dependences (reductions last)   |
+| Spatial assignment | utilization of the array              | native operation shape (Module 2) |
+| Binding            | traffic between levels                | capacity, and lifetime          |
+
+The size of the space, for one modest convolution layer:
+
+| Factor                                    | Count (order)   |
+| ----------------------------------------- | --------------- |
+| Tile factorisations, 7 loops × 3 levels    | $10^{6}$–$10^{8}$ |
+| Permutations, 7! per level, 3 levels       | up to $10^{10}$ |
+| Spatial assignment choices                 | $10^{1}$–$10^{2}$ |
+| Bindings                                   | $10^{1}$–$10^{2}$ |
+| **Legal mappings after pruning**            | **$10^{8}$–$10^{12}$** |
+
+Traffic bounds for GEMM at one level of capacity $C$, which is where the whole thing pays off:
+
+| Mapping quality               | DRAM traffic          | Intensity          |
+| ----------------------------- | --------------------- | ------------------ |
+| No reuse (naive)              | $O(MNK)$              | $O(1)$             |
+| One operand resident          | $O(MNK/T)$            | $O(T)$             |
+| Square tiles at capacity $C$   | $O(MNK/\sqrt{C})$     | $O(\sqrt{C})$      |
+| Everything fits               | $O(MN + MK + NK)$     | $O(\min(M,N,K))$   |
+
+## Critical thinking
+
+<Probe q="Why is arithmetic intensity a property of the mapping, and what breaks if you forget?">
+
+Because intensity is FLOPs divided by *bytes moved*, and only the numerator is fixed by the
+algorithm.
+
+Take $C = AB$ with all matrices $N \times N$. FLOPs are $2N^3$, always. Bytes through DRAM depend
+entirely on tiling:
+
+- **Naive triple loop, nothing resident.** Each of the $N^3$ multiply-accumulates fetches its
+  operands. Traffic $\sim 3N^3 \cdot 4$ bytes. Intensity $\approx 1/6$ FLOP per byte. Hopelessly
+  memory-bound.
+- **Tile with square tiles of side $T$ that fit in capacity $C$**, so $3T^2 \le C$. Each tile of $C$
+  is computed from $N/T$ pairs of tiles, and total traffic is $\sim 2N^3/T \cdot 4$ bytes. Intensity
+  $\approx T/4$. With $T = 128$, that is 32 FLOP/byte — a hundred-fold improvement from a decision
+  that changed no arithmetic whatsoever.
+- **Everything fits on-chip.** Traffic $3N^2 \cdot 4$. Intensity $\approx N/6$, unbounded in $N$.
+
+Three mappings, one algorithm, intensities spanning several orders of magnitude. On a roofline plot
+these are three different points, one memory-bound and one compute-bound, for identical code.
+
+What breaks if you forget:
+
+- **You misdiagnose.** "This operation is memory-bound" leads to buying bandwidth, when the actual
+  problem was a tile size and the fix was free. This is the most common expensive mistake in the
+  field.
+- **You provision hardware wrongly.** If you size a chip's bandwidth from the intensity of today's
+  mappings, and the compiler subsequently improves, you have bought bandwidth that is now idle — or,
+  worse, if you assumed mappings your compiler never achieves, a permanent ceiling. Module 8's cost
+  model is the only defence, and Module 14 is what happens when it is wrong.
+- **You mis-attribute wins.** FlashAttention is routinely described as an algorithmic breakthrough.
+  It performs the same FLOPs as standard attention. What it changed was the binding of the $S \times
+  S$ score matrix — from HBM to SRAM — plus the tiling that makes the softmax reduction streamable.
+  It is a *mapping* result, and calling it an algorithm result obscures that the same technique
+  generalises to any operation with a materialised intermediate.
+
+The honest statement of roofline is therefore: it is a diagram of the *hardware*, on which a mapping
+is a point. The hardware fixes the roof and the slope. You choose where on the x-axis to stand.
+
+</Probe>
+
+<Probe q="Walk through why permutation, not tiling, is where reuse is decided.">
+
+Because tile sizes set how much *can* be reused, and loop order sets what actually *is*.
+
+Consider a GEMM tile level holding tiles of $A$, $B$ and $C$, and ask what happens as the outer loops
+advance. The innermost loop of the enclosing level determines which tensor's tile changes most often,
+and a tile that changes on every iteration must be re-fetched:
+
+- **`k` innermost** (order `m, n, k`): $C[m,n]$ is invariant across the inner loop, so the output tile
+  stays in registers and accumulates. $A$ and $B$ tiles both change every step. This is
+  **output-stationary** — partial sums never leave the accumulator, which matters because in a
+  reduction psums are the highest-traffic tensor.
+- **`n` innermost** (order `k, m, n`): $A[m,k]$ is invariant, so the $A$ tile is reused across the
+  inner loop while $C$ tiles are read, updated and written back each step. This is
+  **input-stationary**, and it is usually worse, because you have converted psum traffic — the thing
+  you most want to avoid — into memory traffic.
+- **`m` innermost** (order `k, n, m`): $B[k,n]$ is invariant. **Weight-stationary** in the neural
+  network reading, where $B$ is the weight matrix. Excellent when the weight tile is expensive to load
+  and reused across many rows of activations, which is precisely the large-batch case.
+
+Same tile sizes in all three. Same capacity used. Radically different traffic — and note that the
+choice of which is best depends on the *shape*: weight-stationary wins when $M$ is large (many rows
+amortise the weight load), output-stationary wins when $K$ is large (long reduction, so psum traffic
+would dominate). That shape dependence is why one fixed choice cannot be right for everything, which
+is Module 6's argument about dataflow.
+
+Two refinements:
+
+- **Permutation is constrained by dependences.** A reduction loop cannot be moved outside the loops
+  that produce its partial sums without materialising them, which is exactly the trade: hoisting `k`
+  outward turns register accumulation into memory traffic. Legality and cost are entangled here in a
+  way they are not for tiling.
+- **Permutation and tiling interact, so they cannot be chosen sequentially.** The best permutation
+  depends on the relative tile sizes (whichever tensor's tile is largest is the one you least want to
+  re-fetch), and the best tile sizes depend on which tensor you decided to keep resident. This
+  coupling is the main reason the mapspace cannot be decomposed into independent subproblems and
+  greedy search does badly.
+
+</Probe>
+
+<Probe q="If the mapspace has ten billion points, how does any compiler ship?">
+
+By exploiting structure rather than by searching harder — and the structures used are worth knowing,
+because each is a claim about the problem that is true in ML and false in general.
+
+**Prune to legality and non-dominance first.** Most of the raw space is illegal (tiles exceeding
+capacity) or trivially dominated (permutations differing only in unit-extent loops, which change
+nothing). Timeloop's `linear_pruned` search does exactly this, and the reduction is orders of
+magnitude before any evaluation happens.
+
+**Use the closed forms where they exist.** For a plain GEMM you do not search: the optimal tiling is
+known analytically — square tiles at $\sqrt{C/3}$ — and the residual search is over a handful of
+hardware-specific alignment choices. A great deal of production kernel code is closed form plus a
+small tuned table, not search.
+
+**Restrict the space by construction.** This is the big one, and it is a design decision rather than
+an algorithm. Fix the dataflow in hardware and one whole dimension of the mapspace disappears — a
+systolic array *is* weight-stationary, so no permutation choice exists at that level. Templates like
+CUTLASS expose a few dozen parameterised tile shapes rather than the full space. Triton exposes block
+sizes and stages, not arbitrary loop nests. Every one of these trades reachable performance for a
+tractable search, and mostly the trade is good because the space is heavily dominated by a small
+number of good regions.
+
+**Then search what is left**, by one of two methods with opposite properties:
+
+| | Analytic (Timeloop, MAESTRO) | Empirical (Ansor, Triton autotune) |
+| --- | --- | --- |
+| Evaluation | model, microseconds | measurement, milliseconds to seconds |
+| Points explored | $10^{5}$–$10^{7}$ | $10^{3}$–$10^{4}$ |
+| Accuracy | systematically wrong in known ways | exact, for that machine |
+| Works on hardware that does not exist | **yes** | no |
+
+That last row is the codesign-specific point and it is the reason analytic models matter far more
+here than in ordinary compiler work. When you are designing a chip, measurement is not available —
+the silicon is two years away — so the mapping study that sizes your SRAM and your bandwidth is run
+entirely on a model. The quality of that model is therefore the quality of your chip, and errors in
+it are discovered after tape-out. Module 8 is about how much to trust it.
+
+The pragmatic summary of how this actually goes in industry: closed forms and hand-written templates
+cover the dominant operations, autotuning fills in the shapes those miss, and full mapspace search is
+used mostly by hardware architects rather than by production compilers. Which is itself a comment on
+the state of the field — the search problem is not solved, it is *avoided*, by restricting the space
+until the answer is obvious.
+
+</Probe>
+
+<Probe q="Which of the four decisions is hardest to change after tape-out, and what follows?">
+
+**Spatial assignment**, because the array's shape and dataflow are cast in RTL, and everything else
+must then bend around them.
+
+Rank them by how late they can be changed:
+
+| Decision           | Fixed when                    | Changeable by                        |
+| ------------------ | ----------------------------- | ------------------------------------ |
+| Tile factors       | compile time, or runtime      | recompiling; often a tuning parameter |
+| Binding            | compile time                  | recompiling                          |
+| Permutation        | compile time — *if* the hardware allows | recompiling, where not fixed in RTL |
+| Spatial assignment | **tape-out**                  | nothing                              |
+
+A 128×128 systolic array has decided that two loop dimensions are unrolled spatially, in a fixed
+pattern, with a fixed operand flow, forever. If your workload's natural parallel dimensions do not
+match — a GEMV, a depthwise convolution where the channel dimension does not reduce, a small expert
+in an MoE — you cannot re-map your way out. You pad and waste. That is why Module 2's filling
+condition is a hardware property that software inherits rather than a tuning problem.
+
+What follows, and this is the design rule that Module 14 closes on:
+
+- **Fix the numbers, keep the mapping soft.** Capacities, bandwidths and array sizes must be
+  committed; the mapping should not be. Any decision you can defer to the compiler is one you can
+  revise after learning what the workload actually became.
+- **Flexibility costs area, and the price is knowable.** Configurable-dataflow designs (Eyeriss v2's
+  flexible NoC, and every "reconfigurable" accelerator) spend area on interconnect and control to
+  keep permutation choices alive. Typically 10–30% overhead. Whether that is worth it is a bet on
+  workload drift over the chip's life, and the historical record — conv nets to transformers to MoE
+  in under a decade — argues it usually is.
+- **The array shape should be chosen for the *worst* workload you must not fail on**, not the best
+  one you hope to run. A 256×256 array doubles peak and doubles the shape penalty on anything narrow,
+  which is why the trend toward larger arrays makes decode and small-batch inference structurally
+  harder even as the datasheet number improves.
+
+This is the same three-part rule as ML Hardware Module 12 — put a function in hardware if it is on
+the critical path, stable over months, and bounded in time — applied to a mapping decision rather
+than a function. Spatial assignment fails the stability test more often than teams expect.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="What are the four decisions that constitute a mapping?">
+
+**Tiling** (how each loop splits into a factor per memory level, setting the working set),
+**permutation** (loop order at each level, which decides what is re-fetched), **spatial assignment**
+(which dimensions unroll across parallel hardware rather than iterating in time), and **binding**
+(which tensor lives at which level, for how long). Every compiler decision, kernel, and parallelism
+strategy is a choice of these four.
+
+</SelfCheck>
+
+<SelfCheck q="Show that arithmetic intensity belongs to the mapping, using GEMM.">
+
+$2N^3$ FLOPs regardless. Naive with nothing resident: $\sim 3N^3$ words of traffic, intensity
+$\approx 1/6$ FLOP/byte. Tiled at side $T$: traffic $\sim 2N^3/T$ words, intensity $\approx T/4$ — 32
+FLOP/byte at $T = 128$. Everything resident: traffic $3N^2$, intensity $\approx N/6$. Three points
+spanning orders of magnitude on a roofline plot, for identical arithmetic. Roofline draws the
+hardware; the mapping picks the point on the x-axis.
+
+</SelfCheck>
+
+<SelfCheck q="Why is permutation where reuse is actually decided?">
+
+Tiling sets how much *can* be reused; loop order sets what *is*. With `k` innermost, $C$ is invariant
+and accumulates in registers — output-stationary, which keeps psums (the highest-traffic tensor in a
+reduction) out of memory. With `m` innermost, $B$ is invariant — weight-stationary, best when $M$ is
+large. Same tiles, same capacity, radically different traffic. And the best choice depends on shape,
+which is why no single fixed dataflow is right for everything.
+
+</SelfCheck>
+
+<SelfCheck q="Name the four ways compilers avoid searching ten billion mappings.">
+
+Prune to legality and non-dominance; use **closed forms** where they exist (square tiles at
+$\sqrt{C/3}$ for GEMM); **restrict the space by construction** — fixed dataflow in RTL, CUTLASS
+templates, Triton's block-size parameters — which trades reachable performance for tractability; then
+search the remainder analytically or empirically. In practice full mapspace search is mostly used by
+hardware architects, not production compilers: the problem is avoided rather than solved.
+
+</SelfCheck>
+
+<SelfCheck q="Which mapping decision is fixed at tape-out, and what design rule follows?">
+
+**Spatial assignment** — the array shape and its operand flow are cast in RTL, so a workload whose
+natural parallel dimensions do not match cannot be re-mapped, only padded. Tiling, binding and
+(usually) permutation are compile-time. The rule: **fix the numbers, keep the mapping soft.**
+Flexible-dataflow designs cost 10–30% area to preserve permutation choices, and given the conv →
+transformer → MoE drift within a decade, that bet has usually paid.
+
+</SelfCheck>

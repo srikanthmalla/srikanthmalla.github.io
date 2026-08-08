@@ -1,0 +1,326 @@
+---
+n: 9
+title: 'Sparsity and irregularity'
+blurb: 'Every static mapping assumes a dense rectangular iteration space. Three ways sparsity breaks that, why 90% unstructured rarely gives 10×, and the rule that hardware exploits sparsity only when the pattern is shaped to the array.'
+part: 'Q'
+minutes: 18
+draft: false
+tags: ['sparsity', '2:4 structured', 'unstructured sparsity', 'gather', 'load imbalance', 'MoE', 'capacity factor', 'CSR', 'metadata', 'irregularity']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+Everything in Part P rested on one assumption that was never stated: the iteration space is dense,
+rectangular, and known before execution. Tile factors are integers because extents are integers.
+Access counts are closed-form because indices are affine. The array fills because the shapes are
+multiples of the native operation. Sparsity and dynamism attack that assumption, and they do it in
+three distinct ways that are worth separating because they have completely different remedies.
+**Unstructured sparsity** keeps the extents but makes the indices data-dependent. **Structured
+sparsity** keeps everything statically known but changes the shape by a fixed, declared pattern.
+**Dynamic irregularity** — MoE routing, variable sequence lengths, top-k — makes the *extents
+themselves* depend on the data, so there is not even a shape to map until runtime.
+
+The reason unstructured sparsity disappoints is a direct consequence of Modules 2 and 3, and it is
+worth having as a single sentence: **skipping a multiply saves an operation the machine was not
+charging you much for, while the gather it requires destroys both the memory granularity and the
+array's filling condition, which are what the machine was charging you for.** At 90% sparsity you
+remove 90% of the MACs — worth roughly 0.2 pJ each — and replace contiguous 32-byte sector reads with
+scattered 4-byte accesses that still cost a full sector each, plus index metadata you now have to
+fetch and decode. The FLOPs vanish and the traffic barely moves. Speedups of 2× at 90% sparsity are
+normal; 10× essentially never happens on hardware built for dense tiles.
+
+Which produces the design rule that this module exists for. **Hardware can exploit sparsity only when
+the sparsity pattern is constrained to match the mapping.** NVIDIA's 2:4 structured sparsity is the
+clean demonstration: exactly two of every four contiguous weights are non-zero, so the compression
+ratio is fixed at 2×, the metadata is 2 bits per 4 elements, the decode is a multiplexer inside the
+tensor core, and — the part that matters — **the tile shape does not change**. Every mapping decision
+from Part P is preserved; only the operand-select path is added. That is why it delivers close to its
+theoretical 2× while unstructured 90% delivers 2×. The sparsity was designed backwards from the
+array, not discovered in the weights and then handed to hardware.
+
+<Callout type="bridge" title="this is the scratchpad bet coming due">
+  Module 3 argued that compiler-managed memory beats hardware-managed exactly in proportion to how
+  little uncertainty remains at runtime, and Module 8 showed that closed-form access counting requires
+  affine indices and static bounds. Part Q is what happens when those preconditions fail. The
+  workload does not merely get slower — the apparatus for reasoning about it stops returning a number,
+  and the design has to fall back on a mechanism that absorbs uncertainty at runtime, which is what
+  hardware management was for all along.
+</Callout>
+
+## The design space, quantified
+
+The three kinds of irregularity, which have nothing in common except that they break Part P:
+
+| Kind          | What varies       | Known when      | Example                     | Remedy               |
+| ------------- | ----------------- | --------------- | --------------------------- | -------------------- |
+| Unstructured  | indices           | after training  | magnitude pruning           | compressed formats, gather units |
+| Structured    | nothing (declared) | at design time | 2:4, block sparsity          | hardware decode      |
+| Dynamic       | **extents**       | at runtime      | MoE routing, ragged batch   | padding, sorting, bucketing |
+
+What sparsity actually buys against what it costs:
+
+| Sparsity                | FLOPs removed | Realistic speedup | Why the gap                        |
+| ----------------------- | ------------- | ----------------- | ---------------------------------- |
+| 2:4 structured          | 50%           | 1.5–2×            | tile shape preserved, decode in HW |
+| Block sparse (32×32)    | 75–90%        | 2–4×              | blocks keep granularity and shape  |
+| Unstructured 90%        | 90%           | 1–2×              | gathers destroy granularity; array unfilled |
+| Unstructured 99%        | 99%           | 3–10×             | only past the point traffic collapses too |
+
+The metadata cost, which is the term people forget:
+
+| Format          | Overhead per non-zero | Decode cost              |
+| --------------- | --------------------- | ------------------------ |
+| 2:4             | 2 bits / 4 elements   | mux, inside the MAC path |
+| Block sparse    | ~1 bit / block        | negligible               |
+| CSR             | ~32 bits (index)      | pointer chase per row    |
+| COO             | ~64 bits (two indices) | full gather             |
+
+At INT8, a CSR index costs **four times** the payload it points at. Compressing 90% of an INT8 tensor
+with CSR can *increase* the bytes moved.
+
+MoE routing, where the extents become random variables:
+
+| Quantity                          | Typical value        |
+| --------------------------------- | -------------------- |
+| Experts per layer                 | 8–256                |
+| Experts activated per token       | 1–8                  |
+| Tokens per expert, ideal          | $BS \cdot k / E$     |
+| Load imbalance, unregularised     | 2–10× on the hottest expert |
+| Capacity factor used in practice  | 1.0–1.5              |
+| Tokens dropped at CF = 1.25       | typically a few %    |
+
+## Critical thinking
+
+<Probe q="Why does 90% unstructured sparsity not give 10×?">
+
+Because you removed the cheap resource and added pressure to the expensive ones. Work through what
+actually changes.
+
+**What you saved.** 90% of the multiply-accumulates. At ~0.2 pJ each for INT8, and on a machine that
+was almost certainly not compute-bound to begin with, this is the least valuable thing you could have
+removed.
+
+**What you spent, in four places:**
+
+- **Memory granularity is destroyed** (Module 3). Dense weights are read as contiguous 32-byte
+  sectors, fully used. Sparse weights are read by index, so each 4-byte value costs a full sector.
+  Reading 10% of the values at 12.5% efficiency moves *80% as many bytes* as reading all of them
+  densely. The traffic barely fell.
+- **Metadata is added.** CSR indices at 32 bits against an INT8 payload is a 4× overhead on the
+  values you kept. At high sparsity the index stream can exceed the data stream.
+- **The array cannot be filled** (Module 2). A tensor core wants a dense $16 \times 16$ operand tile.
+  A tile that is 90% zero at random positions has non-zeros scattered across essentially every row and
+  column, so no dense sub-tile exists to extract. The hardware has no way to skip them: it issues the
+  same instruction and multiplies by zero.
+- **Control becomes data-dependent.** Address generation, decode and branch behaviour now depend on
+  the pattern, which costs cycles and destroys the static schedule that Modules 3 and 8 relied on.
+
+**When it does work**, which is the useful part of the answer:
+
+- **At extreme sparsity**, 99%+, where the compressed representation genuinely is much smaller and the
+  traffic finally collapses along with the FLOPs. This is why scientific sparse solvers work and
+  neural network pruning at 90% does not — they are in different regimes, not doing the same thing
+  badly.
+- **With hardware built for it.** A design with gather/scatter units, sparse-aware operand selection
+  and compressed on-chip formats does far better. That hardware costs area on every workload,
+  including the dense ones, which is why it keeps being proposed and rarely shipping.
+- **When it is structured**, which is the next probe and the actual industrial answer.
+
+The general lesson transfers well past sparsity: **an optimisation that removes work from the
+non-binding resource while adding pressure to the binding one is a pessimisation, however good its
+headline number.** Counting FLOPs removed is exactly the wrong metric, and it is the one every
+pruning paper reports.
+
+</Probe>
+
+<Probe q="Why does 2:4 work? Derive the design rule from it.">
+
+Because it was designed backwards from the array's mapping constraints rather than discovered in the
+weights, and every property that makes it work is a property of *not disturbing Part P*.
+
+Go through them:
+
+- **The compression ratio is fixed at exactly 2×.** Not data-dependent, so the tile shape, the loop
+  bounds, and the access counts are all still static. Every closed form in Module 8 still evaluates.
+- **The metadata is 2 bits per 4 elements** — a 6% overhead against FP16 — and it is *positional*
+  rather than an index, so no pointer chase and no address computation.
+- **The decode is a multiplexer in the operand path.** Two bits select which of four incoming
+  activations pairs with each surviving weight. This sits inside the tensor core, costs a couple of
+  gates, and adds no cycles.
+- **The tile shape is unchanged.** This is the essential one. The dense tile is still $16\times16$;
+  the array is still filled; the mapping the compiler chose is still legal. Sparsity has been made
+  invisible to every layer above the MAC.
+- **Memory granularity is preserved.** The compressed weights are still contiguous. You read half as
+  many bytes, all of them useful.
+
+So the rule, stated generally: **hardware exploits sparsity only when the pattern is constrained
+enough that the tile shape, the access granularity and the static schedule all survive.** Which is to
+say: the sparsity pattern is a codesign parameter, not a property of the model you discover after
+training.
+
+Everything else in the space is an instance of the same trade at a different granularity. **Block
+sparsity** (zeroing $32\times32$ tiles) preserves granularity and shape even more strongly and can
+reach 75–90% with real speedups, at the cost of a much harsher constraint on which weights may be
+zero. **N:M generalisations** move along the same axis. And the honest cost is on the model side: 2:4
+requires the network to tolerate a pattern chosen for the hardware's convenience, which needs
+retraining or a sparsity-aware fine-tune, and it does not always recover accuracy. That cost is real
+and it is why 2:4 adoption is far lower than the hardware support would suggest — the hardware is in
+every Ampere-and-later GPU, and most production models do not use it.
+
+Which is itself a lesson about codesign: **shipping the hardware capability is the easy half.** The
+feature only pays if the model-training side adopts a constraint that serves the array, and that
+side has its own objective function in which your array does not appear.
+
+</Probe>
+
+<Probe q="MoE makes the extents data-dependent. Why is that worse than sparsity, and what do you actually do?">
+
+Worse because sparsity changes *which* elements you touch while keeping the shape, whereas dynamic
+routing changes the shape itself — and every layer of the stack from the cost model to the collective
+schedule assumed the shape was known.
+
+The mechanics. Each token is routed to $k$ of $E$ experts by a learned gate. Expert $e$ therefore
+receives $n_e$ tokens, where $\sum_e n_e = BSk$ but the individual $n_e$ are random variables
+determined by data. What breaks, in order of severity:
+
+- **The GEMM shapes are unknown until runtime.** Expert $e$ computes an $n_e \times d$ by $d \times h$
+  GEMM. You cannot pre-compile a kernel for it, cannot pick a tile size in advance, and cannot use a
+  static VMEM schedule. On a compiler-managed machine this is not a slowdown, it is a wall.
+- **Load imbalance sets the latency.** All experts run in parallel and the step finishes when the
+  slowest does, so the cost is $\max_e n_e$, not the mean. Unregularised routing produces hot experts
+  with 2–10× the average load — so a 64-expert layer can run at a fraction of its ideal throughput
+  while every device reports being busy.
+- **Effective batch per expert collapses.** With $E = 64$ and a batch of 8192 tokens at $k=2$, the
+  average expert sees 256 tokens. Against a 128×128 systolic array wanting large $M$ (Module 6), or
+  even against a tensor core tile, that is small — and the *hot* expert being large does not help the
+  cold ones being tiny.
+- **The all-to-all is data-dependent** (Module 11). Expert parallelism requires shuffling tokens to
+  the devices holding their experts, and the message sizes are exactly the $n_e$. A collective with
+  data-dependent sizes cannot be scheduled statically or overlapped as cleanly.
+
+**What is actually done**, all of which is restoring staticness at some cost:
+
+- **Capacity factor.** Fix a per-expert capacity $C = \text{CF} \cdot BSk/E$, pad experts under it and
+  **drop tokens over it**. This makes every shape static — restoring the entire Part P apparatus — at
+  the price of wasted compute on padding and quality loss on dropped tokens. CF in the 1.0–1.5 range
+  is standard, and it is a direct exchange rate between throughput and quality that a systems person
+  gets to set.
+- **Auxiliary load-balancing loss.** Train the gate to spread tokens. This attacks imbalance at the
+  source and is the most effective single fix, but it trades against the model's own objective — you
+  are penalising the router for making the choice it thought was best.
+- **Sort and group.** Permute tokens by expert so each expert's tokens are contiguous, then run a
+  grouped GEMM. Converts a gather-heavy irregular problem into a sort plus a batch of dense GEMMs,
+  which is the same "restore density by rearranging" move that shows up everywhere in this Part.
+- **Bucketing.** Compile kernels for a small set of shape buckets and pad to the nearest. The ML
+  Software series' answer to dynamic shapes, applied here.
+
+The unifying observation across all four: **the fix for dynamic irregularity is always to convert it
+back into a static problem, and always at a cost that is either wasted work or lost quality.** No
+technique makes the dynamism free, because the entire compilation and mapping stack is built on
+static extents. That is the price of the bet taken in Module 3, and it is why MoE is the workload
+most likely to force a change in how accelerators are designed.
+
+</Probe>
+
+<Probe q="Should a new accelerator include sparsity support?">
+
+Support the structured cases, and be sceptical of general sparse hardware — the historical record here
+is unusually clear and unusually bad.
+
+**The case against general sparsity hardware.** Gather/scatter units, compressed on-chip formats,
+sparse operand matching and dynamic scheduling cost area and energy on *every* workload, including
+the overwhelming majority that are dense. They complicate the compiler enormously, and they violate
+the static-schedule assumption the rest of the design depends on. And the demand side has repeatedly
+failed to appear: 2:4 has been in every NVIDIA datacentre GPU since Ampere, and adoption in production
+models remains small, because the accuracy cost and the retraining burden fall on a team optimising
+for model quality rather than for your array's utilization. A generation of sparse-accelerator
+startups made this bet on unstructured sparsity and the models did not cooperate.
+
+**The case for structured support.** 2:4-style decode is genuinely cheap — a mux in the operand path
+and a few percent of metadata — and preserves every mapping property. Block sparsity needs
+essentially no hardware at all, since a block-sparse matrix is a dense GEMM with a skip list. If the
+mechanism is nearly free and preserves the static schedule, include it; the option value is high and
+the cost is low.
+
+The decision rule that follows, and it generalises past sparsity to every "exploit irregularity"
+feature:
+
+1. **Cheap and shape-preserving → include.** 2:4 decode, block skipping, zero-operand clock gating
+   (which saves energy with no mapping consequence at all and should simply always be done).
+2. **Expensive and shape-breaking → do not**, unless you have a committed workload that will actually
+   use it. "Someone might prune their model" is not a committed workload.
+3. **Ask who bears the cost of adoption.** The hardware feature is useless unless a model team accepts
+   a constraint that serves your array. If that team is not in your organisation and does not share
+   your objective, assume they will not.
+4. **Prefer supporting dynamism over supporting sparsity.** MoE and variable-length attention are
+   *growing* and are not optional; unstructured pruning has been optional for a decade. Area spent on
+   handling data-dependent shapes gracefully — flexible grouped GEMM, efficient gather for token
+   permutation, cheap synchronisation for irregular collectives — is more likely to be used than area
+   spent on sparse operand matching.
+
+Point 4 is the live one and the reason this module sits where it does. The irregularity that turned
+out to matter was not the one the field spent a decade building hardware for.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="Name the three kinds of irregularity and what varies in each.">
+
+**Unstructured sparsity** — indices become data-dependent, extents unchanged, known only after
+training. **Structured sparsity** — nothing varies; the pattern is declared at design time (2:4,
+block). **Dynamic irregularity** — the **extents themselves** depend on data (MoE routing, ragged
+sequences, top-k), known only at runtime. Only the third breaks the existence of a shape to map, which
+is why it is the hardest.
+
+</SelfCheck>
+
+<SelfCheck q="Why does 90% unstructured sparsity typically give under 2×?">
+
+It removes MACs (~0.2 pJ, on a machine usually not compute-bound) while adding pressure everywhere
+that mattered: gathers cost a full 32-byte sector per 4-byte value, so reading 10% of the values at
+12.5% efficiency still moves ~80% of the dense bytes; CSR indices at 32 bits are 4× an INT8 payload;
+the tensor core's dense tile cannot be filled because random non-zeros hit every row and column, so
+it multiplies by zero anyway; and control becomes data-dependent, destroying the static schedule.
+Counting FLOPs removed is the wrong metric.
+
+</SelfCheck>
+
+<SelfCheck q="What makes 2:4 work, and what general rule does it yield?">
+
+Fixed 2× ratio (so extents stay static), 2 bits per 4 elements of *positional* metadata (no pointer
+chase), decode as a mux inside the operand path, **tile shape unchanged**, and contiguous compressed
+weights so granularity survives. Rule: **hardware exploits sparsity only when the pattern is
+constrained enough that tile shape, access granularity and static schedule all survive** — sparsity
+is a codesign parameter chosen backwards from the array, not a property discovered in trained
+weights.
+
+</SelfCheck>
+
+<SelfCheck q="Why is MoE routing worse than sparsity, and what are the four standard fixes?">
+
+Sparsity changes which elements you touch; routing changes the **shape**, and everything from the
+cost model to the collective schedule assumed shapes were static. Expert GEMM dimensions are unknown
+until runtime; latency is set by $\max_e n_e$ so 2–10× imbalance dominates; per-expert batch
+collapses (64 experts, 8192 tokens, $k=2$ → 256 tokens each); and the all-to-all has data-dependent
+message sizes. Fixes: **capacity factor** (pad and drop, restoring staticness at the cost of waste
+and quality), **auxiliary load-balancing loss**, **sort-and-group into a grouped GEMM**, and
+**bucketing**. All four convert dynamism back to a static problem, always paying in wasted work or
+lost quality.
+
+</SelfCheck>
+
+<SelfCheck q="Should a new accelerator add sparsity support?">
+
+Include cheap shape-preserving mechanisms (2:4 decode, block skipping, zero-operand clock gating);
+refuse expensive shape-breaking ones absent a committed workload. Ask **who bears the adoption cost**
+— 2:4 has shipped in every datacentre NVIDIA GPU since Ampere and is little used, because the
+accuracy and retraining burden falls on a model team with a different objective. And prefer spending
+area on **dynamism** over sparsity: MoE and variable-length attention are growing and non-optional,
+while unstructured pruning has been optional for a decade.
+
+</SelfCheck>

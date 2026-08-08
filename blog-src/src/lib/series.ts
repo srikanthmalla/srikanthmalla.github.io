@@ -66,6 +66,20 @@ export const SERIES: Series[] = [
       { id: 'N', title: 'Synthesis', note: 'Choosing, and serving.' },
     ],
   },
+  {
+    id: 'hw-sw-codesign',
+    title: 'ML Hardware/Software Codesign',
+    subtitle: 'Compute, memory, interconnect — and the mapping between them',
+    description:
+      'Fourteen modules on designing the chip and the compiler as one problem. Three resource abstractions — compute, memory, interconnect — each exposing capacity, bandwidth, latency and granularity, plus the field that makes it codesign: who decides placement. Then mapping, the act that binds them, and the four things that break a static mapping: sparsity, precision, dynamism and scale.',
+    unit: 'Module',
+    parts: [
+      { id: 'O', title: 'The three abstractions', note: 'What each resource exposes.' },
+      { id: 'P', title: 'Mapping', note: 'The act that binds them.' },
+      { id: 'Q', title: 'Where mappings break', note: 'Irregularity, precision, scale.' },
+      { id: 'R', title: 'In practice', note: 'Real workloads, real chips, the real loop.' },
+    ],
+  },
 ];
 
 export function getSeries(id: string): Series {

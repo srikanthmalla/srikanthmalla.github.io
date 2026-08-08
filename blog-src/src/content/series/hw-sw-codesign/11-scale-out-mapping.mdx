@@ -1,0 +1,317 @@
+---
+n: 11
+title: 'Parallelism is mapping onto the interconnect'
+blurb: 'DP, TP, PP, EP and SP are Module 5’s four decisions applied one level up, with the network as the memory level. Each strategy is priced by the collective it forces, and the placement rule falls out of the arithmetic.'
+part: 'Q'
+minutes: 19
+draft: false
+tags: ['data parallel', 'tensor parallel', 'pipeline parallel', 'expert parallel', 'sequence parallel', 'FSDP', 'ZeRO', 'allreduce', 'overlap', 'bubble', '3D parallelism']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+Distributed training is usually taught as its own subject with its own vocabulary, and it is not. It
+is Module 5's mapping problem with the interconnect as the memory level, and the four decisions map
+across exactly. **Tiling** becomes how each tensor is sharded across devices. **Spatial assignment**
+becomes which loop dimensions run across devices rather than in time — the batch dimension gives data
+parallelism, the hidden dimension gives tensor parallelism, the layer dimension gives pipeline
+parallelism, the expert dimension gives expert parallelism, the sequence dimension gives sequence
+parallelism. **Binding** becomes which tensors are replicated versus sharded, which is precisely what
+distinguishes plain DDP from ZeRO and FSDP. **Permutation** becomes the schedule — the microbatch
+order that determines the pipeline bubble. Once you see the correspondence, the strategy zoo collapses
+into one question with five answers, differing only in which loop dimension was assigned spatially.
+
+The pricing is equally uniform: **each strategy costs exactly the collective it forces, times how
+often it forces it.** Tensor parallelism splits the hidden dimension, so the partial sums from
+different shards must be combined — an all-reduce of the activations, twice per transformer layer,
+with bytes proportional to $B \cdot S \cdot H$. Data parallelism replicates the model and shards the
+batch, so gradients must be summed — one all-reduce of the parameters, once per step. Pipeline
+parallelism only sends activations at layer boundaries — point-to-point, small — but creates idle
+time. Expert parallelism needs tokens routed to the devices holding their experts — an all-to-all with
+data-dependent sizes, which is Module 9's problem arriving on the network. Put those four costs in a
+table with their frequencies and the whole design space becomes legible.
+
+And then the placement rule from Module 4 falls out arithmetically rather than as folklore. An H100
+needs roughly 1100 FLOP per byte crossing NVLink and 20,000 per byte crossing a NIC. Tensor
+parallelism communicates $O(BSH)$ bytes for $O(BSH^2)$ FLOPs — about $H$ FLOP per byte, which for
+$H = 8192$ is 8192, comfortably above NVLink's requirement and far below the NIC's. So TP belongs
+inside the NVLink domain and nowhere else. Data parallelism communicates the parameters once per step
+against a whole step's arithmetic, which is thousands of FLOP per byte and fits over Ethernet. The
+familiar recipe — TP within a node, PP across nodes, DP outermost — is not a heuristic anyone had to
+discover. It is the only assignment that satisfies both inequalities.
+
+<Callout type="bridge" title="overlap is double buffering, one level out">
+  Module 7 spent capacity to overlap a memory load with compute, and paid $\sqrt2$ in traffic for it.
+  Communication/computation overlap is the same trade with the network as the level: hold an extra
+  buffer, start the collective before you need its result, and the latency disappears into the
+  compute. The same rule applies too — deepen it when latency-bound, stop when the bandwidth term is
+  what binds, because more stages then inflate exactly what is already limiting you.
+</Callout>
+
+## The design space, quantified
+
+The five strategies as spatial assignments, which is the table the module exists for:
+
+| Strategy | Loop dim assigned | Collective forced | Bytes per invocation | Frequency | Needs |
+| -------- | ----------------- | ----------------- | -------------------- | --------- | ----- |
+| Data (DDP) | batch $B$ | all-reduce gradients | $2P$ | 1 / step | Ethernet OK |
+| ZeRO / FSDP | batch, params sharded | all-gather params + reduce-scatter grads | $\approx 3P$ | per layer | scale-up preferred |
+| Tensor (TP) | hidden $H$ | all-reduce activations | $2BSH$ | 2 / layer | **NVLink** |
+| Pipeline (PP) | layers $L$ | point-to-point | $BSH$ / boundary | 1 / microbatch | Ethernet OK |
+| Expert (EP) | experts $E$ | all-to-all tokens | $2BSH k/E \cdot E$ | 2 / MoE layer | NVLink, data-dependent |
+| Sequence (SP) | sequence $S$ | all-gather / ring | $BSH$ per layer | per attention | NVLink |
+
+FLOP per communicated byte, which decides placement:
+
+| Strategy | FLOPs per step | Bytes per step | FLOP/byte | Fits |
+| -------- | -------------- | -------------- | --------- | ---- |
+| TP, $H = 8192$ | $O(BSH^2)$ | $O(BSH)$ | $\approx H = 8192$ | NVLink (needs 1100) |
+| DP, 70 B params, 4 M tokens/step | $\approx 1.7\times10^{18}$ | $\approx 2.8\times10^{11}$ | $\approx 6\times10^{6}$ | Ethernet (needs 20 000) |
+| PP | per-microbatch layer FLOPs | $BSH$ per boundary | large | Ethernet |
+| EP | expert FLOPs | $O(BSHk)$ | $\approx H/k$ | NVLink |
+
+The pipeline bubble, which is the cost PP pays instead of bandwidth:
+
+| Schedule | Bubble fraction | Activation memory |
+| -------- | --------------- | ----------------- |
+| Naive (all forward, then all backward) | $(p-1)/m$ | $O(m)$ microbatches |
+| 1F1B | $(p-1)/m$ | $O(p)$ — much better |
+| Interleaved 1F1B, $v$ chunks | $(p-1)/(mv)$ | $O(p)$, more comms |
+
+With $p = 8$ stages and $m = 32$ microbatches, the naive bubble is 22%; interleaved with $v = 4$
+brings it to about 5.5%.
+
+## Critical thinking
+
+<Probe q="Derive why tensor parallelism needs NVLink and data parallelism does not.">
+
+Both are all-reduces. What differs is how many FLOPs of work each byte buys, and the ratio differs by
+three orders of magnitude.
+
+**Tensor parallelism.** Split a transformer layer's hidden dimension across $t$ devices. The two
+GEMMs of the MLP block do $O(BSH^2)$ FLOPs, and the column-then-row split means each device holds a
+partial sum over its shard of $H$, so the results must be all-reduced: $O(BSH)$ bytes, twice per layer
+(once for attention output, once for the MLP output). The ratio is
+
+$$\frac{\text{FLOPs}}{\text{bytes}} \approx \frac{BSH^2}{BSH} = H$$
+
+For $H = 8192$ that is 8192 FLOP per byte. Compare against the requirement: an H100 at ~1 PFLOP/s
+BF16 with 900 GB/s of NVLink needs 1100 FLOP/byte to stay compute-bound, and with a 50 GB/s NIC needs
+20,000. So TP over NVLink has 7× headroom and TP over Ethernet is short by 2.4×, meaning the network
+becomes the bottleneck and more than half the machine idles. Note the ratio is $H$ and does *not*
+improve with batch size — both terms scale with $B$ — which is why you cannot batch your way out of
+a bad TP placement, and why TP degree is capped at the size of the high-bandwidth domain.
+
+**Data parallelism.** Replicate the model, shard the batch. Gradients are all-reduced once per step:
+$2P$ bytes for $P$ parameters. The step performs roughly $6 P N_{\text{tok}}$ FLOPs for
+$N_{\text{tok}}$ tokens. The ratio is
+
+$$\frac{6PN_{\text{tok}}}{2P} = 3N_{\text{tok}}$$
+
+which depends only on tokens per step, not on model size at all. At 4 M tokens per step that is
+$1.2\times10^{7}$ FLOP per byte — 600× more than Ethernet requires. DP is not merely tolerable over a
+slow network, it has enormous headroom, which is why it was the first strategy to work and why it
+scales to thousands of nodes.
+
+The two clean takeaways:
+
+- **TP's ratio is $H$, a model constant.** You improve it only by making the model wider, which is not
+  a knob you have. Hence a hard placement constraint.
+- **DP's ratio is $3N_{\text{tok}}$, which you control.** Larger global batch, or gradient
+  accumulation, directly buys communication headroom — which is exactly why gradient accumulation is
+  the standard fix when the interconnect limits DP scaling, and why it works when nothing else does.
+
+</Probe>
+
+<Probe q="ZeRO/FSDP shards parameters to save memory but communicates more. When is that right?">
+
+When memory capacity is the binding constraint and you have bandwidth to spend — which describes most
+large-model training, and describes it for a reason that is worth spelling out.
+
+**What DDP costs in memory.** Every device holds a full copy of parameters, gradients, and optimiser
+state. For Adam in mixed precision that is roughly 16 bytes per parameter: 2 for BF16 weights, 2 for
+BF16 gradients, and 12 for FP32 master weights plus the two moments. A 70 B model needs about 1.1 TB
+per device before a single activation exists. There is no GPU with 1.1 TB, so DDP is not a slow option
+for large models, it is not an option.
+
+**What sharding buys and costs.** ZeRO's stages shard progressively — optimiser state, then gradients,
+then parameters — reducing per-device state by up to the DP degree. FSDP shards all three and
+reconstructs parameters on demand: all-gather a layer's parameters before its forward, discard them
+after, all-gather again for backward (or keep them, per `reshard_after_forward`), and reduce-scatter
+the gradients. Total traffic goes from $2P$ per step to roughly $3P$ per step, but spread across every
+layer instead of one burst.
+
+**Why this is a Module 7 decision, exactly.** Keeping a parameter shard resident after the forward
+pass costs capacity and saves a re-fetch; discarding it saves capacity and costs an all-gather. That
+is keep-resident-versus-refetch, the same trade as a tile in a cache, with the network as the level.
+`reshard_after_forward=True` is "evict"; `False` is "keep". The right answer depends on whether you
+are capacity-bound or bandwidth-bound at that moment, and it is legitimately different for different
+layers — which is why the flag exists per-module rather than globally.
+
+**When it is wrong:**
+
+- **When the model fits comfortably.** Plain DDP moves $2P$ once per step and overlaps it with the
+  backward pass almost perfectly. Do not pay 1.5× the traffic and per-layer synchronisation for memory
+  you did not need.
+- **When the interconnect is slow.** FSDP's all-gathers are on the critical path of every layer's
+  forward, not a once-per-step background operation. Over a slow network the exposed latency is
+  brutal, whereas DDP's single all-reduce hides behind a whole backward pass. FSDP wants a fast domain.
+- **When TP would be better.** If you need to shard state anyway, TP shards the *compute* too, so it
+  reduces per-device FLOPs as well as memory. FSDP replicates the compute and only shards the storage.
+  Inside a node, TP is usually the better use of the bandwidth; FSDP's advantage is that it composes
+  across nodes where TP cannot go.
+
+The general framing: FSDP converts a capacity problem into a bandwidth problem. That is a good trade
+exactly when capacity is what you lack, and it is a bad one otherwise — the same statement as every
+recompute-versus-store decision in the series.
+
+</Probe>
+
+<Probe q="Pipeline parallelism has almost no bandwidth cost. Why isn't it the default?">
+
+Because it pays in a different currency — idle time and activation memory — and that currency is
+often more expensive.
+
+**The bubble.** With $p$ stages and $m$ microbatches, the pipeline takes $p-1$ microbatch-times to
+fill and the same to drain, giving a bubble fraction of $(p-1)/m$. To get it under 10% you need
+$m \gtrsim 10p$, which means a large number of microbatches, which means a large global batch — and
+global batch size is not a free parameter. It is set by optimisation considerations, and beyond some
+point larger batches stop improving convergence per token. So PP's efficiency is bounded by a
+constraint that has nothing to do with systems, which is an unusual and uncomfortable position.
+
+**Activation memory.** The naive schedule runs all forwards then all backwards, so stage 0 holds
+activations for all $m$ microbatches simultaneously. This is why **1F1B** exists: interleave one
+forward and one backward so that at steady state each stage holds only $O(p)$ microbatches of
+activations. Same bubble, dramatically less memory. Interleaved 1F1B goes further by giving each
+device $v$ non-contiguous chunks of layers, cutting the bubble to $(p-1)/(mv)$ at the cost of $v$×
+more point-to-point messages.
+
+**Load balance.** Every stage must take the same time or the slowest sets the rate. Transformer layers
+are nearly uniform, which helps enormously — but embeddings, the LM head, and the loss are not, so the
+first and last stages are routinely given fewer layers to compensate. Getting this wrong wastes more
+than the bubble.
+
+**And the real reason it is not the default:** PP is the *third* choice in a composition, not a
+competitor to the others. The standard 3D arrangement uses all three, each where its cost is cheapest:
+
+| Level | Strategy | Why there |
+| ----- | -------- | --------- |
+| Innermost, within NVLink | TP | needs 8192 FLOP/byte of bandwidth; only available there |
+| Middle, across nodes | PP | point-to-point only, tolerates slow links, but costs bubble |
+| Outermost | DP / FSDP | one all-reduce per step, enormous headroom, scales widest |
+
+Read the table as an assignment problem and it is forced. TP must be innermost because its bandwidth
+demand can only be met there. DP must be outermost because its headroom is largest and it scales
+without bound. PP occupies the middle because it is the only strategy whose cost is *not* bandwidth,
+which is exactly what you need when crossing the cliff at the chassis boundary. Each strategy is
+placed where its particular cost is cheapest — which is the same reasoning as binding a tensor to a
+memory level, one more time.
+
+</Probe>
+
+<Probe q="What does expert parallelism break that the others do not?">
+
+Staticness — and with it the ability to schedule, overlap and cost the communication at all.
+
+DP, TP, PP and SP all communicate a **statically known** number of bytes at statically known points.
+That is what makes them tractable: the collective can be planned at compile time, its buffers
+pre-allocated, its overlap with compute scheduled precisely, and its cost modelled exactly. Every tool
+in Parts P and R assumes this.
+
+Expert parallelism does not have it. The all-to-all sends $n_e$ tokens to each expert's device, and
+$n_e$ is a random variable set by the router at runtime (Module 9). What breaks:
+
+- **Message sizes are unknown until the routing is computed**, so buffers must be sized for the worst
+  case or allocated dynamically, and the collective cannot be launched until the gate has run — a
+  serialisation that did not exist before.
+- **The collective is unbalanced.** All-to-all with uneven sizes takes as long as the largest transfer,
+  so a hot expert stalls every device, not just its own. Load imbalance becomes a *global*
+  synchronisation cost rather than a local inefficiency.
+- **Overlap is much harder.** You cannot start sending before you know what to send, and the
+  computation that would hide the transfer is the computation waiting for it.
+- **There are two all-to-alls per MoE layer** — dispatch and combine — so the cost lands twice, and
+  both are on the critical path.
+
+The mitigations are the same family as Module 9's, arriving on the network:
+
+- **Capacity factor** makes the sizes static by padding and dropping. This restores everything —
+  static buffers, planned overlap, exact cost models — and is why essentially every production MoE
+  uses one.
+- **Load-balancing loss** attacks the variance at the source.
+- **Hierarchical all-to-all**: exchange within the node over NVLink first, then across nodes with far
+  less data. The memory-hierarchy principle again, and the largest practical win.
+- **Overlap the dispatch of one expert group with the compute of another**, which is software
+  pipelining across a data-dependent boundary — hard, and where most of the recent engineering effort
+  has gone.
+
+The structural point, and the reason this module ends Part Q: MoE is the first workload where the
+*mapping itself* is data-dependent, at the level that is most expensive to get wrong. Sparsity made
+the indices dynamic; MoE makes the communication pattern dynamic. The whole apparatus — static
+schedules, compiler-managed memory, analytic cost models, planned collectives — was built on an
+assumption that MoE denies, and that is why it is simultaneously the most important architecture of
+the moment and the one that fits the hardware worst. Which is exactly the kind of divergence Module 14
+is about.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="How do the five parallelism strategies correspond to Module 5's four decisions?">
+
+**Spatial assignment** picks which loop dimension goes across devices: batch → DP, hidden → TP, layers
+→ PP, experts → EP, sequence → SP. **Tiling** is how each tensor is sharded. **Binding** is which
+tensors are replicated versus sharded — the difference between DDP and ZeRO/FSDP. **Permutation** is
+the schedule, i.e. the microbatch order that sets the pipeline bubble. The strategy zoo is one
+question with five answers.
+
+</SelfCheck>
+
+<SelfCheck q="Derive TP's and DP's FLOP-per-byte ratios and what they imply.">
+
+TP: $O(BSH^2)$ FLOPs against $O(BSH)$ bytes gives $\approx H$ — 8192 for $H=8192$. Against NVLink's
+requirement of ~1100 FLOP/byte that is 7× headroom; against a NIC's ~20,000 it is 2.4× short. And the
+ratio is independent of batch, so you cannot batch your way out. DP: $6PN_{\text{tok}}$ FLOPs against
+$2P$ bytes gives $3N_{\text{tok}}$ — independent of model size, ~$1.2\times10^7$ at 4 M tokens/step,
+600× Ethernet's requirement. Since DP's ratio is something you control, **gradient accumulation** is
+the standard fix when the network limits DP scaling.
+
+</SelfCheck>
+
+<SelfCheck q="When is FSDP the wrong choice?">
+
+When the model fits comfortably (DDP moves $2P$ once per step and hides it behind the whole backward,
+versus FSDP's ~$3P$ with per-layer synchronisation); when the interconnect is slow (FSDP's all-gathers
+sit on every layer's critical path, while DDP's single all-reduce is background); and when TP would
+serve better inside a node, since TP shards the **compute** as well as the storage while FSDP
+replicates compute and shards only state. FSDP converts a capacity problem into a bandwidth problem —
+right exactly when capacity is what you lack.
+
+</SelfCheck>
+
+<SelfCheck q="Why is pipeline parallelism the middle layer of a 3D arrangement rather than a default?">
+
+Because it pays in bubble and activation memory rather than bandwidth. Bubble is $(p-1)/m$, so under
+10% needs $m \gtrsim 10p$ microbatches and hence a large global batch — a parameter set by
+optimisation, not systems. 1F1B fixes the memory ($O(p)$ instead of $O(m)$ microbatches of
+activations); interleaved 1F1B cuts the bubble to $(p-1)/(mv)$. It sits in the middle because it is
+the only strategy whose cost is **not** bandwidth, which is what you need for crossing the chassis
+cliff — TP must be innermost (only NVLink meets its demand), DP outermost (largest headroom). The
+assignment is forced.
+
+</SelfCheck>
+
+<SelfCheck q="What does expert parallelism break that DP/TP/PP do not?">
+
+**Staticness.** The other four communicate statically known bytes at statically known points, which is
+what permits planned buffers, scheduled overlap and exact cost models. EP's all-to-all carries $n_e$
+tokens per expert, a runtime random variable — so buffers must be worst-cased, the collective cannot
+launch until the gate runs, an unbalanced all-to-all takes as long as its largest transfer (making
+imbalance a global stall), and overlap is obstructed because the computation that would hide the
+transfer is the one waiting on it. Twice per MoE layer. Fixes: capacity factor, load-balancing loss,
+hierarchical all-to-all, and pipelining across the data-dependent boundary.
+
+</SelfCheck>

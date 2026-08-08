@@ -1,0 +1,343 @@
+---
+n: 12
+title: 'Case study: attention, mapped'
+blurb: 'FlashAttention is a mapping result, not an algorithm result — identical FLOPs, one tensor re-bound. Prefill and decode as two points in the resource space with the same math, and GQA/MLA as model architecture bending to a memory constraint.'
+part: 'R'
+minutes: 19
+draft: false
+tags: ['FlashAttention', 'online softmax', 'KV cache', 'prefill', 'decode', 'GQA', 'MQA', 'MLA', 'PagedAttention', 'continuous batching', 'arithmetic intensity']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+Attention is the best case study in this series because everything important about it is a mapping
+question, and because the field spent several years describing those mapping results in algorithmic
+language and thereby obscuring what was actually happening. Standard attention computes
+$\text{softmax}(QK^\top/\sqrt d)V$ by materialising the $S \times S$ score matrix, which for $S =
+8192$ is 128 MB per head in FP16 — far beyond any on-chip capacity, so it is bound to HBM, written
+once and read back at least twice. FlashAttention performs **exactly the same floating-point
+operations** and never materialises it: the reduction is tiled so that a block of scores lives in SRAM,
+is consumed immediately, and is discarded. In Module 5's vocabulary, one tensor's binding changed from
+HBM to SRAM, and the tiling changed to make that binding legal. Nothing else. It is a mapping result,
+and calling it an algorithmic breakthrough hides that the technique generalises to any operation with
+a large materialised intermediate.
+
+What made that re-binding possible is worth isolating, because it is the one genuinely non-mechanical
+step. You cannot normally tile across a softmax, since softmax needs the maximum and the sum over the
+entire row before it can emit any output — it is a full reduction, and Module 7 listed exactly this as
+where fusion stops. **Online softmax** removes the barrier by maintaining a running maximum and a
+running sum, and rescaling the accumulated output whenever the maximum increases. That converts a
+two-pass reduction into a single streaming pass with a correction term, which is what makes the tile
+boundary legal. So the general lesson is sharper than "tile attention": when a mapping is blocked by a
+reduction, the unlock is an algebraic reformulation that makes the reduction streamable, and then the
+mapping falls out.
+
+The second half of the module is that **prefill and decode are two completely different points in the
+three-resource space running identical mathematics**, which is the strongest possible demonstration
+that intensity belongs to the regime rather than the operation. Prefill processes $S$ tokens at once:
+every weight is loaded once and used for $S$ rows, giving arithmetic intensity proportional to $S$ —
+compute-bound, large tiles, the machine's happy case. Decode processes one token per sequence: every
+weight is loaded and used for a single row, giving an intensity of about **1 FLOP per byte at batch 1
+in FP16**, against a ridge point near 295. The machine runs at roughly 0.3% of peak arithmetic and is
+doing nothing wrong — it is a GEMV, which Module 7 showed has no area reuse to capture at any capacity.
+The only lever is batch, because batching is the only thing that reuses a loaded weight.
+
+<Callout type="bridge" title="the same operation, at both ends of the roofline">
+  ML Hardware Module 4 argued that latency and throughput regimes invert each other's instincts.
+  Attention is that argument in one workload: prefill wants big tiles, high occupancy and maximum
+  parallelism; decode wants weights in the fastest memory, the largest batch you can assemble, and
+  cares about nothing else. Optimising one frequently harms the other, which is why serving stacks
+  increasingly run them on separate hardware pools.
+</Callout>
+
+## The design space, quantified
+
+Attention's cost, per layer, for batch $B$, sequence $S$, model dim $d$:
+
+| Quantity                      | Prefill                 | Decode (per token)        |
+| ----------------------------- | ----------------------- | ------------------------- |
+| Attention FLOPs               | $4BS^2d$                | $4BSd$                    |
+| Projection/MLP FLOPs          | $\approx 24BSd^2$       | $\approx 24Bd^2$          |
+| Weight bytes read             | $\approx 12d^2$         | $\approx 12d^2$           |
+| KV cache bytes read           | small                   | $\approx 4BSd_{kv}$       |
+| **Arithmetic intensity**      | $O(S)$ — hundreds       | $\approx B$ FLOP/byte     |
+
+That last cell is the whole story of inference economics: **decode's arithmetic intensity is
+approximately the batch size**, so reaching an H100's ridge point of ~295 FLOP/byte requires a batch of
+roughly 295 concurrent sequences.
+
+What FlashAttention changed, and what it did not:
+
+| | Standard | FlashAttention |
+| --- | --- | --- |
+| FLOPs | $4S^2d$ | $4S^2d$ — **identical** |
+| Score matrix binding | HBM | **SRAM** |
+| HBM traffic | $O(S^2)$ | $O(S d)$ |
+| Peak memory | $O(S^2)$ | $O(S)$ |
+| Backward | reads stored scores | **recomputes** them |
+| What changed | — | binding + tiling + online softmax |
+
+KV cache size, which is what governs how large a batch you can assemble:
+
+| Model shape                              | Bytes / token (FP16) | At $S=8192$ |
+| ---------------------------------------- | -------------------- | ----------- |
+| MHA, 80 layers, 64 heads × 128           | ~1.3 MB              | ~10.7 GB    |
+| GQA, 80 layers, 8 KV heads × 128         | ~160 KB              | ~1.3 GB     |
+| MQA, 80 layers, 1 KV head × 128          | ~20 KB               | ~164 MB     |
+| MLA (compressed latent)                  | ~70 KB order         | ~0.6 GB     |
+| GQA + FP8 KV                             | ~80 KB               | ~0.7 GB     |
+
+On an 80 GB H100 holding a 70 B model in FP8 (~70 GB), roughly 10 GB remains for KV — about **7
+concurrent sequences** at 8 K context with GQA, and under one with MHA. That single arithmetic is why
+GQA exists.
+
+## Critical thinking
+
+<Probe q="Show precisely that FlashAttention is a mapping change, not an algorithmic one.">
+
+Write both as loop nests and the only differences are tile factors and bindings.
+
+**Standard**, three separate kernels with an $S \times S$ tensor bound to HBM:
+
+```
+S = Q @ K.T          # writes S×S to HBM
+P = softmax(S)       # reads S×S, writes S×S
+O = P @ V            # reads S×S
+```
+
+Traffic: $O(S^2)$ words written and $O(S^2)$ read, twice. At $S = 8192$ and FP16, that is roughly 400
+MB of HBM traffic per head per layer, for $4S^2d$ FLOPs.
+
+**FlashAttention**, one kernel with the scores bound to SRAM:
+
+```
+for i in range(S / Br):                 # tile the query rows
+  load Q_i (Br × d) into SRAM
+  m, l, O_i = -inf, 0, 0                # running max, running sum, accumulator
+  for j in range(S / Bc):               # tile the keys — the reduction
+    load K_j, V_j (Bc × d) into SRAM
+    S_ij = Q_i @ K_j.T                  # Br × Bc — lives in SRAM only
+    m_new = max(m, rowmax(S_ij))
+    P_ij  = exp(S_ij - m_new)
+    l     = l * exp(m - m_new) + rowsum(P_ij)     # rescale the running sum
+    O_i   = O_i * exp(m - m_new) + P_ij @ V_j     # rescale the accumulator
+    m     = m_new
+  write O_i / l                         # Br × d to HBM
+```
+
+Compare against Module 5's four decisions:
+
+| Decision | Standard | FlashAttention |
+| --- | --- | --- |
+| Tiling | none over $S$ | $B_r \times B_c$ tiles over both $S$ axes |
+| Permutation | reduction outermost (materialised) | reduction innermost, streamed |
+| Spatial assignment | one kernel per stage | query tiles across thread blocks |
+| **Binding of $S{\times}S$** | **HBM** | **SRAM** |
+
+Every arithmetic operation on the critical path is the same. The exponentials, the multiplies, the
+matmuls — identical count. What changed is where one tensor lives and how the loops are cut, which is
+the definition of a mapping.
+
+Two consequences that follow only from seeing it this way, and are the reason the distinction matters:
+
+- **The technique is general.** Any operation with a large materialised intermediate consumed
+  immediately is a candidate — fused MLP blocks, fused loss functions with large logits, chunked linear
+  attention, and the same trick applied to convolutions. Once it is "re-bind the intermediate and make
+  the reduction streamable" rather than "a clever attention algorithm", you go looking for other
+  instances.
+- **It gets better with hardware, in a predictable direction.** SRAM per SM grew from 164 KB on A100
+  to 228 KB on H100; TMA made the tile loads cheaper; warp specialisation let the loads and the math
+  proceed on different warps. FlashAttention 2 and 3 are largely re-mappings onto those new
+  capabilities rather than new mathematics — which is exactly what you would predict for a result whose
+  content is a mapping.
+
+The one genuinely new ingredient is online softmax, and it is worth being precise that it is *not* an
+approximation: the rescaling by $\exp(m - m_{\text{new}})$ makes the streamed result exactly equal to
+the two-pass result in exact arithmetic, and better-conditioned than naive softmax in floating point.
+
+</Probe>
+
+<Probe q="Decode has arithmetic intensity ≈ batch size. Work out what follows.">
+
+Derive it first, because the derivation is where the consequences come from.
+
+At decode, each sequence contributes one token. A weight matrix of $P$ parameters must be read in full
+— $2P$ bytes at FP16 — and each parameter participates in one multiply-accumulate per sequence, so $2P
+\cdot B$ FLOPs for batch $B$. The intensity is
+
+$$\frac{2PB}{2P} = B \text{ FLOP per byte}$$
+
+Independent of model size, independent of layer shape. **The batch size is the arithmetic intensity.**
+Against an H100's ridge of ~295, you need ~295 concurrent sequences to be compute-bound; at $B = 1$ you
+are running at roughly 0.3% of peak, and there is nothing wrong with the kernel.
+
+What follows, and each of these is a real design consequence:
+
+- **Token rate at small batch is a pure bandwidth calculation.** Time per token $\approx$ model bytes /
+  HBM bandwidth. A 70 B model in FP8 is 70 GB; on 3.35 TB/s that is ~21 ms per token, ~48 tokens/s,
+  and no amount of compute changes it. This one division predicts single-stream decode performance
+  across essentially all hardware, and it is the first calculation to do when someone quotes a token
+  rate.
+- **Batching is the only lever, so the serving system's real job is assembling batches.** This is why
+  continuous batching — admitting new sequences into a running batch at token granularity instead of
+  waiting for a whole batch to finish — was such a large practical win. It is not a scheduling nicety;
+  it is the mechanism that raises arithmetic intensity.
+- **KV cache capacity therefore sets throughput.** Batch is limited by how many KV caches fit in the
+  memory the weights left over. The arithmetic above — ~7 sequences on an 80 GB H100 with a 70 B FP8
+  model and GQA at 8 K context — is why every serving optimisation that shrinks the KV cache
+  translates directly into tokens per second. That is a memory-capacity problem wearing a throughput
+  costume.
+- **Quantizing weights helps twice.** Fewer bytes to stream per token (directly faster), and more room
+  for KV cache (bigger batch, higher intensity). Compounding, which is why 4-bit weights can deliver
+  more than 4× on decode.
+- **Large arrays make it worse.** A bigger MAC array raises the ridge point, so the batch needed to
+  saturate it grows, while the KV cache that limits batch has not shrunk. Decode gets structurally
+  harder every generation even as the datasheet improves — Module 2's warning, arriving with numbers.
+
+And the disaggregation conclusion that the industry reached from this: prefill and decode want
+opposite things, so run them on separate pools of hardware, transferring the KV cache between them.
+Prefill wants compute; decode wants bandwidth and capacity. Serving them on one machine means one of
+the two is always misprovisioned.
+
+</Probe>
+
+<Probe q="GQA, MQA and MLA change the model to fix a hardware problem. Is that good codesign or a symptom?">
+
+Both, and being clear about which part is which is the point.
+
+**What they do.** Multi-head attention gives every query head its own key and value heads, so the KV
+cache scales with the head count. Multi-query attention shares one KV head across all queries, cutting
+the cache by the head count — 64× for a 64-head model. Grouped-query attention interpolates, sharing
+each KV head across a group of, say, 8 queries. Multi-head latent attention compresses K and V into a
+low-rank latent that is cached instead, decompressing on use. All three attack the same quantity: bytes
+of KV cache per token.
+
+**Why the pressure exists at all.** From the arithmetic above, KV capacity limits batch, batch is the
+arithmetic intensity, and intensity is throughput. A model that halves its KV cache roughly doubles the
+batch that fits and therefore roughly doubles decode throughput. That is an enormous return for a
+model-architecture change, and far larger than any plausible kernel optimisation. So the pressure is
+entirely legitimate.
+
+**The case that this is good codesign.** The constraint is real and permanent — it follows from the
+beachfront limit and the memory hierarchy, not from a fixable software deficiency — so a model design
+that ignores it is leaving a factor of several on the table for no benefit. The accuracy cost of GQA
+is genuinely small at reasonable group sizes, which means the original MHA design was spending memory
+on a degree of freedom the model did not need. Finding that out is exactly what codesign is *for*:
+information flowed from the hardware constraint back into the model design and improved both. MLA goes
+further and arguably improves quality per byte outright.
+
+**The case that it is a symptom.** The model is now shaped by a hardware artefact, and hardware
+artefacts move. If HBM capacity per FLOP improved sharply, or if a memory technology changed the
+constraint, we would have a generation of models carrying a compromise for a bottleneck that no longer
+binds. There is precedent — the entire convolution-efficiency literature of 2016–2019 optimised for a
+reuse structure that transformers then made irrelevant. And there is a subtler cost: the constraint is
+strongest at *inference*, so the model is being shaped by deployment economics in ways that are hard to
+separate from what makes it good.
+
+**The resolution**, which is the general lesson: codesign is legitimate when it removes a degree of
+freedom the model did not need, and dangerous when it removes one the model did need but whose value
+is hard to measure. GQA looks like the first. It is worth noticing that the way you tell them apart is
+not available at design time — you find out later, which is the same epistemic problem Module 8 has
+with cost models and Module 14 has with the whole loop.
+
+</Probe>
+
+<Probe q="PagedAttention gives a large throughput win without changing any kernel. Why?">
+
+Because the binding constraint was memory *fragmentation*, not memory bandwidth or compute, and
+fragmentation is an allocator problem.
+
+The situation before. A serving system does not know how long a sequence will be, so it allocates KV
+cache for the maximum context length up front — 8 K, 32 K, whatever the model supports — for every
+sequence in flight. A request that generates 200 tokens holds an allocation sized for 8192. The
+utilisation of the KV region is then the ratio of actual to maximum length, which in real traffic is
+often **under 30%**. Since KV capacity sets the batch and batch sets the intensity, two thirds of your
+throughput was lost to an allocation policy.
+
+PagedAttention applies virtual memory's answer. Split the KV cache into fixed-size blocks (16 or 32
+tokens), allocate blocks on demand as a sequence grows, and keep a per-sequence block table mapping
+logical positions to physical blocks. The attention kernel reads through the block table instead of
+assuming contiguity. Internal fragmentation drops to at most one partial block per sequence, so
+utilisation goes from ~30% to over 90%, batch grows by 2–4×, and throughput follows.
+
+Two aspects deserve emphasis:
+
+- **The kernel got slightly slower and the system got much faster.** Indirection through a block table
+  costs a lookup and loses some coalescing (Module 3's granularity, again). That is a small constant
+  against a 2–4× batch increase. The instructive part is that a purely local measurement — kernel
+  microbenchmark — would have rejected the change, which is a general hazard when optimising a system
+  by measuring its parts.
+- **Sharing falls out for free.** Once blocks are indirected, two sequences with a common prefix can
+  point at the same physical blocks with copy-on-write. Shared system prompts, beam search and
+  parallel sampling all become nearly free in memory. This is fork/COW, arriving in an inference
+  server for the same reasons it arrived in an operating system.
+
+The generalisable lesson is the one this whole Part is arguing: **find the binding resource before
+optimising, and be willing for the answer to be unglamorous.** Everyone working on inference at that
+time was optimising kernels — the FLOPs and the bandwidth — while the actual constraint was an
+allocator wasting 70% of a capacity that determined throughput. Nothing in a roofline plot or a kernel
+profile shows you that. It shows up only in a resource accounting of the whole system, which is why
+Module 8 insisted on modelling the workload rather than the kernel.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="In what precise sense is FlashAttention a mapping result?">
+
+Identical FLOPs. What changed is the **binding** of the $S\times S$ score matrix from HBM to SRAM, plus
+the **tiling** over both sequence axes and the **permutation** that puts the key-reduction innermost so
+scores are consumed immediately. HBM traffic falls from $O(S^2)$ to $O(Sd)$ and peak memory from
+$O(S^2)$ to $O(S)$. The one non-mechanical ingredient is **online softmax**, which makes the reduction
+streamable — and it is exact, not an approximation.
+
+</SelfCheck>
+
+<SelfCheck q="Why couldn't you tile across softmax before, and what unlocked it?">
+
+Softmax needs the row maximum and sum over the whole row before emitting any output — a full
+reduction, exactly where Module 7 said fusion stops. **Online softmax** maintains a running max and
+sum and rescales the accumulator by $\exp(m - m_{\text{new}})$ whenever the max increases, converting
+two passes into one streaming pass. General lesson: when a mapping is blocked by a reduction, the
+unlock is an algebraic reformulation that makes the reduction streamable — then the mapping falls out.
+
+</SelfCheck>
+
+<SelfCheck q="Derive decode's arithmetic intensity and give three consequences.">
+
+Reading $2P$ bytes of FP16 weights and doing $2PB$ FLOPs gives **$B$ FLOP per byte** — the batch size
+*is* the intensity, independent of model size. So: (1) single-stream token rate is model bytes ÷ HBM
+bandwidth — 70 GB at 3.35 TB/s ≈ 21 ms/token — and compute is irrelevant; (2) batching is the only
+lever, which is why continuous batching was a large win; (3) KV cache capacity limits batch and
+therefore *is* the throughput constraint, so shrinking KV converts directly into tokens/s. Also:
+larger arrays raise the ridge point, so decode gets structurally harder each generation.
+
+</SelfCheck>
+
+<SelfCheck q="Why does GQA exist, and what is the argument that it is a symptom rather than good codesign?">
+
+Because KV capacity limits batch, batch is intensity, intensity is throughput — so halving the cache
+roughly doubles decode throughput, a return no kernel work matches. It is good codesign to the extent
+it removed a degree of freedom the model did not need (GQA's accuracy cost is small, so MHA was
+spending memory for nothing). It is a symptom to the extent that models are now shaped by a hardware
+artefact that could move — with precedent in the convolution-efficiency work of 2016–19 that
+transformers made irrelevant. You cannot tell which at design time, which is the same epistemic
+problem as Modules 8 and 14.
+
+</SelfCheck>
+
+<SelfCheck q="Why did PagedAttention win without changing any kernel's arithmetic?">
+
+The binding constraint was **fragmentation**. Allocating each sequence its maximum context length left
+KV utilisation under ~30%, and since KV capacity sets batch and batch sets intensity, that was a
+direct throughput loss. Fixed-size blocks with a per-sequence block table cut internal fragmentation to
+one partial block, raising utilisation past 90% and batch by 2–4×. The kernel got slightly *slower*
+(block-table indirection costs coalescing), so a microbenchmark would have rejected it — the win is
+only visible in a whole-system resource accounting. Prefix sharing via copy-on-write blocks falls out
+free.
+
+</SelfCheck>

@@ -1,0 +1,353 @@
+---
+n: 14
+title: 'The codesign loop, and where it fails'
+blurb: 'Hardware is frozen two to three years before the workload it runs, so the compiler is the only thing that can adapt — and it is on the critical path of the chip’s value while being consistently underfunded relative to it.'
+part: 'R'
+minutes: 20
+draft: false
+tags: ['codesign loop', 'design space exploration', 'tape-out', 'compiler', 'workload drift', 'MFU', 'specialisation', 'organisation', 'synthesis']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+The loop, as it actually runs: characterise the workload; run a mapping study on an analytic model to
+choose capacities, bandwidths, array dimensions and topology; freeze those; develop RTL and compiler
+in parallel; tape out; bring up silicon; and then spend the chip's entire commercial life closing the
+gap between what it can do and what the compiler can reach. Written out like that, two structural
+facts become impossible to miss. The first is that **the architecture is frozen against a prediction
+of a workload two to three years out**, using a cost model that cannot be validated until after the
+prediction has already been committed. The second is that **once the silicon is fixed, the compiler is
+the only remaining variable** — which places it on the critical path of the chip's delivered value
+while it is, in nearly every organisation, funded as a support function for the hardware.
+
+Those two facts interact badly, and the interaction is the subject of this module. The workload will
+drift: it has drifted every three to five years for a decade, from dense convolution to residual
+networks to transformers to mixtures of experts and long-context attention, and each transition
+changed the dominant shape enough to invalidate specialisations built for the previous one. What
+survives a drift is the part of the design that was *soft*. A capacity is a bet; a bandwidth is a bet;
+an array dimension is a bet; a dataflow cast in RTL is the largest bet of all. A tile size, a fusion
+group, a schedule, a parallelism strategy — none of those are bets, because they can be re-decided
+after you know the answer. Which yields the design rule this whole series has been assembling: **fix
+the numbers, keep the mapping soft.** Commit to the resources; refuse to commit to how work is
+assigned to them.
+
+The honest closing position is that codesign is only partly a technical discipline. The technical part
+— the three resources, the four mapping decisions, the cost models — is well understood and this
+series has covered it. The part that determines outcomes is organisational: whether information flows
+from the workload back to the architecture at all, whether the compiler is treated as a deliverable or
+an afterthought, and whether the people choosing the model architecture have any reason to care about
+the array. Google's TPU works not primarily because the systolic array is a good idea but because
+Google owns the model, the framework, the compiler and the datacentre, so the loop closes inside one
+organisation. A vendor selling silicon to customers who own their own models is attempting the same
+loop across a boundary that information does not cross, and no amount of architectural cleverness
+compensates for that.
+
+<Callout type="bridge" title="the same closing argument, from the other end">
+  ML Hardware Module 12 ended on the claim that latency is a constraint to satisfy rather than a
+  quantity to maximise, and that winning teams are the ones fast *enough* who can redeploy quickest.
+  This is the same claim about efficiency: past the point where you are efficient enough to be
+  competitive, further efficiency bought by removing flexibility is negative value, because the
+  workload will move and the ability to follow it is worth more than the last 20%.
+</Callout>
+
+## The design space, quantified
+
+The timeline, and what is knowable when:
+
+| Phase                     | Duration | Workload knowledge | What is still soft   |
+| ------------------------- | -------- | ------------------ | -------------------- |
+| Workload characterisation | 3–6 mo   | today's models     | everything           |
+| Mapping study / DSE       | 3–6 mo   | today's, projected | all architecture     |
+| Architecture freeze       | —        | **a prediction**   | RTL details, compiler |
+| RTL + verification        | 12–18 mo | drifting           | compiler             |
+| Tape-out → silicon        | 6–9 mo   | drifted            | compiler             |
+| Bring-up + compiler       | 6–18 mo  | **actual**         | compiler only        |
+| Production life           | 2–4 yr   | actual, still moving | compiler only      |
+
+Between the freeze and production is typically **2.5–4 years**, during which the only adaptive element
+is software.
+
+What workload drift has cost, historically:
+
+| Transition        | Roughly when | What it invalidated                     |
+| ----------------- | ------------ | --------------------------------------- |
+| Dense conv → residual/depthwise | 2016–18 | designs tuned for large dense conv reuse |
+| Conv → transformer | 2018–21     | convolution-specific dataflows (row-stationary) |
+| Dense → MoE       | 2022–25      | static shapes, static collectives, high per-expert batch |
+| Short → long context | 2023–26   | KV capacity assumptions, $O(S^2)$ attention mappings |
+| FP16 → FP8 → FP4/block | 2022–26 | fixed-format datapaths without block scaling |
+
+What survived every one of them: deep reductions over dense rectangular tiles, the memory hierarchy,
+and the fact that data movement dominates energy.
+
+Where delivered performance actually goes, which is the number to argue from:
+
+| Term                          | Typical factor | Owner        |
+| ----------------------------- | -------------- | ------------ |
+| Peak (datasheet)              | 1.00           | hardware     |
+| Model optimism / real effects | ÷ 1.3–1.6      | hardware + modelling |
+| Non-GEMM remainder            | ÷ 1.1–1.3      | compiler     |
+| Communication not overlapped  | ÷ 1.1–1.4      | compiler + runtime |
+| Real (non-aligned) shapes     | ÷ 1.05–1.3     | compiler     |
+| Compiler not finding the mapping | ÷ 1.1–1.5   | **compiler** |
+| **Delivered MFU**             | **0.3–0.5**    | —            |
+
+Three of the five loss terms are owned by the compiler. That is the argument for where the marginal
+engineer should go.
+
+## Critical thinking
+
+<Probe q="The architecture is frozen against a prediction. How do you make that bet well?">
+
+By separating the parts of the workload that have been stable for a decade from the parts that have
+moved within one design cycle, and committing only to the first.
+
+**What has been stable since 2012**, and is therefore safe to build into silicon:
+
+- Deep reductions over dense rectangular tiles. Every dominant architecture — conv, transformer, MoE
+  expert — is a GEMM at its core.
+- The memory hierarchy's shape, and the fact that data movement dominates energy. This is physics, not
+  fashion.
+- Reduction depths in the thousands, which is what makes output-stationary accumulation and FP32
+  accumulators the right answers.
+- The need for higher arithmetic intensity every generation, since the beachfront limit is geometric.
+
+**What has moved within a single design cycle**, and must therefore stay soft:
+
+- Batch composition and sequence length. Long context changed KV assumptions in about two years.
+- Sparsity structure. A decade of unstructured-pruning hardware proposals, and the sparsity that
+  matters turned out to be routing.
+- Routing and conditional computation. MoE went from research curiosity to dominant in roughly three
+  years.
+- Numerical format. FP16 to FP8 to block-scaled FP4 inside four years — which is exactly why a
+  datapath with a *parameterised* scale application survived and a fixed-format one did not.
+- The exact operator set. Every new attention variant is an operator nobody had when the chip was
+  designed.
+
+**Concrete tactics that follow:**
+
+- **Parameterise anything cheap to parameterise.** A configurable block-scale size costs almost
+  nothing and covers three format generations. A fixed one covers your guess.
+- **Prefer capacity over specialised structure.** SRAM is useful for whatever arrives; a
+  sparse-operand-matching unit is useful for one thing that may not.
+- **Ask what happens at 5× off-target.** A design that degrades to 60% on an unanticipated shape is a
+  good bet; one that degrades to 5% because the array cannot fill is a bad one at the same expected
+  value, because the downside is unrecoverable and the loss distribution is what matters, not its mean.
+- **Build the escape hatch.** A machine that permits hand-written kernels can be rescued by a
+  motivated user when the compiler falls short. A machine that can only run what its compiler emits
+  cannot. This is worth more than it looks, because the rescues that matter are the ones nobody
+  planned.
+
+And the meta-tactic: **shorten the loop.** Chiplets let you re-spin one die rather than a whole
+design. FPGA and emulation prototypes let the compiler team start eighteen months earlier. A
+programmable rather than fixed-function unit converts a hardware bet into a software one. Every month
+removed from freeze-to-production is a month less drift to predict, and that is a more reliable
+improvement than being better at predicting.
+
+</Probe>
+
+<Probe q="Why is the compiler consistently underfunded relative to its importance?">
+
+Because its contribution is invisible in every artefact the organisation uses to make decisions, and
+because it is structurally positioned as a cost rather than as the product.
+
+The mechanisms, and they are consistent enough across projects to be predictive:
+
+- **The datasheet has no compiler column.** Peak FLOP/s, memory bandwidth and capacity go on the slide.
+  "Achieves 45% MFU on your model" does not, because it depends on the model. So the thing that
+  determines delivered value is invisible in the artefact used to sell, compare and fund the project.
+- **Hardware has an unmissable deadline and software does not.** Tape-out is a date with an enormous
+  cost attached. Compiler maturity is a curve with no cliff, so when schedules compress, the resource
+  that moves is the one without a hard date. Every project does this and every project regrets it in
+  bring-up.
+- **The counterfactual is unobservable.** If the compiler reaches 40% of peak, nobody sees the 65% a
+  better one would have reached. There is no experiment that reveals the gap, so it is never priced.
+  Meanwhile a hardware shortfall is measurable against the datasheet and gets attention immediately.
+- **The specialisation trap.** The more specialised the hardware, the more the compiler must do — and
+  the more novel it must be, so less can be reused from LLVM or MLIR. Effort scales with specialisation
+  in exactly the direction that makes the estimate worst. Teams that budget the compiler by analogy to
+  a GPU backend, on hardware far more static than a GPU, are wrong by a large factor.
+- **The hiring pool is small and the work is invisible.** Compiler engineers who understand
+  accelerators are scarce, and the achievement — "we reached 55% instead of 35%" — is much harder to
+  narrate than a chip.
+
+The numbers make the argument. From the table above, three of the five loss terms between peak and
+delivered MFU are compiler-owned, together worth roughly 1.3–2.5×. A hardware generation buys 1.5–2×.
+So **the compiler gap is the size of a hardware generation, on silicon you already own**, and it is
+available without a tape-out, a new process node, or a two-year wait.
+
+The organisational fix is not subtle, which makes the failure more striking: put the compiler under
+the same leadership as the architecture, staff it comparably, start it before RTL freeze, and — most
+importantly — **make the mapping study and the compiler the same team's work.** The people who chose
+the capacities from a model should be the people who then have to hit those numbers on silicon. When
+those are different teams, the model's optimism is never corrected, because nobody who suffers from it
+had the chance to object.
+
+</Probe>
+
+<Probe q="Give an example of specialisation that aged well and one that aged badly. What distinguishes them?">
+
+**Aged badly: convolution-specific dataflows.** Row-stationary (Module 6) and the wave of
+accelerators built around convolution's sliding-window reuse were correct engineering on the workload
+of 2016. Their entire value came from a reuse structure — overlapping windows — that transformers do
+not have. When the workload moved, the specialisation did not become less valuable, it became
+*worthless*, because the structure it exploited was absent rather than diminished. A comparable fate
+met the unstructured-sparsity accelerators, which bet on a model property that model teams never had
+sufficient reason to deliver.
+
+**Aged well: the systolic array and matrix units generally.** The TPU's MXU bet on deep reductions
+over dense rectangular tiles, which was true of convolution in 2015, true of transformers in 2020, and
+true of MoE experts today. NVIDIA's tensor cores made the same bet at a smaller granularity. Nine
+years later the bet is still paying, and the reason is that it was made on the *loop nest* rather than
+on the model.
+
+The distinguishing question is exactly that: **is the specialisation aimed at the shape of the
+computation, or at a property of the current model family?**
+
+| | Aimed at the loop nest | Aimed at the model family |
+| --- | --- | --- |
+| Examples | matrix units, deep accumulators, HBM, big SRAM | row-stationary, sparse operand matching, fixed-format datapaths |
+| Survives a model transition | yes | no |
+| Why | the loop nest is the same across families | the exploited property is absent, not merely smaller |
+
+Two refinements worth having, because the clean dichotomy is too comfortable:
+
+- **Some model-family bets pay off enormously anyway**, if the family lasts long enough to amortise
+  the chip. Betting on transformers in 2020 was a model-family bet and it was correct for five years,
+  which is longer than a chip's commercial life. The bet is not wrong because it is a bet — it is wrong
+  when its horizon is shorter than your design cycle. That is a checkable condition and most teams
+  never state it.
+- **The failure mode matters more than the probability.** A loop-nest bet that is wrong leaves you
+  with a slower general machine. A model-family bet that is wrong leaves you with silicon that cannot
+  run the workload at all. Given a 2.5–4 year freeze-to-production window and a 3-year historical
+  drift interval, you should be pricing a substantial probability of being wrong and choosing bets
+  whose downside is survivable.
+
+The one-line test: **if the model architecture you designed for stopped existing tomorrow, what
+fraction of your chip would still be useful?** For a matrix unit with a large SRAM, nearly all. For a
+convolution dataflow with a flexible NoC, almost none. Both cost the same to design.
+
+</Probe>
+
+<Probe q="What is the closing thesis of this series?">
+
+**You cannot optimise a mapping onto hardware you did not design, and you cannot design hardware
+without assuming a mapping. They are one problem, and every organisation that treats them as two ships
+a chip whose peak numbers nobody can reach.**
+
+The argument, assembled from the whole series:
+
+The abstraction is three resources — compute, memory, interconnect — each exposing capacity,
+bandwidth, latency, granularity, and the field that makes it codesign: who decides placement (Module
+1). Compute's real interface is the shape of its native operation and the condition under which it
+fills, not its FLOP/s (2). Memory is a ladder whose rungs differ in granularity and in whether the
+hardware or the compiler owns residency (3). The interconnect is the same ladder continued past the
+package, with topology in place of capacity and a hard cliff at a boundary set by geometry rather than
+engineering (4).
+
+The act that binds them is mapping: tiling, permutation, spatial assignment, binding (5). From which
+the central consequence follows — arithmetic intensity is a property of the mapping, not the algorithm
+— and therefore neither side of the interface can be optimised alone. Dataflow is that choice cast in
+metal, and casting it fixes one dimension of the mapspace for the life of the chip (6). Traffic falls
+only as the square root of capacity, so incremental memory is weak and thresholds are everything (7).
+And because a mapping study runs on hardware that does not exist, the cost model's accuracy is the
+chip's accuracy (8).
+
+Then the three things that break it: irregularity, where hardware exploits sparsity only if the
+pattern was shaped to the array (9); precision, the one knob that moves all three resources, whose
+block size must divide the array's K-tile (10); and scale, where parallelism turns out to be the same
+four decisions with the network as the memory level (11). Attention demonstrates all of it at once —
+FlashAttention as a re-binding, prefill and decode as opposite points with identical mathematics, and
+GQA as the model bending to a memory constraint (12). And the architectures differ mainly in who
+absorbs uncertainty at runtime, with the GPU winning not on efficiency but on never falling off a
+cliff (13).
+
+Which leaves the practical conclusions, in the order I would act on them:
+
+1. **Find the binding resource before optimising anything**, and expect the answer to be unglamorous —
+   an allocator, a shape, a collective.
+2. **Fix the numbers, keep the mapping soft.** Commit resources; refuse to commit how work is assigned
+   to them.
+3. **Budget the compiler as the primary deliverable.** Three of the five loss terms between peak and
+   delivered performance belong to it, worth a hardware generation, available without a tape-out.
+4. **Prefer designs that degrade over designs that cliff**, because the workload will move and the
+   loss distribution matters more than its mean.
+5. **Close the loop organisationally**, or accept that you are doing half of codesign. The information
+   has to flow from the workload back to the architecture, and it does not cross a company boundary.
+
+And the caveat I would keep attached to all of it: this framework is a good description of dense
+tensor computation on the hardware of the last decade, which is precisely the regime where the
+assumptions hold. The workloads currently straining it — data-dependent routing, dynamic shapes,
+irregular sparsity, agentic and heterogeneous inference — are straining the *framework*, not just the
+hardware, because they break the static analysability everything here rests on. If that continues,
+what changes is not the answers in this series but the questions, and the next version of this
+argument will be about how to reason when the mapping itself is a runtime value.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="What are the two structural facts about the codesign loop?">
+
+The architecture is **frozen against a prediction** of a workload 2.5–4 years out, using a cost model
+that cannot be validated until after the commitment. And once silicon is fixed, **the compiler is the
+only remaining variable** — putting it on the critical path of delivered value while it is funded as a
+support function. The workload has drifted every 3–5 years for a decade, which is shorter than the
+freeze-to-production window.
+
+</SelfCheck>
+
+<SelfCheck q="What is safe to build into silicon, and what must stay soft?">
+
+**Safe** (stable since 2012): deep reductions over dense rectangular tiles, the memory hierarchy's
+shape, data movement dominating energy, reduction depths in the thousands, and rising required
+arithmetic intensity. **Soft** (moved within one design cycle): batch composition and sequence length,
+sparsity structure, routing and conditional computation, numerical format, and the exact operator set.
+Tactics: parameterise what is cheap to parameterise, prefer capacity over specialised structure, ask
+what happens at 5× off-target, build a hand-written-kernel escape hatch, and above all **shorten the
+loop**.
+
+</SelfCheck>
+
+<SelfCheck q="Why is the compiler underfunded, and what is the size of the gap?">
+
+The datasheet has no compiler column, so its contribution is invisible in the artefact used to fund
+and compare; tape-out is a hard date and compiler maturity is not, so schedule pressure always moves
+the latter; the counterfactual is unobservable, so the gap is never priced; and effort scales with
+specialisation in exactly the direction that makes estimates worst. Size: three of the five loss terms
+between peak and delivered MFU are compiler-owned, worth roughly **1.3–2.5×** — a hardware generation,
+on silicon you already own. Fix: same leadership as architecture, comparable staffing, started before
+RTL freeze, and the mapping study and compiler done by the same team so the model's optimism gets
+corrected by the people who have to hit it.
+
+</SelfCheck>
+
+<SelfCheck q="What distinguishes specialisation that ages well from specialisation that does not?">
+
+Whether it targets **the shape of the computation** or **a property of the current model family**.
+Matrix units, deep accumulators, HBM and large SRAM bet on the loop nest and are still paying nine
+years later. Row-stationary and sparse operand matching bet on convolution's sliding windows and on
+unstructured pruning, and when the workload moved those properties were absent rather than diminished.
+Two refinements: a model-family bet is fine if the family's horizon exceeds your design cycle — a
+checkable condition most teams never state — and the failure modes differ, since a wrong loop-nest bet
+leaves a slower general machine while a wrong family bet leaves silicon that cannot run the workload.
+Test: if your target model architecture vanished tomorrow, what fraction of the chip is still useful?
+
+</SelfCheck>
+
+<SelfCheck q="State the series' closing thesis and the five practical conclusions.">
+
+**You cannot optimise a mapping onto hardware you did not design, and you cannot design hardware
+without assuming a mapping; they are one problem, and treating them as two ships a chip whose peak
+numbers nobody can reach.** In order: find the binding resource before optimising and expect an
+unglamorous answer; fix the numbers and keep the mapping soft; budget the compiler as the primary
+deliverable; prefer designs that degrade over designs that cliff; and close the loop organisationally,
+since the information does not cross a company boundary. Caveat: the framework describes *statically
+analysable dense tensor computation*, and data-dependent routing and dynamic shapes strain the
+framework itself, not merely the hardware.
+
+</SelfCheck>

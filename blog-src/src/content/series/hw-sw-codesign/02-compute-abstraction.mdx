@@ -1,0 +1,299 @@
+---
+n: 2
+title: 'Compute: the shape of the multiply'
+blurb: 'Peak FLOP/s is the least useful number about a compute unit. What matters is the native operation shape, the granularity at which it must be fed, and the two independent ways utilization dies.'
+part: 'O'
+minutes: 17
+draft: false
+tags: ['tensor core', 'systolic array', 'MXU', 'SIMT', 'utilization', 'occupancy', 'MFU', 'quantization', 'operand shape']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+Peak FLOP/s tells you almost nothing, because it is the product of two things you cannot separate
+from it: how many multipliers exist, and the *shape* in which they insist on being fed. The second is
+the real interface. An H100 tensor core does not execute "a multiply"; its native instruction is a
+`m16n8k16` matrix operation, meaning a 16×8 output tile accumulating over 16 elements of reduction,
+issued warp-wide. A TPU MXU does not execute a multiply either; it executes a `[8,128] @ [128,128]`
+step through a 128×128 systolic array. These are not implementation details you can abstract over.
+They are the quantum of work, and any computation whose dimensions are not multiples of that quantum
+is padded to it and pays for the padding. **The shape of the native operation is the compute
+abstraction; the FLOP/s number is a consequence of it.**
+
+That shape sets a minimum problem size below which the machine is structurally idle, and the minimum
+gets larger every generation. A 128×128 systolic array needs 128 rows of reduction and 128 columns of
+output to be full; feed it a GEMV — one column — and 127/128 of the array does nothing regardless of
+how good your memory system is. Move to v6e's 256×256 array and the same GEMV wastes 255/256. This is
+why the batch-of-one regime is so punishing on large arrays, why decode is a different machine from
+prefill on the same silicon, and why "our accelerator does 900 TFLOP/s" and "our accelerator is fast
+at your workload" are close to unrelated claims. The relevant question about a compute unit is not
+its rate but its **shape and its filling condition**.
+
+There is a second, independent way to lose. Utilization dies from *shape mismatch* — your problem
+does not fill the array — and from *feed starvation* — the memory system cannot deliver operands fast
+enough to keep it busy. These are constantly conflated and they have opposite fixes. Shape mismatch
+is repaired by changing the problem or the mapping's spatial assignment: batch more, fuse, pick
+different loop dimensions to unroll across the array. Starvation is repaired by improving reuse: tile
+so operands are fetched once and used many times. Diagnosing which one you have is the first thing to
+do with any disappointing number, and the diagnostic is simple — compute your achieved arithmetic
+intensity and compare it to the machine's ridge point. Below the ridge you are starved; at or above
+it and still slow, you are shape-mismatched, and no amount of memory work will help.
+
+<Callout type="trap" title="occupancy is utilization">
+  On a GPU these are different quantities and improving one can worsen the other. Occupancy is the
+  fraction of the scheduler's warp slots that are resident — a *latency-hiding* metric. Utilization
+  is the fraction of peak arithmetic you achieve. High occupancy with low utilization is the normal
+  state of a memory-bound kernel. And the usual way to raise arithmetic intensity is a larger tile,
+  which consumes more registers and shared memory per thread block and therefore *lowers* occupancy.
+  Chasing occupancy as a proxy for speed will walk you directly away from the tile size you want.
+</Callout>
+
+## The design space, quantified
+
+The native operation shape, which is the number to actually know:
+
+| Unit                        | Native operation                | Fills when                        |
+| --------------------------- | ------------------------------- | --------------------------------- |
+| Scalar FMA                  | 1 MAC                           | always                            |
+| SIMD lane group (AVX-512)   | 16 × FP32 MAC                   | vector length ≥ 16                |
+| CUDA core warp              | 32 × FP32 FMA                   | ≥ 32 independent elements         |
+| Tensor core (Ampere→Hopper) | `m16n8k16` per warp             | M, N, K multiples of 16, 8, 16    |
+| TPU v4/v5 MXU               | `[8,128] @ [128,128]`           | K = 128, N = 128 multiples        |
+| TPU v6e MXU                 | 256 × 256 systolic              | K = 256, N = 256 multiples        |
+
+Per-chip peaks, to keep the ratios honest — dense, no sparsity multiplier:
+
+| Chip     | BF16 dense | FP8 dense | HBM BW   | Ridge point (BF16) |
+| -------- | ---------- | --------- | -------- | ------------------ |
+| H100 SXM | 989 TFLOP/s | ~2 PFLOP/s | 3.35 TB/s | ~295 FLOP/byte     |
+| B200     | ~2.25 PFLOP/s | ~4.5 PFLOP/s | 8 TB/s | ~280 FLOP/byte     |
+| TPU v5e  | 197 TFLOP/s | —        | 0.82 TB/s | ~240 FLOP/byte     |
+| TPU v5p  | 459 TFLOP/s | —        | 2.8 TB/s | ~164 FLOP/byte     |
+| TPU v6e  | 920 TFLOP/s | —        | 1.6 TB/s | ~575 FLOP/byte     |
+
+The ridge points are the thing to carry: you need on the order of **200–600 FLOP per byte of HBM
+traffic** to reach peak on any modern part, and the number has been rising, because compute scales
+faster than bandwidth. That single trend is what drives the rest of the series.
+
+What precision buys on the compute axis, and what it costs elsewhere:
+
+| Format | Relative MAC energy | Throughput vs BF16 | Bytes/value |
+| ------ | ------------------- | ------------------ | ----------- |
+| FP32   | ~23×                | 0.5×               | 4           |
+| BF16   | ~8×                 | 1×                 | 2           |
+| FP8    | ~2×                 | 2×                 | 1           |
+| FP4    | ~1×                 | 4×                 | 0.5         |
+| INT8   | 1×                  | 2×                 | 1           |
+
+## Critical thinking
+
+<Probe q="Why does a 128×128 systolic array make a different trade than a warp of tensor cores?">
+
+They are two answers to "how do I amortise the cost of *controlling* a multiplier", and they amortise
+different things.
+
+**The systolic array amortises control and operand movement spatially.** Weights are loaded into the
+PE grid and stay there; activations flow in from one edge and partial sums flow out the other, with
+each PE passing values to its neighbour. One control decision covers 16,384 multipliers, and — the
+part people miss — an operand fetched once from SRAM is used by an entire row or column of PEs
+through nearest-neighbour wires that are a few microns long. That is why the TPU's energy per MAC is
+excellent: it has almost no instruction overhead and almost no long-wire operand traffic. The cost is
+rigidity. The array has one dataflow, cast in RTL, and the shape it wants is the shape you must
+provide.
+
+**The tensor core amortises less, and keeps flexibility.** It is a matrix unit sitting inside a SIMT
+core, fed from the register file, issued as an instruction by a warp scheduler. The operand shape is
+much smaller (`m16n8k16` versus 128×128), so the problem sizes that fill it are far smaller, and the
+surrounding machinery — predication, dynamic scheduling, address generation, a general memory
+hierarchy — means anything you can express in CUDA still runs. You pay for that in register file
+bandwidth, which becomes the real constraint (a tensor core operation reads its operands from the RF
+every time, rather than from a neighbour), and in instruction issue, which is why Hopper added
+warp-group-level operations and asynchronous copies to cut the per-operation overhead.
+
+Concretely, the trade is:
+
+| | Systolic array | Tensor core in SIMT |
+| --- | --- | --- |
+| Operand reuse | spatial, PE-to-PE, ~free | via register file and SMEM |
+| Control per MAC | amortised over ~16 K | amortised over ~256 |
+| Fills at | large, aligned shapes | small, aligned shapes |
+| Behaviour off the sweet spot | falls off a cliff | degrades |
+| Dataflow | fixed in RTL | chosen by the kernel |
+
+The interesting convergence is that both sides have been moving toward the middle. NVIDIA keeps
+enlarging the effective operation (warp-group MMA, tensor memory accelerator, distributed shared
+memory across an SM cluster) because the systolic-style amortisation is genuinely more efficient, and
+TPUs keep adding vector units and scalar cores beside the MXU because pure systolic cannot express
+everything a real model needs. Nobody thinks the endpoints are right.
+
+</Probe>
+
+<Probe q="Two kernels each hit 30% of peak. One is shape-mismatched, one is starved. How do you tell, and what do you do?">
+
+Compute achieved arithmetic intensity and compare it against the machine's ridge point. That single
+comparison separates the cases, and it must be *achieved* intensity — actual bytes moved from HBM,
+from a profiler — not the algorithmic ideal.
+
+**Starved** shows up as achieved intensity below the ridge, with measured DRAM bandwidth near peak.
+The machine is doing exactly what it should; you asked for too many bytes per FLOP. The fixes are all
+mapping fixes: tile larger so operands are reused more before eviction, fuse adjacent operations so
+intermediates never reach HBM, change layout so accesses coalesce into full bursts, or reduce bytes
+with a smaller dtype. Buying a chip with more FLOPs does nothing whatsoever.
+
+**Shape-mismatched** shows up as intensity comfortably above the ridge with memory bandwidth mostly
+idle — the operands are there, and the arithmetic units are still not full. Now look at the tile
+dimensions against the native operation shape. The usual culprits are a small dimension (a GEMM with
+N = 3 on a unit that wants multiples of 8 or 128), a K dimension shorter than the array's reduction
+depth, or a batch too small to fill the spatial assignment. The fixes are structural: batch more
+requests, pad and accept the waste, choose a *different loop dimension* to map across the array, or
+fuse several small operations into one large one (which is exactly what grouped and batched GEMM APIs
+exist to do).
+
+Two refinements worth having, because the clean dichotomy fails in real profiles:
+
+- **Latency-bound is a third state** and it looks like both. Neither compute nor bandwidth is
+  saturated, because there is not enough work in flight to cover memory latency. The fix is more
+  parallelism or deeper prefetching — more warps, deeper software pipelining, asynchronous copies —
+  not tiling and not batching.
+- **They interact.** Raising intensity means bigger tiles; bigger tiles consume registers and shared
+  memory; that can reduce the number of concurrent thread blocks below what is needed to hide
+  latency, converting a starved kernel into a latency-bound one. This is why tile-size tuning has a
+  sweet spot rather than a monotone direction, and it is the practical reason Module 8's search
+  exists at all.
+
+</Probe>
+
+<Probe q="Quantization gives 2× the FLOP/s. Why is the end-to-end speedup usually more than 2× — and sometimes far less?">
+
+Because precision is the one knob that moves all three resources simultaneously, and because the
+overheads it introduces are not on the same axis as the gains.
+
+**Why more than 2×.** Halving the bit width halves memory footprint and halves the bytes moved at
+every level of the hierarchy — HBM traffic, cache pressure, interconnect payload — at the same time
+as it doubles arithmetic throughput. For a memory-bound kernel the FLOP/s doubling is irrelevant and
+the traffic halving gives you the full 2× on its own. For a compute-bound kernel you get the
+arithmetic doubling *and* an improved ridge-point position. And there are second-order wins that are
+often the largest ones in practice: a model that now fits in HBM instead of spilling, a KV cache that
+fits so batch size doubles, or weights that fit in SRAM entirely, which is a change of memory level
+rather than a change of degree.
+
+**Why sometimes far less.** The gains are only realised if the format is native to the compute unit
+and the whole pipeline stays in it. The failure modes:
+
+- **Emulated formats.** INT4 weights dequantized to BF16 before a BF16 tensor core sees them buys you
+  memory traffic and *nothing* on compute — often the right trade for decode, but not a 2× on FLOPs.
+- **Conversion overhead.** Pack, unpack and scale application are real vector work. On a kernel that
+  was already memory-bound this is free (it hides), and on a compute-bound one it eats the gain.
+- **Accumulation is not quantized.** You multiply in FP8 and accumulate in FP32, so the accumulator
+  traffic and the register pressure are unchanged. Speedups on the multiply do not extend to the
+  reduction.
+- **Everything else in the model.** Amdahl again: quantize the GEMMs and the softmax, layer norms,
+  activations and elementwise ops are untouched. In a transformer these are a small share of FLOPs
+  and a large share of *memory traffic*, so they cheerfully become the new bottleneck.
+
+The general form, which is worth carrying into Module 10: a precision change is not "a speedup", it
+is a simultaneous move on three axes with a fourth axis — accuracy — as the cost. Whether it pays
+depends entirely on which resource you were bound by before you made it, and the same change is a
+4× win in decode and a rounding error in prefill.
+
+</Probe>
+
+<Probe q="Why is peak FLOP/s still the headline number if it is this uninformative?">
+
+Because it is the only number that is comparable across vendors without disclosing anything, and
+because the alternatives are all workload-dependent in ways that make them arguable.
+
+There is no honest way to compare an H100 and a TPU v5p on "effective throughput" without agreeing on
+a model, a batch size, a parallelism strategy, a software stack and a measurement methodology — and
+every one of those is a place where the benchmark can be shaped. Peak FLOP/s is arithmetic on a
+datasheet: multipliers × clock × operations per multiplier. It cannot be gamed except by counting
+things that should not be counted, which is exactly what happens.
+
+The standard distortions, worth being able to spot instantly:
+
+- **Sparsity multipliers.** Quoting the 2:4 structured-sparse rate as if it were the dense rate
+  doubles the number for a feature most workloads do not use (Module 9). The H100's "1979 TFLOP/s"
+  is this — the dense BF16 figure is 989.
+- **Lowest-precision quoting.** Advertising the FP4 rate against a competitor's BF16 rate is a 4×
+  free lunch on a slide.
+- **Boost clocks** that no sustained workload holds under power and thermal limits.
+
+The metric that actually replaced it inside serious teams is **MFU** — model FLOP/s utilization —
+achieved useful FLOP/s over peak, on your real model. It is honest because it prices in shape
+mismatch, starvation, communication stalls and pipeline bubbles all at once, and the numbers are
+sobering: large-scale LLM training typically lands in the 35–50% range, and decode-heavy inference
+frequently sits in the single digits, because decode is structurally memory-bound and no amount of
+compute helps.
+
+Which is the argument for the whole series in one number. If a well-engineered system reaches 40% of
+peak, then the *mapping* is worth more than the remaining 60% of a hardware generation — and it is
+also why a vendor's peak and your throughput can move in opposite directions across a generation, as
+larger arrays raise the peak while making the filling condition harder to meet.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="What is the compute abstraction, if it is not FLOP/s?">
+
+The **native operation shape** and the granularity at which it must be fed: `m16n8k16` per warp for a
+tensor core, `[8,128] @ [128,128]` for a TPU MXU, 256×256 for v6e. It is the quantum of work — any
+dimension not a multiple of it is padded and paid for. FLOP/s is a consequence of the shape and the
+clock, and it does not tell you the filling condition, which is what actually determines whether your
+problem runs fast.
+
+</SelfCheck>
+
+<SelfCheck q="Name the two independent ways utilization dies, and the one-step diagnostic.">
+
+**Shape mismatch** (the problem does not fill the array) and **feed starvation** (memory cannot
+deliver operands fast enough). Diagnostic: compute achieved arithmetic intensity and compare to the
+ridge point. Below the ridge with DRAM near peak → starved, fix with tiling, fusion, layout,
+smaller dtype. Above the ridge with memory idle → shape-mismatched, fix by batching, padding, or
+changing which loop dimension is mapped spatially. A third state, latency-bound, shows neither
+saturated and needs more work in flight.
+
+</SelfCheck>
+
+<SelfCheck q="Roughly what arithmetic intensity does a modern accelerator need, and which way is it moving?">
+
+**200–600 FLOP per byte** of HBM traffic, and rising, because compute per chip is scaling faster than
+memory bandwidth. H100 is around 295 FLOP/byte in BF16, TPU v6e around 575. The rising ridge point is
+the structural reason tiles keep getting bigger, precision keeps getting lower, and mapping keeps
+getting harder.
+
+</SelfCheck>
+
+<SelfCheck q="Why is occupancy not a proxy for utilization?">
+
+Occupancy is resident warp slots — a latency-hiding metric. Utilization is achieved fraction of peak
+arithmetic. A memory-bound kernel routinely has high occupancy and low utilization, and the standard
+way to raise arithmetic intensity — a larger tile — consumes more registers and shared memory and
+therefore *reduces* occupancy. Optimising for occupancy walks you away from the tile size you want.
+
+</SelfCheck>
+
+<SelfCheck q="Give the systolic array versus tensor core trade in one sentence each.">
+
+The **systolic array** amortises control over ~16 K multipliers and moves operands PE-to-PE over
+micron-scale wires, which is why its energy per MAC is excellent — and it has one dataflow fixed in
+RTL and falls off a cliff on shapes that do not fill it. The **tensor core** amortises over ~256,
+fed from the register file inside a SIMT core, so it fills at much smaller shapes and degrades rather
+than cliffs — paying in register-file bandwidth and instruction issue.
+
+</SelfCheck>
+
+<SelfCheck q="Why can a quantization that doubles FLOP/s deliver more than 2×, and when does it deliver almost nothing?">
+
+More than 2× because it halves bytes at every level *and* doubles arithmetic, and because crossing a
+capacity threshold — model fits in HBM, KV cache fits so batch doubles, weights fit in SRAM — is a
+change of memory level rather than of degree. Almost nothing when the format is emulated (INT4
+dequantized to BF16 before a BF16 unit), when pack/unpack overhead eats a compute-bound kernel, when
+accumulation stays FP32 so the reduction is unchanged, or when the un-quantized remainder — softmax,
+norms, elementwise — becomes the bottleneck.
+
+</SelfCheck>

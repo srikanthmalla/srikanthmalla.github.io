@@ -1,0 +1,321 @@
+---
+n: 7
+title: 'Tiling the hierarchy'
+blurb: 'The one closed form worth memorizing: traffic falls as the square root of capacity, so doubling SRAM buys 1.41×. Multi-level tiling, double buffering as capacity spent on latency, and why the levels cannot be tiled independently.'
+part: 'P'
+minutes: 18
+draft: false
+tags: ['tiling', 'blocking', 'double buffering', 'prefetch', 'working set', 'capacity', 'TMA', 'cp.async', 'software pipelining', 'fusion']
+---
+
+import Callout from '../../../components/Callout.astro';
+import Probe from '../../../components/Probe.astro';
+import SelfCheck from '../../../components/SelfCheck.astro';
+
+## The core mental model
+
+Tiling is the act of cutting the iteration space so that a working set fits in a level of the
+hierarchy and gets reused before it is evicted. There is exactly one quantitative result you need
+from it, and it is worth deriving because almost every capacity decision in ML systems follows from
+it. Consider a GEMM tiled with square tiles of side $T$ at a level of capacity $C$. You need three
+tiles resident — one each of $A$, $B$ and $C$ — so $3T^2 \le C$, giving $T = \sqrt{C/3}$. The total
+traffic through that level is $\Theta(N^3/T)$, since each of the $(N/T)^3$ tile-triples reads two
+$T \times T$ tiles. Substituting:
+
+$$\text{traffic} = \Theta\!\left(\frac{N^3}{\sqrt{C}}\right)$$
+
+**Traffic falls as the square root of capacity.** Double the SRAM and traffic drops by
+$\sqrt{2} \approx 1.41\times$, not $2\times$. Quadruple it for a factor of two. This is the single
+most useful closed form in the series and it explains an enormous amount: why on-die memory has to
+grow so aggressively to make a modest difference, why crossing a *threshold* where the whole working
+set fits is worth far more than any incremental capacity increase, and why the answer to "we are
+bandwidth-bound, add cache" is usually disappointing.
+
+The second idea is that tiling happens at every level simultaneously, with a factor per loop per
+level, and the levels are **coupled**. The tile chosen for L2 must decompose into tiles that fit
+shared memory, which must decompose into fragments that fit the register file and match the native
+operation shape from Module 2. Choosing them greedily from the outside in gives bad answers, because
+the best L2 tile is often one that does not factor cleanly into good SMEM tiles. This coupling is
+what makes the mapspace non-separable and is the main reason Module 8's search cannot be decomposed
+into independent per-level subproblems.
+
+The third is that not all capacity is spent on reuse. **Double buffering** spends it on latency
+instead: to overlap the load of tile $i+1$ with the compute of tile $i$, both must be resident, so
+your effective capacity for reuse purposes is halved — and by the square-root law, halving capacity
+costs $\sqrt 2$ in traffic. That is the price, and it is almost always worth paying, because without
+overlap you serialise a 400 ns HBM latency against your compute and lose far more than 41%. The
+hardware side of this is `cp.async` on Ampere and TMA on Hopper: machinery whose entire purpose is to
+make the compiler's explicit double-buffered schedule cheap to issue.
+
+<Callout type="trap" title="“more cache will fix our bandwidth problem”">
+  By the square-root law it will fix $\sqrt 2$ of it per doubling, and only if the working set was
+  being thrashed rather than streamed. For a truly streaming access pattern — each byte used once —
+  capacity does nothing at all, because there is no reuse to capture. Before spending capacity, check
+  whether the traffic is *compulsory* (data touched once) or *capacity* (data touched many times but
+  evicted between uses). Only the second responds to more memory.
+</Callout>
+
+## The design space, quantified
+
+The square-root law, made concrete for FP16 GEMM tiles at real capacities:
+
+| Level                     | Capacity | Tile side, sqrt(C/3) | Intensity, ~T/2 FLOP/B |
+| ------------------------- | -------- | -------------------- | ---------------------- |
+| Registers (per warp)      | ~16 KB   | ~52                  | ~26                    |
+| Shared memory (per SM)    | 228 KB   | ~195                 | ~98                    |
+| L2 (H100)                 | 50 MB    | ~2900                | ~1450                  |
+| TPU v5e VMEM              | 128 MiB  | ~4670                | ~2335                  |
+
+Read against Module 2's ridge point of ~295 FLOP/byte for an H100: a tile that lives only in shared
+memory gets you to ~98, which is *below* the ridge — you are memory-bound. It is the L2 tile that
+carries you past it. This is why multi-level tiling is mandatory rather than an optimisation, and
+why single-level reasoning about GEMM performance always gives the wrong answer.
+
+What doubling capacity actually buys:
+
+| Capacity change | Traffic reduction | Interpretation           |
+| --------------- | ----------------- | ------------------------ |
+| 2×              | 1.41×             | modest                   |
+| 4×              | 2×                | one bandwidth generation |
+| 16×             | 4×                | a redesign               |
+| Working set fits entirely | $O(N^3/T) \to O(N^2)$ | **the only large win** |
+
+Double buffering, priced:
+
+| Scheme            | Capacity for reuse | Traffic cost | Latency hidden |
+| ----------------- | ------------------ | ------------ | -------------- |
+| Single buffer     | $C$                | 1×           | none           |
+| Double buffer     | $C/2$              | 1.41×        | one stage      |
+| Triple buffer     | $C/3$              | 1.73×        | two stages     |
+
+Hardware for making the schedule cheap:
+
+| Mechanism              | Generation | What it does                             |
+| ---------------------- | ---------- | ---------------------------------------- |
+| `cp.async`             | Ampere     | global → shared without a register round trip |
+| TMA                    | Hopper     | bulk tile copy with hardware address generation |
+| DMA + VMEM             | TPU        | compiler-scheduled transfers, no cache at all |
+
+## Critical thinking
+
+<Probe q="Derive the square-root law and state exactly when it fails.">
+
+**The derivation.** Tile a GEMM $C[N,N] = A[N,N] \times B[N,N]$ with square tiles of side $T$ at a
+level of capacity $C_{\text{cap}}$ (in elements). Three tiles resident gives $3T^2 \le C_{\text{cap}}$,
+so $T = \sqrt{C_{\text{cap}}/3}$. The tiled loop nest runs over $(N/T)^3$ tile-triples, each reading
+one $A$ tile and one $B$ tile of $T^2$ elements. Total traffic:
+
+$$\text{traffic} = 2 T^2 \left(\frac{N}{T}\right)^3 = \frac{2N^3}{T} = \frac{2N^3\sqrt3}{\sqrt{C_{\text{cap}}}}$$
+
+Arithmetic is $2N^3$, so intensity is $\Theta(\sqrt{C_{\text{cap}}})$. This is not merely a good
+strategy — it is asymptotically optimal, matching the Hong–Kung I/O lower bound for matrix multiply,
+so no cleverer schedule beats it by more than a constant.
+
+**Where it fails, and each failure is diagnostically useful:**
+
+- **Non-square shapes.** For a tall-skinny or GEMV shape, the optimal tile is not square and the
+  binding constraint is a single dimension rather than the area. A GEMV has no reuse of the vector at
+  all: traffic is $\Theta(N^2)$ regardless of capacity, and *no amount of memory helps*. This is
+  exactly the decode regime in Module 12, and it is why decode is memory-bound as a matter of
+  structure rather than of tuning.
+- **Streaming, compulsory traffic.** If each byte is used once — elementwise ops, layer norm, most of
+  the non-GEMM surface of a transformer — there is no reuse to capture and capacity is irrelevant.
+  The fix for these is *fusion*, which creates reuse where none existed by keeping the intermediate
+  in registers, rather than tiling, which captures reuse that was already there. Distinguishing the
+  two is the most common diagnostic error in kernel work.
+- **The threshold regime.** When $C_{\text{cap}}$ grows enough that the entire working set fits,
+  traffic collapses from $\Theta(N^3/\sqrt C)$ to $\Theta(N^2)$ — a discontinuity the asymptotic law
+  does not describe. All the large capacity wins in practice are thresholds: weights fit in SRAM, the
+  KV block fits, the model fits on the wafer. This is why Groq and Cerebras are not making a
+  square-root argument, they are making a threshold argument.
+- **Multi-level interaction.** The law is per level. With three levels the effective traffic at DRAM
+  depends on the L2 tile, whose reuse depends on the SMEM tile, and the composition is not a simple
+  product.
+
+The practical version to carry: **if you are in the continuous regime, capacity is a weak lever and
+bandwidth is a strong one; if a threshold is reachable, capacity is overwhelmingly the strongest
+lever available.** Knowing which regime you are in is the whole decision, and it is the same
+conclusion Module 3 reached from the hardware side.
+
+</Probe>
+
+<Probe q="Why can the levels not be tiled independently, greedily from the outside in?">
+
+Because the choice at each level constrains the *factorisations* available below it, and a locally
+optimal choice frequently has no good factorisation.
+
+Concretely. Suppose the L2-optimal tile is $2900 \times 2900$ by the square-root law. That tile must
+now be decomposed into shared-memory tiles. If 2900 factors badly against the SMEM tile size you
+want, and against the 16/8/16 alignment the tensor core demands, you will either pad — wasting
+compute and capacity — or pick a tile size that fits the factorisation but is smaller than optimal.
+Meanwhile a tile of 2816 ($= 128 \times 22$) may cost 3% more DRAM traffic and factor perfectly all
+the way down, winning overall. Greedy from the top never finds it, because at the moment it chose,
+2900 looked strictly better.
+
+The couplings, all of which run *upward* against a top-down search:
+
+- **Divisibility.** Every level's tile must be an integer multiple of the level below, terminating at
+  the native operation shape. Divisibility is a global constraint on the whole factorisation, not a
+  local one.
+- **Capacity is shared between purposes.** Shared memory holds the reuse tile *and* the double-buffer
+  stage *and* any scratch for a fused epilogue. Deciding the reuse tile without knowing how many
+  pipeline stages you need over-commits.
+- **Occupancy feedback.** A larger SMEM tile reduces the number of concurrent thread blocks per SM,
+  which reduces latency hiding, which changes whether the outer tile's traffic was actually the
+  binding constraint. The objective is not even monotone in tile size.
+- **Permutation interacts with tiling** (Module 5). Which tensor you keep resident changes which tile
+  dimension you want largest, and that decision differs by level — you may want weight-stationary at
+  the SRAM level and output-stationary at the register level, which is a perfectly normal design and
+  which a per-level greedy search will not consider jointly.
+
+What people actually do about it:
+
+- **Search jointly over a restricted space.** Enumerate factorisations of each loop extent, take the
+  cross product across levels, prune by capacity and divisibility, and evaluate. This is Timeloop's
+  structure and it is why the mapspace is expressed as factorisations rather than as free integers.
+- **Fix the bottom and search upward.** The innermost fragment is forced by the hardware anyway, so
+  fix it, then search the levels above with divisibility guaranteed by construction. This is what
+  CUTLASS-style templates encode: a small set of tile hierarchies known to compose.
+- **Autotune the whole configuration as one point.** Triton's `@autotune` over the block sizes
+  `BLOCK_M`, `BLOCK_N` and `BLOCK_K` together with `num_stages` and `num_warps` is exactly this —
+  those five numbers *are* a multi-level tiling plus a double-buffer depth plus a spatial
+  assignment, searched jointly because they cannot be searched separately.
+
+</Probe>
+
+<Probe q="Double buffering costs 41% more traffic. Show why it is still worth it.">
+
+Because it converts a serial sum into a maximum, and the term it removes is usually larger than 41%
+of the term it grows.
+
+Without overlap, the time for a tile is $T_{\text{load}} + T_{\text{compute}}$. With double
+buffering, it is $\max(T_{\text{load}}, T_{\text{compute}})$ — the load of the next tile happens
+underneath the compute of the current one. The saving is the smaller of the two terms, entirely.
+
+Put numbers on it. Take a shared-memory tile of 128 KB on an H100. Loading it from HBM at 3.35 TB/s
+takes about 38 ns of bandwidth time, plus roughly 400 ns of latency before the first byte arrives.
+Computing on it at a few hundred FLOP per byte takes on the order of a microsecond. Serially, that is
+about 1.4 µs per tile with 400 ns of it pure stall. Overlapped, it is about 1 µs. Now apply the
+double-buffer penalty: halving the reuse capacity raises DRAM traffic by 1.41×, which raises
+$T_{\text{load}}$ from 38 ns to 54 ns — still far under $T_{\text{compute}}$, so it hides completely
+and costs nothing observable.
+
+That is the general shape of the argument: **the $\sqrt2$ penalty applies to a term that overlap has
+already made invisible.** You are trading a quantity that no longer appears in the critical path
+against a stall that does. It only stops being worth it when the load term is *already* larger than
+the compute term — that is, when you are deeply memory-bound — and in that case raising traffic by
+41% raises the thing that dominates. So:
+
+- **Compute-bound tile: always double buffer.** The extra traffic hides; the removed stall does not.
+- **Memory-bound tile: double buffer, but do not deepen it.** One stage of overlap removes the
+  latency stall; further stages just eat capacity and raise the term you are bound by. This is
+  precisely why `num_stages` is tuned rather than maximised, and why the best value is usually 2–4
+  rather than as many as fit.
+- **Latency-bound tile: deepen it.** If neither resource is saturated you have insufficient work in
+  flight, and more stages is the correct response.
+
+Two mechanical notes worth having. The overlap must be *asynchronous* to exist at all — a synchronous
+copy through registers occupies the very units that should be computing, which is why `cp.async` and
+TMA matter: they let the copy proceed without consuming issue slots or registers. And triple
+buffering exists because two stages only hide one latency; when the producer is itself variable, a
+third stage absorbs the jitter, which is the same reasoning as any queueing buffer and connects
+directly to the tail-latency arguments in ML Hardware Module 5.
+
+</Probe>
+
+<Probe q="When is fusion the right tool rather than tiling, and where does it stop?">
+
+Tiling captures reuse that exists; fusion *creates* reuse that did not. The decision is which
+situation you are in, and the diagnostic is whether the traffic is compulsory or capacity.
+
+A chain like `y = layernorm(x); z = gelu(y @ W)` has, unfused, a very specific traffic profile: $x$ is
+read, $y$ is written to HBM, $y$ is read back, the GEMM output is written, read back, and written
+again after the GELU. Each intermediate makes a full round trip through HBM despite being consumed
+immediately by the very next operation. Tiling does nothing about this, because each byte genuinely
+is used once *per kernel* — the reuse does not exist within a kernel to be captured. It exists only
+*across* kernels, and only fusion can reach it.
+
+The value is easy to compute and consistently underestimated: a fused elementwise chain of $k$
+operations reduces traffic by roughly $k\times$, and since elementwise operations are always
+memory-bound, that is a $k\times$ speedup on that segment. In a transformer, the non-GEMM surface —
+norms, activations, residual adds, dropout, softmax epilogues — is a small share of FLOPs and a large
+share of memory traffic, so fusing it is where a surprising fraction of real-world speedup comes
+from, and it is the single largest thing `torch.compile` does.
+
+**Where fusion stops**, and the boundaries are structural rather than a matter of compiler effort:
+
+- **At a reduction whose output is needed in full.** A softmax needs the max and the sum over the
+  whole row before it can produce any output. That is a synchronisation point, and it is why fusing
+  through it requires an *algorithmic* change — the online-softmax trick — rather than a scheduling
+  one. FlashAttention is exactly that change, and it is why it counts as a mapping innovation rather
+  than a fusion win.
+- **At a shape change the producer and consumer disagree on.** Fusing two operations requires a
+  common tiling. If one wants row tiles and the other column tiles, the fused kernel is worse than
+  either.
+- **At register and shared-memory pressure.** Every fused stage holds live values. Fuse too far and
+  you spill, or you shrink the tile below what the GEMM needed, and the square-root law charges you
+  for it. This is the real limit in practice, and it is why compilers cap fusion group size.
+- **At an operation that is already compute-bound.** Fusing an elementwise op onto a GEMM epilogue is
+  nearly free and always right. Fusing two large GEMMs is not fusion, it is a different mapping
+  problem entirely.
+
+The clean statement: **fuse to eliminate compulsory traffic between operations; tile to eliminate
+capacity traffic within one.** They are answers to different questions, and applying the wrong one is
+the most common way a kernel optimisation effort produces nothing.
+
+</Probe>
+
+## Self-check
+
+<SelfCheck q="State and derive the square-root law.">
+
+For a GEMM tiled at a level of capacity $C$, three resident tiles give $T = \sqrt{C/3}$, and traffic
+is $2T^2(N/T)^3 = 2N^3/T = \Theta(N^3/\sqrt C)$. So **traffic falls as the square root of capacity**:
+doubling gives 1.41×, quadrupling gives 2×. It matches the Hong–Kung I/O lower bound, so no schedule
+does asymptotically better.
+
+</SelfCheck>
+
+<SelfCheck q="Name the three regimes where the square-root law does not apply.">
+
+**GEMV and other shapes with no area reuse** — traffic is $\Theta(N^2)$ regardless of capacity, which
+is why decode is structurally memory-bound. **Streaming/compulsory traffic** where each byte is used
+once — capacity is irrelevant and fusion is the fix. **The threshold regime** where the whole working
+set fits and traffic collapses to $\Theta(N^2)$ — a discontinuity the asymptotic law misses, and the
+source of every large capacity win in practice.
+
+</SelfCheck>
+
+<SelfCheck q="Why can't the levels be tiled greedily from the outside in?">
+
+Because each level's tile must factor into integer multiples of the level below, terminating at the
+native operation shape — a global constraint. A locally optimal outer tile may factor badly, so a
+3%-worse outer tile that composes perfectly wins overall. Capacity is also shared between reuse,
+pipeline stages and fused epilogues; larger tiles reduce occupancy and hence latency hiding, so the
+objective is not monotone; and the best permutation can differ per level. Hence joint search over
+factorisations — which is exactly what Triton's autotune over `BLOCK_M`, `BLOCK_N`, `BLOCK_K`,
+`num_stages` and `num_warps` is doing.
+
+</SelfCheck>
+
+<SelfCheck q="Why is double buffering worth 41% more traffic, and when should you not deepen it?">
+
+Because it converts $T_{\text{load}} + T_{\text{compute}}$ into $\max(\cdot,\cdot)$, and the 41%
+traffic penalty applies to a term overlap has already hidden. On a compute-bound tile the extra load
+time disappears under compute while a ~400 ns stall is removed. Do not deepen it when memory-bound —
+extra stages consume capacity and inflate exactly the term you are bound by, which is why
+`num_stages` is typically 2–4 rather than maximal. Deepen it when latency-bound, where the problem is
+insufficient work in flight.
+
+</SelfCheck>
+
+<SelfCheck q="Fusion versus tiling — which question does each answer, and where does fusion stop?">
+
+**Fuse to eliminate compulsory traffic between operations; tile to eliminate capacity traffic within
+one.** Fusion creates reuse that did not exist (an intermediate that would have round-tripped through
+HBM now stays in registers); tiling captures reuse that does. Fusion stops at a full reduction like
+softmax — needing an algorithmic change, the online-softmax trick, which is what FlashAttention is —
+at disagreeing tilings, and at register pressure, where fusing further shrinks the tile and the
+square-root law charges you.
+
+</SelfCheck>
