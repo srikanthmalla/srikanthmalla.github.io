@@ -15,16 +15,23 @@ import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Grid from '../../../components/Grid.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
-  claim="Triton moves the abstraction from the thread to the block: you name a tile, and the compiler assigns threads, vectorises, and picks the memory pattern."
-  groups={[
-    { title: 'What you keep', items: ['block sizes — a judgement call', 'the algorithm and its tiling', 'masking at the boundaries'] },
-    { title: 'What it takes over', items: ['lane-to-address mapping', 'coalescing and vectorisation', 'shared-memory staging and swizzling', 'register allocation'] },
-    { title: 'Numbers', items: ['a Triton kernel is ~10× shorter than CUDA C', 'autotune searches blocks, stages, warps', 'those five numbers are a multi-level tiling'] },
-  ]}
+  claim="Triton moves the abstraction from the thread to the block: you name a tile, and the compiler assigns threads, vectorises and picks the memory pattern."
   close="constexpr multiplies your kernels. Each distinct value is a separate compilation, so a careless one turns a kernel into dozens."
-/>
+>
+  <MentalModel
+    alt="A causal chain: writing at block level rather than thread level lets the compiler own lane mapping, coalescing and staging, leaving you the block sizes — which is why the kernel is ten times shorter and why autotune must measure."
+    nodes={[
+      { label: 'you write a tile', sub: 'not a thread', above: ['block-level semantics'], below: ['masking at the edges'] },
+      { label: 'compiler owns lanes', sub: 'coalescing, staging', tone: 1, above: ['the mechanical part'], below: ['~10× shorter than CUDA C'] },
+      { label: 'you keep block sizes', sub: 'the judgement call', tone: 2, above: ['a multi-level tiling'], below: ['plus stages and warps'] },
+      { label: 'so autotune measures', sub: 'no cost model suffices', tone: 3, above: ['cliffs at capacity edges'], below: ['occupancy is not monotone'] },
+    ]}
+    via={['so', 'leaving', 'hence']}
+  />
+</Overview>
 
 ## The core mental model
 

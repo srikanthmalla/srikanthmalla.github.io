@@ -15,16 +15,23 @@ import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Plot from '../../../components/Plot.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
   claim="Published break-evens span 2 B to 23.6 B tokens a month, and the spread is assumptions rather than disagreement — chiefly utilisation, which nobody states."
-  groups={[
-    { title: 'The four assumptions', items: ['cluster size — 8 GPUs vs 64', 'procurement — owned, on-demand, serverless', 'the API price compared against', 'utilisation — unstated and dominant'] },
-    { title: 'Numbers', items: ['8×B200 ≈ \$395 K to buy', '8×B300 ≈ \$59–63/hr on demand', '64×H200 serverless ≈ \$212 K/month', 'at 30% utilisation, triple any published figure'] },
-    { title: 'The decision', items: ['self-host for control, not for cost', 'unless volume is large and steady', 'bursty + self-hosted is the worst case', 'you cannot autoscale a 13-minute start'] },
-  ]}
   close="Break-even calculated at 100% utilisation. Concurrency is capped by your latency SLO, so the saturated cluster describes a service nobody would use."
-/>
+>
+  <MentalModel
+    alt="A causal chain: a cluster costs the same idle or saturated, so break-even volume scales inversely with utilisation, which is capped by the latency SLO rather than by hardware — making self-hosting a control decision rather than a cost one."
+    nodes={[
+      { label: 'fixed monthly cost', sub: 'idle or saturated', above: ['~\$32 K for 8×B200'], below: ['the cluster does not care'] },
+      { label: 'break-even ∝ 1/util', sub: 'inversely', tone: 2, above: ['30% util → 3.3× the volume'], below: ['nobody states their figure'] },
+      { label: 'util is SLO-capped', sub: 'not hardware-capped', tone: 3, above: ['146.9 tok/s cost 2.7 each'], below: ['your users set the ceiling'] },
+      { label: 'so: control, not cost', sub: 'unless volume is huge', tone: 1, above: ['residency · latency floor · tuning'], below: ['bursty + self-hosted is worst'] },
+    ]}
+    via={['so', 'and', 'hence']}
+  />
+</Overview>
 
 ## The core mental model
 

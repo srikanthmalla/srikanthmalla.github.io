@@ -17,17 +17,23 @@ import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
   claim="An interconnect is a memory level you cannot store anything in — same numbers, topology in place of capacity, collectives in place of load and store."
-  groups={[
-    { title: 'The ladder continues', items: ['NoC ≈ 10 TB/s', 'HBM 3.35–8 TB/s', 'NVLink 0.9–1.8 TB/s', 'IB ≈ 50 GB/s — a cliff at the chassis'] },
-    { title: 'Collectives', items: ['ring all-reduce moves ≈ 2S, independent of N', 'but O(N) hops — tree for small messages', 'hierarchical: reduce-scatter, then across, then gather'] },
-    { title: 'The beachfront limit', items: ['compute scales with area, off-package with perimeter', 'so FLOPs per off-chip byte degrades every generation', 'drives precision, SRAM growth, NVL72, co-packaged optics'] },
-  ]}
-  closeLabel="Carry"
-  close="An H100 needs ~1100 FLOP per NVLink byte and ~20,000 per NIC byte. Those two numbers decide the entire parallelism layout."
-/>
+  close="The beachfront limit is geometric, not an engineering failure: compute scales with area and off-package bandwidth with perimeter, so the ratio worsens every generation."
+>
+  <MentalModel
+    alt="A causal chain: the memory ladder continues past the package into NVLink and InfiniBand, so roofline applies one level down, giving each network a required FLOP-per-byte that fixes where each parallelism strategy can live."
+    nodes={[
+      { label: 'one ladder', sub: 'SRAM → HBM → NVLink → IB', above: ['an order of magnitude a rung'], below: ['a cliff at the chassis'] },
+      { label: 'roofline again', sub: 'one level down', tone: 1, above: ['FLOPs per byte communicated'], below: ['same reasoning, new constants'] },
+      { label: 'NVLink needs 1100', sub: 'a NIC needs 20,000', tone: 2, above: ['these two numbers'], below: ['decide the whole layout'] },
+      { label: 'perimeter, not area', sub: 'the beachfront limit', breaks: true, above: ['geometry, not engineering'], below: ['worsens every generation'] },
+    ]}
+    via={['so', 'giving', 'under']}
+  />
+</Overview>
 
 ## The core mental model
 

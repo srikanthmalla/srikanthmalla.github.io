@@ -15,16 +15,23 @@ import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Stack from '../../../components/Stack.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
-  claim="The graph descends a ladder — decomposition, functionalization, AOTAutograd, partitioning — and each rung removes one class of difficulty before Inductor ever sees it."
-  groups={[
-    { title: 'The rungs', items: ['torch/FX ~2000 ops', 'ATen ~2000 → Core ATen ~250 → Prims ~70', 'functionalization removes mutation and aliasing', 'AOTAutograd traces a joint forward+backward'] },
-    { title: 'Why it works', items: ['a backend implements 70, not 2000', 'no aliasing ⇒ dataflow is the whole truth', 'min-cut partition = automatic checkpointing', 'all of it on FakeTensor — no allocation'] },
-    { title: 'The other fork', items: ['MLIR: Google, donated to LLVM', 'torch-mlir is an LLVM incubator project', 'lowers to linalg / tosa / StableHLO', 'for targets with no CUDA backend'] },
-  ]}
+  claim="The graph descends a ladder — decompose, functionalize, trace both directions, partition — and each rung removes one class of difficulty before Inductor sees it."
   close="“PyTorch compiles through MLIR.” Not on the path anyone uses: on an NVIDIA GPU it is Dynamo → AOTAutograd → Inductor → Triton, with no MLIR anywhere."
-/>
+>
+  <MentalModel
+    alt="A causal chain: two thousand operators decompose toward seventy primitives, functionalization removes mutation and aliasing so dataflow is the whole truth, and a joint forward-backward graph is min-cut into save-versus-recompute."
+    nodes={[
+      { label: '~2000 ops', sub: 'far too high-level', above: ['overloads, views, mutation'], below: ['no backend can implement it'] },
+      { label: 'decompose to ~70', sub: 'via ~250 core ATen', tone: 1, above: ['a feasible backend'], below: ['loses “this was a softmax”'] },
+      { label: 'functionalize', sub: 'no mutation, no aliasing', tone: 1, above: ['SSA’s argument, again'], below: ['dataflow is now the truth'] },
+      { label: 'joint fwd+bwd', sub: 'min-cut the middle', tone: 2, above: ['on FakeTensor, no allocation'], below: ['checkpointing falls out'] },
+    ]}
+    via={['so', 'then', 'and']}
+  />
+</Overview>
 
 ## The core mental model
 

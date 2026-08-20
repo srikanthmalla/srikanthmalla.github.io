@@ -15,16 +15,23 @@ import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Bars from '../../../components/Bars.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
-  claim="top-k barely does any arithmetic and is still expensive, because it is a data-dependent reduction with a large input and a tiny output — and compression is what made it visible."
-  groups={[
-    { title: 'Why it is hard', items: ['no arithmetic to amortise a fetch', 'data-dependent control flow', 'a global reduction with a small payload', 'sorting is the wrong shape for it'] },
-    { title: 'What to do instead', items: ['radix select — histogram by digit, recurse', 'never a full argsort for a threshold', 'top-p by cumulative mass without sorting'] },
-    { title: 'Numbers', items: ['was ~1% of a decode step', 'became 5–15% after quant and spec decode', 'back to 1–2% once graphed'] },
-  ]}
+  claim="top-k barely does any arithmetic and is still expensive — it is a data-dependent reduction with a large input and a tiny output, and compression is what made it visible."
   close="argsort to get a threshold. You paid to order everything in order to learn one boundary."
-/>
+>
+  <MentalModel
+    alt="A causal chain: top-k has almost no arithmetic to amortise its fetch and needs data-dependent control flow, so it was always inefficient — and it became visible only when quantization and speculative decoding compressed everything around it."
+    nodes={[
+      { label: 'no arithmetic', sub: 'to amortise the read', above: ['a pure reduction'], below: ['large in, tiny out'] },
+      { label: 'data-dependent', sub: 'control flow', tone: 3, above: ['branches, not math'], below: ['the GPU’s worst shape'] },
+      { label: 'always cost this', sub: 'nobody noticed', tone: 2, above: ['~1% of a step'], below: ['hidden by everything else'] },
+      { label: 'compression exposed it', sub: '5–15% of a step', breaks: true, above: ['the denominator moved'], below: ['radix select, then graph it'] },
+    ]}
+    via={['and', 'so', 'until']}
+  />
+</Overview>
 
 ## The core mental model
 

@@ -17,17 +17,23 @@ import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
   claim="Solvers take you from 1000 steps to about 20 and stop, because below that the trajectory genuinely curves — to go further you must change what is being integrated."
-  groups={[
-    { title: 'The distillation family', items: ['progressive — two teacher steps into one', 'consistency — every point maps to one endpoint', 'adversarial — a discriminator restores detail', 'each asks the student to match something different'] },
-    { title: 'Numbers', items: ['DDPM 1000 → DDIM 50 → DPM-Solver++ 20', 'distilled 4, consistency/adversarial 1', 'CFG doubles all of these unless distilled too'] },
-    { title: 'Where cost goes', items: ['NFE × model size, mostly', 'the VAE decode is a fixed tail', 'at one step it stops being negligible'] },
-  ]}
-  closeLabel="Carry"
   close="The break between 20 steps and 4 is where the work stops being numerical analysis and starts being training."
-/>
+>
+  <MentalModel
+    alt="A causal chain: better integrators reduce step count until the trajectory's curvature makes coarse discretisation simply wrong, at which point distillation changes the object being integrated to reach one to four steps."
+    nodes={[
+      { label: 'better solvers', sub: '1000 → 50 → 20', above: ['pure numerical analysis'], below: ['no retraining at all'] },
+      { label: 'then a floor', sub: 'around 10–20', tone: 3, above: ['the trajectory curves'], below: ['not a deficiency — the field'] },
+      { label: 'change the target', sub: 'distillation', tone: 1, above: ['a different model now'], below: ['progressive · consistency · adversarial'] },
+      { label: '1–4 steps', sub: 'and the tail shows', tone: 2, above: ['VAE decode stops being free'], below: ['CFG doubles it all unless distilled'] },
+    ]}
+    via={['hit', 'so', 'giving']}
+  />
+</Overview>
 
 ## The core mental model
 

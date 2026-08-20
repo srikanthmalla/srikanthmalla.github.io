@@ -1,0 +1,128 @@
+---
+/**
+ * The module's argument as a causal chain: nodes joined by labelled arrows,
+ * with the evidence hung above and the consequences below each node.
+ *
+ * Most modules in these series are an argument rather than a taxonomy — this is
+ * true, therefore that, which breaks when the following. Drawing that spine is
+ * what makes the picture a mental model rather than a decorated list: the
+ * arrows carry the reasoning, and the last node is usually where it fails.
+ */
+interface Node {
+  label: string;
+  sub?: string;
+  /** Short lines stacked above the node — the evidence. */
+  above?: string[];
+  /** Short lines stacked below — what follows. */
+  below?: string[];
+  tone?: 1 | 2 | 3;
+  /** Dashed and red: the regime where the model stops holding. */
+  breaks?: boolean;
+}
+interface Props {
+  nodes: Node[];
+  /** Labels for the arrows, one fewer than nodes. */
+  via?: string[];
+  alt: string;
+}
+
+const { nodes, via = [], alt } = Astro.props;
+
+const W = 620;
+const gap = 62;
+const n = nodes.length;
+const bw = Math.floor((W - gap * (n - 1)) / n);
+const bh = 54;
+
+const aboveMax = Math.max(0, ...nodes.map((d) => d.above?.length ?? 0));
+const belowMax = Math.max(0, ...nodes.map((d) => d.below?.length ?? 0));
+const lh = 13;
+const T = aboveMax ? aboveMax * lh + 14 : 8;
+const H = T + bh + (belowMax ? belowMax * lh + 16 : 8);
+const x = (i: number) => i * (bw + gap);
+/* Annotations are centred on their node, so the outermost ones would run off
+   the viewBox. Nudge them back inside rather than letting them clip — at 9.5px
+   Inter averages a bit over 5px a character. */
+const cx = (i: number, t: string) => {
+  const half = (t.length * 5.2) / 2;
+  return Math.min(Math.max(x(i) + bw / 2, half), W - half);
+};
+const mid = T + bh / 2;
+const uid = Math.abs([...alt].reduce((h, c) => (h * 41 + c.charCodeAt(0)) | 0, 17)).toString(36);
+---
+
+<svg
+  class="chart diagram"
+  viewBox={`0 0 ${W} ${H}`}
+  role="img"
+  aria-label={alt}
+  preserveAspectRatio="xMidYMid meet"
+>
+  <defs>
+    <marker id={`mm-${uid}`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+      <path d="M0 1 L9 5 L0 9 z" fill="context-stroke"></path>
+    </marker>
+  </defs>
+
+  {
+    nodes.map((d, i) => (
+      <>
+        {d.above?.map((t, k) => (
+          <text class="d-sub d-mid" x={cx(i, t)} y={T - 12 - (d.above!.length - 1 - k) * lh}>
+            {t}
+          </text>
+        ))}
+
+        <rect
+          class={`d-box${d.breaks ? ' is-3 is-ghost' : d.tone ? ` is-${d.tone}` : ''}`}
+          x={x(i)}
+          y={T}
+          width={bw}
+          height={bh}
+          rx="4"
+        />
+        <text class="d-lbl d-mid" x={x(i) + bw / 2} y={T + (d.sub ? 24 : 32)}>
+          {d.label}
+        </text>
+        {d.sub && (
+          <text class="d-sub d-mid" x={x(i) + bw / 2} y={T + 40}>
+            {d.sub}
+          </text>
+        )}
+
+        {d.below?.map((t, k) => (
+          <text class="d-sub d-mid" x={cx(i, t)} y={T + bh + 16 + k * lh}>
+            {t}
+          </text>
+        ))}
+
+        {i < n - 1 && (
+          <>
+            <path
+              class={`d-arrow${nodes[i + 1].breaks ? ' is-3 is-dashed' : ' is-1'}`}
+              d={`M${x(i) + bw + 4} ${mid} L${x(i + 1) - 5} ${mid}`}
+              marker-end={`url(#mm-${uid})`}
+            />
+            {/* An uppercase 9px label runs about 6px a character; wider than
+                the gap and it would sit on top of the boxes either side. */}
+            {via[i] && via[i].length * 6.1 + 8 < gap && (
+              <text class="d-viawrap d-mid" x={x(i) + bw + gap / 2} y={mid - 9}>
+                {via[i]}
+              </text>
+            )}
+          </>
+        )}
+      </>
+    ))
+  }
+</svg>
+
+<style is:global>
+  .d-viawrap {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    fill: var(--ink-faint);
+  }
+</style>

@@ -17,16 +17,23 @@ import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
-  claim="Traffic falls as the square root of capacity, so doubling SRAM buys 1.41× — which is why incremental capacity is a weak lever and a threshold that fits the working set is everything."
-  groups={[
-    { title: 'The closed form', items: ['3T² ≤ C, so T = √(C/3)', 'traffic = Θ(N³/√C)', 'matches the Hong–Kung I/O bound', '4× capacity to halve traffic'] },
-    { title: 'Where it fails', items: ['GEMV — no area reuse at any capacity', 'streaming traffic — fusion, not tiling', 'the threshold regime — traffic collapses to Θ(N²)'] },
-    { title: 'Double buffering', items: ['costs √2 in traffic, halving reuse capacity', 'converts load + compute into max(·,·)', 'deepen when latency-bound, not when memory-bound'] },
-  ]}
-  close="More cache will fix our bandwidth problem. It fixes √2 per doubling, and only if the traffic was capacity traffic rather than compulsory."
-/>
+  claim="Tiling cuts the iteration space so a working set fits and gets reused — and the return on capacity is a square root, so only a threshold that fits everything is a large win."
+  close="More cache will fix our bandwidth problem. It fixes √2 per doubling, and only if the traffic was capacity traffic rather than data touched once."
+>
+  <MentalModel
+    alt="A causal chain: three tiles must be resident so the tile side is root C over three, therefore traffic scales as N cubed over root C, so doubling capacity buys only 1.41 times, and the only large win is a threshold where the working set fits entirely."
+    nodes={[
+      { label: '3 tiles resident', sub: '3T² ≤ C', above: ['A, B and the accumulator'], below: ['so T = √(C/3)'] },
+      { label: 'traffic ∝ N³/T', sub: 'per level', tone: 2, above: ['(N/T)³ tile-triples'], below: ['= Θ(N³/√C)'] },
+      { label: '2× capacity', sub: 'buys 1.41×', tone: 1, above: ['4× to halve it'], below: ['16× to quarter it'] },
+      { label: 'unless it all fits', sub: 'Θ(N³/√C) → Θ(N²)', breaks: true, above: ['the only large win'], below: ['fetch once, not per tile'] },
+    ]}
+    via={['gives', 'so', 'except']}
+  />
+</Overview>
 
 ## The core mental model
 

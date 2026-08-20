@@ -18,16 +18,23 @@ import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
-  claim="Below a certain size you stop executing the network and start being it — weights become constants in the multipliers and the memory axis disappears rather than improving."
-  groups={[
-    { title: 'The mechanisms', items: ['constant-coefficient multipliers', 'full unrolling into gates', 'adder-tree depth, not MAC count', 'weights in registers or block RAM'] },
-    { title: 'Numbers', items: ['adder tree over N terms is ⌈log₂N⌉ levels', 'a 128→128 layer is 16 K multipliers unrolled', 'compiled weights cost 5–10× less area than loadable'] },
-    { title: 'What breaks first', items: ['routing congestion, then area, then fanout', 'weight updates need a resynthesis', 'the model size the budget allows co-designs the model'] },
-  ]}
-  close="Fully unrolled means one cycle. It means one initiation interval; the depth is still the adder tree, and depth is what the deadline sees."
-/>
+  claim="Below a certain size you stop executing the network and start being it — the weights become constants in the multipliers and the memory axis disappears rather than improving."
+  close="“Fully unrolled means one cycle.” It means one initiation interval; the depth is still the adder tree, and depth is what a deadline sees."
+>
+  <MentalModel
+    alt="A causal chain: weights compiled into the logic remove the fetch entirely, so arithmetic intensity becomes unbounded and only adder-tree depth remains, until routing and area stop you and every weight change costs a resynthesis."
+    nodes={[
+      { label: 'weights as constants', sub: 'compiled into gates', above: ['not loaded, not fetched'], below: ['5–10× less area'] },
+      { label: 'no memory axis', sub: 'removed, not improved', tone: 1, above: ['nothing to amortise'], below: ['intensity is unbounded'] },
+      { label: 'depth is all', sub: '⌈log₂N⌉ adder levels', tone: 2, above: ['MAC count stops mattering'], below: ['this is the deadline'] },
+      { label: 'until it does not fit', sub: 'routing, then area', breaks: true, above: ['a weight change = resynthesis'], below: ['the budget co-designs the model'] },
+    ]}
+    via={['so', 'leaving', 'until']}
+  />
+</Overview>
 
 ## The core mental model
 

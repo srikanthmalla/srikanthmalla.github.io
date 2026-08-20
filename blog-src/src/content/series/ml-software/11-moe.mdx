@@ -15,16 +15,23 @@ import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Grid from '../../../components/Grid.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
   claim="MoE makes the extents themselves data-dependent — expert 3 gets 500 tokens this batch and 20 the next — which is dynamism no compiler can remove."
-  groups={[
-    { title: 'What breaks', items: ['expert GEMM shapes unknown until runtime', 'so no CUDA Graph capture', 'the step ends with the slowest expert', 'all-to-all sizes are data-dependent too'] },
-    { title: 'The fixes', items: ['capacity factor — pad, then drop', 'auxiliary load-balancing loss', 'sort and group into a grouped GEMM', 'bucket to a few shapes'] },
-    { title: 'Numbers', items: ['imbalance 2–10× on the hottest expert', 'capacity factor 1.0–1.5 in practice', 'the all-to-all is usually the real bottleneck'] },
-  ]}
   close="Benchmarking MoE with uniform random routing. Real routers are lumpy, and the cost is set by the maximum, not the mean."
-/>
+>
+  <MentalModel
+    alt="A causal chain: a learned router assigns a data-dependent number of tokens to each expert, so the GEMM shapes are unknown until runtime, so nothing can be captured and the step ends with the slowest expert — fixed by padding and dropping."
+    nodes={[
+      { label: 'a learned router', sub: 'top-k of E experts', above: ['data decides'], below: ['not the schedule'] },
+      { label: 'shapes unknown', sub: 'until the gate runs', tone: 3, above: ['n_e is a random variable'], below: ['no capture, no static plan'] },
+      { label: 'slowest expert wins', sub: 'everyone waits', tone: 3, above: ['imbalance 2–10×'], below: ['a tail, not an average'] },
+      { label: 'pad, drop, sort', sub: 'buy staticness back', tone: 1, above: ['capacity factor 1.0–1.5'], below: ['costs waste or quality'] },
+    ]}
+    via={['so', 'and', 'fix:']}
+  />
+</Overview>
 
 ## The core mental model
 

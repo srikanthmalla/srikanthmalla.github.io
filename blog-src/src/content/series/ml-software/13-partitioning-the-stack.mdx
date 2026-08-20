@@ -15,16 +15,23 @@ import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Flow from '../../../components/Flow.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
   claim="Measure which ceiling binds, then apply the mechanism that attacks it — the procedure runs in that direction only, and reversing it is how a quarter disappears."
-  groups={[
-    { title: 'The ceilings', items: ['launch-bound → CUDA Graphs', 'bandwidth-bound → fusion, lower precision', 'compute-bound → better kernels or more silicon', 'each has one right answer'] },
-    { title: 'Cheapest measurement first', items: ['wall clock and op counts', 'then a profile', 'then achieved intensity against the ridge', 'only then reach for a tool'] },
-    { title: 'Scope', items: ['compile a region, not the model', 'a kernel only when the compiler cannot express it', 'weigh compile time against request volume'] },
-  ]}
   close="Optimizing before the model is stable. Every architecture change invalidates the tuning, and the tuning is what took the time."
-/>
+>
+  <MentalModel
+    alt="A measurement identifies one of three ceilings — launch-bound, bandwidth-bound or compute-bound — and each has exactly one mechanism that attacks it, so picking a tool before measuring is what wastes the effort."
+    nodes={[
+      { label: 'measure first', sub: 'cheapest instrument', above: ['wall clock, then a profile'], below: ['then intensity vs the ridge'] },
+      { label: 'launch-bound', sub: '→ CUDA Graphs', tone: 2, above: ['many small ops'], below: ['fusion helps little here'] },
+      { label: 'bandwidth-bound', sub: '→ fuse, quantize', tone: 1, above: ['below the ridge'], below: ['graphs help little here'] },
+      { label: 'compute-bound', sub: '→ kernels, or silicon', tone: 3, above: ['above the ridge, still slow'], below: ['the expensive answer'] },
+    ]}
+    via={['then', 'or', 'or']}
+  />
+</Overview>
 
 ## The core mental model
 

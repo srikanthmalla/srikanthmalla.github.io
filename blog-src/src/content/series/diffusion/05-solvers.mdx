@@ -17,17 +17,23 @@ import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
-  claim="A solver of order p has global error O(h^p), so going from first to second order is not a 2× improvement — at low step counts it is closer to an order of magnitude."
-  groups={[
-    { title: 'The mechanism', items: ['local error O(h^{p+1}), global O(h^p)', 'diffusion ODEs are semi-linear', 'exponential integrators solve the linear part exactly', 'only the non-linear remainder is approximated'] },
-    { title: 'Numbers', items: ['DDIM needs ~50 steps', 'DPM-Solver++ reaches it in ~15', 'multistep reuses past evaluations — free order', 'the gap widens as you demand accuracy'] },
-    { title: 'The floor', items: ['better solvers stop around 10–20 steps', 'below that the trajectory genuinely curves', 'that is the field, not a numerical deficiency'] },
-  ]}
-  closeLabel="Carry"
-  close="To go below roughly ten steps you must change what is being integrated — which is Module 9, and it is distillation rather than analysis."
-/>
+  claim="A solver of order p has global error O(h^p), so first to second order is not a 2× improvement — at low step counts it is closer to an order of magnitude."
+  close="To go below roughly ten steps you must change what is being integrated. That is distillation, not analysis."
+>
+  <MentalModel
+    alt="A causal chain: global error scales as step size to the order, and diffusion ODEs are semi-linear so an exponential integrator solves the linear part exactly, which is why fifteen steps match what first order needs fifty for."
+    nodes={[
+      { label: 'error = O(h^p)', sub: 'global, in step size', above: ['order is an exponent'], below: ['not a constant factor'] },
+      { label: 'semi-linear ODE', sub: 'linear + a network term', tone: 1, above: ['a special structure'], below: ['generic RK wastes it'] },
+      { label: 'solve linear exactly', sub: 'exponential integrator', tone: 1, above: ['an integrating factor'], below: ['approximate only the rest'] },
+      { label: '15 ≈ 50 steps', sub: 'same error', tone: 2, above: ['DPM-Solver++ vs DDIM'], below: ['the gap widens with accuracy'] },
+    ]}
+    via={['and', 'so', 'giving']}
+  />
+</Overview>
 
 ## The core mental model
 

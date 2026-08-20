@@ -16,17 +16,23 @@ import FigRef from '../../../components/FigRef.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
-  claim="SGLang makes a more aggressive memory decision — one pool allocated from both ends — and pairs it with two parallelism strategies chosen because prefill and decode want opposite things."
-  groups={[
-    { title: 'The design', items: ['KDA from one end, MLA KV from the other', 'no pre-sizing guess, no fragmentation', 'PP8×TP1 chunked pipeline for prefill', 'DCP8 shards MLA KV by token position'] },
-    { title: 'Numbers', items: ['~113 tok/s batch 1, ~423 with DSpark', 'prefill 1.7× TEP8, P2P hides 91% of comms', 'DCP8: 7.9× logical KV capacity', '2,808 tok/s per GPU, disaggregated'] },
-    { title: 'The waterfall', items: ['communication fusion +27.6 — the biggest line', 'launch elimination + MoE fusion +19.9', 'compute kernels only +10.3', 'all-reduce is a sync point at batch 1'] },
-  ]}
-  closeLabel="Carry"
-  close="DCP scales context length, not request count — the per-request KDA constant is untouched, so it does nothing for many short sessions."
-/>
+  claim="SGLang allocates one pool from both ends and gives prefill and decode different parallelism — because the two phases want opposite things."
+  close="DCP scales context length, not request count. The per-request KDA constant is untouched, so it does nothing for many short sessions."
+>
+  <MentalModel
+    alt="A causal chain: one pool grown from both ends removes the pre-sizing guess, chunked pipeline parallelism suits prefill, decode context parallelism multiplies KV capacity, and separating them yields 2,808 tokens per second per GPU."
+    nodes={[
+      { label: 'one pool, both ends', sub: 'KDA ← → MLA KV', above: ['the split moves with traffic'], below: ['no pre-sizing guess'] },
+      { label: 'PP8 for prefill', sub: 'chunks as microbatches', tone: 1, above: ['7 handoffs, not 186 all-reduces'], below: ['1.7× TEP8'] },
+      { label: 'DCP8 for decode', sub: 'shard KV by position', tone: 1, above: ['log-sum-exp recombines exactly'], below: ['7.9× logical KV'] },
+      { label: 'so disaggregate', sub: 'they cannot coexist', tone: 2, above: ['2,808 tok/s per GPU'], below: ['the number that pays'] },
+    ]}
+    via={['then', 'and', 'so']}
+  />
+</Overview>
 
 ## The core mental model
 

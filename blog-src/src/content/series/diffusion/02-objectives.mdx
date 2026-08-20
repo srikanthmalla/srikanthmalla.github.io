@@ -15,17 +15,23 @@ import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Flow from '../../../components/Flow.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
-  claim="ε, x₀, v and the score are one quantity in four coordinate systems — given x_t and the schedule each is an invertible function of the others, so what differs is weighting, not content."
-  groups={[
-    { title: 'The four targets', items: ['ε — predict the noise added', 'x₀ — predict the clean sample', 'v — a rotation of the two', 'score ∇log p — what the ODE wants'] },
-    { title: 'Why it matters anyway', items: ['each implies a different loss weighting across t', 'ε over-weights high noise', 'x₀ over-weights low noise', 'v is better conditioned at both ends'] },
-    { title: 'The connection', items: ['denoising = score matching, via Tweedie', 'so the network is a score estimator', 'which is what makes sampling an ODE'] },
-  ]}
-  closeLabel="Carry"
-  close="Parameterisation is a training-dynamics decision, not a modelling one. The learned object is the same either way."
-/>
+  claim="ε, x₀, v and the score are one quantity in four coordinate systems — given x_t and the schedule, each is an invertible function of the others."
+  close="Parameterisation is a training-dynamics decision, not a modelling one. The object being learned is the same either way."
+>
+  <MentalModel
+    alt="A causal chain: the four prediction targets are invertible reparameterisations of each other, so they differ only in the implied loss weighting across noise levels, and denoising equals score matching, which is what makes sampling an ODE."
+    nodes={[
+      { label: 'four targets', sub: 'ε · x₀ · v · score', above: ['pick one to predict'], below: ['all four are recoverable'] },
+      { label: 'invertible', sub: 'given x_t and the schedule', tone: 1, above: ['the same learned object'], below: ['nothing is gained or lost'] },
+      { label: 'but weighting differs', sub: 'across noise levels', tone: 2, above: ['ε favours high noise'], below: ['x₀ favours low, v both'] },
+      { label: 'and it is the score', sub: 'via Tweedie', tone: 1, above: ['denoising = score matching'], below: ['which is why the ODE exists'] },
+    ]}
+    via={['are', 'though', 'and']}
+  />
+</Overview>
 
 ## The core mental model
 

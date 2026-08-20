@@ -15,17 +15,23 @@ import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Flow from '../../../components/Flow.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
-  claim="Prefill and decode want opposite parallelism and cannot coexist in one engine instance, so both engines run two pools and pay a transfer on the critical path of TTFT."
-  groups={[
-    { title: 'The split', items: ['prefill: compute-bound, PP8×TP1', 'decode: memory-bound, DCP8 or TP8', 'vLLM: TEP8 prefill → DEP16 decode', 'scale the two pools independently'] },
-    { title: 'What crosses', items: ['MLA pages — streamable as produced', 'KDA state — 69 layers, whole object', 'it only exists once prefill finishes', 'must arrive exact; failure is silent'] },
-    { title: 'Routing', items: ['with N replicas, a blind hit rate is 1/N', 'llm-d routes by Exact Prefix Predictor', 'trade cache affinity against load', 'a shared store substitutes partially'] },
-  ]}
-  closeLabel="Carry"
+  claim="Prefill and decode want opposite parallelism and cannot coexist in one engine instance, so both engines run two pools and pay a transfer on the critical path."
   close="Stage it: one pool with prefix caching on, then capacity where you are bound, then disaggregate, then route. Stopping at stage two is the common good outcome."
-/>
+>
+  <MentalModel
+    alt="A causal chain: prefill is compute-bound and decode is memory-bound, so each wants different parallelism, which forces two pools and a transfer carrying both paged KV and a recurrent state that only exists once prefill ends."
+    nodes={[
+      { label: 'opposite regimes', sub: 'compute vs memory', above: ['intensity ∝ S, vs ≈ batch'], below: ['same mathematics'] },
+      { label: 'opposite parallelism', sub: 'PP8 vs DCP8', tone: 2, above: ['cannot coexist'], below: ['in one instance'] },
+      { label: 'so two pools', sub: 'and a transfer', tone: 1, above: ['scale them separately'], below: ['transfer is on TTFT'] },
+      { label: 'carrying two objects', sub: 'pages, and a state', tone: 3, above: ['pages stream as produced'], below: ['the state cannot start early'] },
+    ]}
+    via={['so', 'forcing', 'and it']}
+  />
+</Overview>
 
 ## The core mental model
 

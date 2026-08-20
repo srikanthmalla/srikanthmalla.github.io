@@ -16,16 +16,23 @@ import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Stack from '../../../components/Stack.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
-  claim="Four ways to compute a transcendental without a divider, and the step that makes any of them work is range reduction — fit on a small interval, not the whole domain."
-  groups={[
-    { title: 'The four', items: ['lookup table — all area, one access', 'piecewise linear — small table + one MAC', 'minimax polynomial — a few multipliers', 'CORDIC — shifts and adds, one bit per iteration'] },
-    { title: 'How to choose', items: ['by which resource is scarce on your part', 'block RAM to spare → the table wins', 'multipliers scarce → CORDIC', 'latency tight → table or PWL'] },
-    { title: 'The prerequisites', items: ['range reduction first, always', 'max-subtraction in softmax is range reduction', 'accuracy only needs to beat your quantization'] },
-  ]}
-  close="Fitting one polynomial over the whole domain. Reduce the range first and a low-order fit becomes accurate; skip it and no order is enough."
-/>
+  claim="Four ways to compute a transcendental without a divider — and the step that makes any of them work is range reduction, fitting on a small interval rather than the whole domain."
+  close="Fitting one polynomial over the whole domain. Reduce the range first and a low order is accurate; skip it and no order is enough."
+>
+  <MentalModel
+    alt="Range reduction first, then a choice between lookup table, piecewise linear, polynomial and CORDIC, ordered by whether area, multipliers or latency is the scarce resource."
+    nodes={[
+      { label: 'range reduction', sub: 'first, always', above: ['softmax max-subtraction is this'], below: ['now a small interval'] },
+      { label: 'table or PWL', sub: 'area is cheap', tone: 1, above: ['one access, or one MAC'], below: ['block RAM to spare → wins'] },
+      { label: 'polynomial', sub: 'multipliers are cheap', tone: 2, above: ['minimax, low order'], below: ['no table at all'] },
+      { label: 'CORDIC', sub: 'neither is cheap', tone: 3, above: ['shifts and adds only'], below: ['one bit per iteration'] },
+    ]}
+    via={['then', 'or', 'or']}
+  />
+</Overview>
 
 ## The core mental model
 

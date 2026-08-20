@@ -15,16 +15,23 @@ import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Timeline from '../../../components/Timeline.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
-  claim="Fusion is a scheduling problem, not a peephole rewrite: which operations share a loop nest is a global decision, and everything after it is mechanical."
-  groups={[
-    { title: 'The mechanism', items: ['lower to a loop-level IR', 'schedule: group nodes into kernels', 'then emit Triton, mechanically', 'pattern-match back to library kernels'] },
-    { title: 'The trade', items: ['fusing cuts HBM round trips', 'but holds more values live', 'spill or a smaller tile undoes the gain', 'so fusion groups are capped'] },
-    { title: 'What it will not generate', items: ['the big GEMM — cuBLAS/CUTLASS wins', 'FlashAttention — matched, not rebuilt', 'anything a human already solved better'] },
-  ]}
+  claim="Fusion is a scheduling problem, not a peephole rewrite — which operations share a loop nest is a global decision, and everything after it is mechanical."
   close="Assuming fusion is always a win. Past a point it shrinks the tile, and the square-root law charges you for that."
-/>
+>
+  <MentalModel
+    alt="A causal chain: lowering to a loop-level IR makes fusion a scheduling question, fusing removes HBM round trips but holds more values live, so groups are capped — and the biggest GEMMs are handed to libraries rather than generated."
+    nodes={[
+      { label: 'a loop-level IR', sub: 'not an op graph', above: ['index arithmetic explicit'], below: ['fusion becomes scheduling'] },
+      { label: 'group into kernels', sub: 'the whole decision', tone: 1, above: ['a global choice'], below: ['codegen is mechanical after'] },
+      { label: 'but liveness grows', sub: 'registers, shared memory', tone: 3, above: ['spill, or shrink the tile'], below: ['so groups are capped'] },
+      { label: 'and not the GEMM', sub: 'cuBLAS still wins', tone: 2, above: ['pattern-match instead'], below: ['recover FlashAttention too'] },
+    ]}
+    via={['so', 'but', 'and']}
+  />
+</Overview>
 
 ## The core mental model
 

@@ -17,16 +17,23 @@ import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
   claim="Peak FLOP/s is the least useful number about a compute unit — the interface is the shape of its native operation and the condition under which that shape fills."
-  groups={[
-    { title: 'The shapes', items: ['tensor core: m16n8k16 per warp', 'TPU MXU: [8,128] @ [128,128]', 'v6e: 256×256 systolic', 'anything not a multiple is padded'] },
-    { title: 'Numbers', items: ['H100 ridge ≈ 295 FLOP/byte', 'TPU v6e ≈ 575', 'modern parts need 200–600', 'large-scale training MFU 35–50%'] },
-    { title: 'Two ways to lose', items: ['shape mismatch — array cannot fill', 'feed starvation — memory too slow', 'opposite fixes; compare against the ridge', 'a third state: latency-bound'] },
-  ]}
-  close="Occupancy is utilization. Occupancy hides latency; the tile that raises intensity lowers it, so chasing it walks you away from the tile you want."
-/>
+  close="Occupancy is utilization. Occupancy hides latency, and the tile that raises intensity lowers it — so chasing it walks you away from the tile you want."
+>
+  <MentalModel
+    alt="A causal chain: the native operation shape is the real interface, so a problem that does not fill it is padded, and utilisation dies from either shape mismatch or feed starvation, which the ridge point tells apart."
+    nodes={[
+      { label: 'native op shape', sub: 'm16n8k16 · 128×128', above: ['not FLOP/s'], below: ['the quantum of work'] },
+      { label: 'fill it, or pad', sub: 'a GEMV wastes 127/128', tone: 3, above: ['and arrays keep growing'], below: ['decode gets harder each gen'] },
+      { label: 'two ways to lose', sub: 'shape vs starvation', tone: 2, above: ['constantly conflated'], below: ['opposite fixes'] },
+      { label: 'the ridge tells you', sub: '200–600 FLOP/byte', tone: 1, above: ['below it → starved'], below: ['above and slow → mismatched'] },
+    ]}
+    via={['so', 'giving', 'and']}
+  />
+</Overview>
 
 ## The core mental model
 

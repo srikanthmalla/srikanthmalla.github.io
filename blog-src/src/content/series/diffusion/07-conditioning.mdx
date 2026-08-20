@@ -15,17 +15,23 @@ import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Stack from '../../../components/Stack.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
   claim="A condition can enter in four places, and they form a hierarchy from global to spatial — picking the wrong site is the usual reason a condition is ignored."
-  groups={[
-    { title: 'The four sites', items: ['adaptive norm — timestep, class', 'cross-attention — text', 'input concatenation — pixel-aligned maps', 'auxiliary branch — ControlNet'] },
-    { title: 'How to choose', items: ['by how much spatial structure it carries', 'one vector ⇒ normalisation', 'many tokens ⇒ cross-attention', 'already aligned ⇒ concatenate'] },
-    { title: 'Numbers', items: ['AdaLN costs two vectors per block', 'cross-attention is quadratic in the token count', 'ControlNet roughly doubles parameters'] },
-  ]}
-  closeLabel="Carry"
   close="Strength of control and cost run together. Spend at the coarsest site that can express the condition, not the strongest one available."
-/>
+>
+  <MentalModel
+    alt="Four conditioning sites ordered by spatial structure: adaptive normalisation for a single vector, cross-attention for many tokens, input concatenation for pixel-aligned maps, and an auxiliary branch for strong spatial control."
+    nodes={[
+      { label: 'adaptive norm', sub: 'timestep, class', above: ['one vector, no geometry'], below: ['cheapest, coarsest'] },
+      { label: 'cross-attention', sub: 'text', tone: 1, above: ['many tokens'], below: ['learned spatial placement'] },
+      { label: 'concatenate', sub: 'depth, edges', tone: 1, above: ['already pixel-aligned'], below: ['just extra input planes'] },
+      { label: 'auxiliary branch', sub: 'ControlNet', tone: 3, above: ['strongest control'], below: ['roughly doubles parameters'] },
+    ]}
+    via={['→', '→', '→']}
+  />
+</Overview>
 
 ## The core mental model
 

@@ -15,16 +15,23 @@ import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Flow from '../../../components/Flow.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
-  claim="Every performance argument for graph mode was already true in 2016 and TensorFlow already had it — eager won on iteration speed, and by 2018 the decision had moved from design to distribution."
-  groups={[
-    { title: 'What TF1 cost', items: ['build the graph, then run a session', 'no print, no pdb, no Python control flow', 'errors surfaced far from their cause', 'shape errors only at session time'] },
-    { title: 'The scoreboard', items: ['2017: PyTorch ~10%, TF ~60%', '2024+: PyTorch ~90%+, TF single digits', 'JAX ~3–5% — won the argument, lost the market'] },
-    { title: 'Why JAX did not win', items: ['it proved define-then-run was not the flaw', 'but a framework is mostly the code already in it', 'functional purity is cheap for a team, dear for a port'] },
-  ]}
-  close="“TF1 lost because static graphs are slow.” They were faster. It lost on the edit-run-inspect loop, which is where a working day is spent."
-/>
+  claim="Every performance argument for graph mode was already true in 2016 and TensorFlow already had it — eager won on the edit-run-inspect loop."
+  close="“TF1 lost because static graphs are slow.” They were faster. It lost on the loop where a working day is actually spent."
+>
+  <MentalModel
+    alt="A causal chain: TF1 was faster but made you build a graph before running it, which broke print, pdb and Python control flow, so eager won on iteration speed — and by 2018 distribution, not design, decided the outcome."
+    nodes={[
+      { label: 'TF1 was faster', sub: 'and had every optimisation', above: ['fusion · planning · no launches'], below: ['none of it mattered'] },
+      { label: 'build, then run', sub: 'a session in between', tone: 3, above: ['no print, no pdb'], below: ['errors far from their cause'] },
+      { label: 'eager wins the loop', sub: 'seconds, not a rebuild', tone: 1, above: ['run a line, look at it'], below: ['~10% → ~90% share'] },
+      { label: 'then distribution', sub: 'not design, decided it', tone: 2, above: ['JAX made the same bet, well'], below: ['won the argument, lost the market'] },
+    ]}
+    via={['but', 'so', 'after']}
+  />
+</Overview>
 
 ## The core mental model
 

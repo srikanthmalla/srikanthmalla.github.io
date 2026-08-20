@@ -17,16 +17,23 @@ import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
   claim="Capacity planning is one subtraction: the weights are non-negotiable, and what remains after framework overhead is your entire concurrency-times-context budget."
-  groups={[
-    { title: 'The measurement', items: ['16×H200, SGLang TP16+EP16', '~102.75 GB of weights per GPU', '7.95 GB KV pool → ~308,608 tokens', 'mem-fraction-static 0.85'] },
-    { title: 'Cluster shapes', items: ['8 × B300 / GB300 / MI355X', '16 × B200 or H200', '32 × H100', 'Moonshot recommends 64+ for production'] },
-    { title: 'Cold start', items: ['~13 min total', '11.2 min loading 1.56 TB', 'so autoscaling is off the table', 'provision for peak, not average'] },
-  ]}
   close="Sizing from the weight footprint alone. It produces a cluster that loads the model and serves nobody."
-/>
+>
+  <MentalModel
+    alt="A causal chain: 1.56 terabytes of weights divided across GPUs leaves about eight gigabytes per card after overhead, which holds roughly 308 thousand tokens, so concurrency times context cannot exceed that."
+    nodes={[
+      { label: '1.56 TB of weights', sub: 'must be resident', above: ['~102.75 GB per H200'], below: ['three quarters of the card'] },
+      { label: 'minus overhead', sub: 'graphs, workspace, buffers', tone: 3, above: ['mem-fraction-static 0.85'], below: ['not estimable — measure it'] },
+      { label: '7.95 GB left', sub: '≈ 308,608 tokens', tone: 1, above: ['the measured figure'], below: ['on 16×H200, TP16+EP16'] },
+      { label: 'concurrency × context', sub: '≤ that number', breaks: true, above: ['~9 requests at 32 K'], below: ['one 1M request does not fit'] },
+    ]}
+    via={['minus', 'leaves', 'so']}
+  />
+</Overview>
 
 ## The core mental model
 

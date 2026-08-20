@@ -15,16 +15,23 @@ import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Stack from '../../../components/Stack.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
-  claim="Five backends sit behind one vLLM connector interface, they differ by how far a cached block is findable, and the parallelism constraints that matter are undocumented."
-  groups={[
-    { title: 'The backends', items: ['native — one instance, CPU or storage', 'lmcache — the one llm-d documents', 'mooncake — cross-instance, the multi-node one', 'nixl — transport, not storage'] },
-    { title: 'Tiers', items: ['HBM ~8 GB — rank scope', 'CPU DRAM ~250 GB — node scope', 'shared storage TB+ — cluster scope', 'loading beats recomputing by up to 16×'] },
-    { title: 'The constraints', items: ['Mooncake needs a uniform TP size', 'PP and DCP also change what a block is', 'EP does not — experts hold weights', 'per-backend compatibility is not documented'] },
-  ]}
+  claim="Offloading extends the cache down a hierarchy, and the backends differ by one thing — how far away a cached block is still findable."
   close="A cache that silently never hits looks exactly like a cache that is working. Monitor hit rate as a first-class metric, not a debug counter."
-/>
+>
+  <MentalModel
+    alt="A causal chain: HBM is small, so blocks fall to CPU DRAM and then shared storage; only a cross-instance store makes a block computed by one replica findable by another, and a KDA state cannot be paged at all."
+    nodes={[
+      { label: 'HBM is small', sub: '~8 GB measured', above: ['rank scope only'], below: ['fetching beats recomputing 16×'] },
+      { label: 'fall to DRAM', sub: '~250 GB, per node', tone: 1, above: ['native connector does this'], below: ['cheapest real win'] },
+      { label: 'then shared storage', sub: 'TB+, cross-replica', tone: 1, above: ['Mooncake, hash-addressed'], below: ['needs a uniform TP size'] },
+      { label: 'but KDA cannot page', sub: 'no pages, no positions', breaks: true, above: ['mutable, whole-object'], below: ['only checkpoints move'] },
+    ]}
+    via={['so', 'then', 'though']}
+  />
+</Overview>
 
 ## The core mental model
 

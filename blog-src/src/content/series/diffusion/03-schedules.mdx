@@ -17,17 +17,23 @@ import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
   claim="Timestep index is a bad coordinate — log-SNR is the one that means something, and a schedule is just a choice of how fast to sweep it."
-  groups={[
-    { title: 'The coordinate', items: ['λ = log(ᾱ/(1−ᾱ))', 'runs about +10 down to −10', 'plot against λ and schedules become comparable'] },
-    { title: 'Numbers', items: ['linear β spends 45% of steps below λ = −3', 'cosine spends 14%', 'below −3 the image is essentially gone', 'that gap is the whole argument for cosine'] },
-    { title: 'What it decides', items: ['where training samples land', 'where sampling steps are spent', 'resolution changes the effective SNR — shift the schedule'] },
-  ]}
-  closeLabel="Carry"
-  close="Given a fixed budget of training and sampling steps, schedule design is the question of where in log-SNR to put them."
-/>
+  close="Given a fixed budget of training and sampling steps, schedule design is the question of where in log-SNR to spend them."
+>
+  <MentalModel
+    alt="A causal chain: index is arbitrary, log-SNR measures how much signal survives, so plotting against it makes schedules comparable — revealing that the linear schedule spends 45 percent of its steps where the image is already destroyed."
+    nodes={[
+      { label: 'index is arbitrary', sub: 'an artefact of T', above: ['two schedules, same T'], below: ['wildly different work'] },
+      { label: 'use log-SNR', sub: 'λ = log(ᾱ/(1−ᾱ))', tone: 1, above: ['how much signal survives'], below: ['+10 clean → −10 noise'] },
+      { label: 'now comparable', sub: 'a sweep rate', tone: 1, above: ['linear: 45% below λ = −3'], below: ['cosine: 14%'] },
+      { label: 'below −3 is gone', sub: 'nothing left to learn', tone: 3, above: ['steps spent on noise'], below: ['that gap is the whole argument'] },
+    ]}
+    via={['so', 'giving', 'and']}
+  />
+</Overview>
 
 ## The core mental model
 

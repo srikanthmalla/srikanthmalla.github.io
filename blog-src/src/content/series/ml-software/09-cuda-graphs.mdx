@@ -17,16 +17,23 @@ import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
-  claim="Record the launches once and replay them as one submission — and the constraints that buys, static addresses and static shapes with no CPU in the loop, are what the rest of the stack bends around."
-  groups={[
-    { title: 'The mechanism', items: ['capture a DAG of launches', 'replay is a single driver call', 'N × launch cost collapses to ~one', 'needs its own memory pool'] },
-    { title: 'Where it pays', items: ['decode: enormous — many tiny ops', 'training at large batch: barely', 'the win scales with launches per unit of work'] },
-    { title: 'The constraints', items: ['addresses baked into the graph', 'shapes fixed at capture', 'no CPU logic during replay', 'so no data-dependent control flow'] },
-  ]}
+  claim="Record the launches once and replay them as one submission — and the constraints that buys are what the rest of the stack has to bend around."
   close="The output buffer is reused every replay. Read it after the next replay has started and you are reading the next token's tensor."
-/>
+>
+  <MentalModel
+    alt="A causal chain: capturing a DAG of launches collapses N launch costs into roughly one, but bakes in addresses and shapes and forbids CPU logic during replay, which is exactly what MoE and dynamic shapes need."
+    nodes={[
+      { label: 'capture the DAG', sub: 'launches, not results', above: ['record instead of execute'], below: ['needs its own pool'] },
+      { label: 'N launches → 1', sub: 'one driver call', tone: 1, above: ['huge for decode'], below: ['negligible for big-batch training'] },
+      { label: 'addresses baked in', sub: 'and shapes fixed', tone: 3, above: ['static everything'], below: ['no CPU in the loop'] },
+      { label: 'so dynamism breaks it', sub: 'MoE, ragged shapes', breaks: true, above: ['nothing may vary'], below: ['bucket and pad to comply'] },
+    ]}
+    via={['gives', 'but', 'and']}
+  />
+</Overview>
 
 ## The core mental model
 

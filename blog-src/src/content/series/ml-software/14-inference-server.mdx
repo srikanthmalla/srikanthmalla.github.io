@@ -15,16 +15,23 @@ import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Timeline from '../../../components/Timeline.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
-  claim="A serving stack is where every constraint in this series collides: paged memory, continuous batching and piecewise compilation all exist because the naive versions fight each other."
-  groups={[
-    { title: 'The mechanisms', items: ['paged KV — fixed blocks, a block table', 'continuous batching — admit at token granularity', 'chunked prefill — bound the interruption', 'piecewise compilation around the dynamic parts'] },
-    { title: 'Why each exists', items: ['contiguous KV wasted ~70% to fragmentation', 'static batching idles slots as sequences finish', 'prefill and decode fight for the same step'] },
-    { title: 'Numbers', items: ['paging lifts KV utilisation past 90%', 'decode intensity ≈ batch size', 'so a full slot is intensity, not politeness'] },
-  ]}
+  claim="A serving stack is where every constraint in this series collides: paging, continuous batching and piecewise compilation exist because the naive versions fight each other."
   close="Reporting throughput without latency. They are one dial, and the setting that maximises tokens/s is one your users will not accept."
-/>
+>
+  <MentalModel
+    alt="A causal chain: decode's arithmetic intensity is the batch size, so throughput demands full slots, which needs paged KV to stop fragmentation and continuous batching to keep slots occupied — but both defeat graph capture, forcing piecewise compilation."
+    nodes={[
+      { label: 'intensity ≈ batch', sub: 'at decode', above: ['throughput needs full slots'], below: ['batch is the only lever'] },
+      { label: 'page the KV', sub: 'stop fragmentation', tone: 1, above: ['~30% → >90% used'], below: ['virtual memory, reinvented'] },
+      { label: 'batch continuously', sub: 'admit per token', tone: 1, above: ['no slot idles'], below: ['the batch changes every step'] },
+      { label: 'but capture wants static', sub: 'so compile piecewise', tone: 3, above: ['graphs need fixed shapes'], below: ['chunk prefill to bound it'] },
+    ]}
+    via={['so', 'and', 'but']}
+  />
+</Overview>
 
 ## The core mental model
 

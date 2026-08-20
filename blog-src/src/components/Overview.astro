@@ -1,55 +1,37 @@
 ---
 /**
- * The module's whole argument on one card, shown at the top of the page.
+ * The module's mental model as one picture, at the top of the page.
  *
- * Deliberately *not* a <Figure>: figures are click-to-reveal evidence for a
+ * Deliberately not a <Figure>: figures are click-to-reveal evidence for a
  * specific claim, whereas this is the map at the trailhead — you want it before
- * you have decided to read anything, and you want it again when you come back
- * to skim. So it is always open and needs no trigger.
+ * you have decided to read anything, and again when you come back to skim. So
+ * it is always open and needs no trigger.
  *
- * HTML rather than SVG, because it is a card of text: it reflows on a phone
- * instead of scrolling sideways, and the chips wrap on their own.
+ * The claim names the picture; the picture is the thing you are meant to
+ * remember. A card of bullet points would restate the prose — a diagram encodes
+ * the relationships the prose spends three paragraphs establishing.
  */
-interface Group {
-  title: string;
-  items: string[];
-}
 interface Props {
-  /** The module's thesis, one sentence. */
+  /** One sentence naming what the diagram shows. */
   claim: string;
-  /** Two to four titled lists. Keep items to a few words each. */
-  groups: Group[];
-  /** Closing strip: usually the trap, sometimes the thing to carry forward. */
+  /** Optional closing strip — usually the trap. */
   closeLabel?: string;
   close?: string;
 }
 
-const { claim, groups, closeLabel = 'Trap', close } = Astro.props;
+const { claim, closeLabel = 'Trap', close } = Astro.props;
 ---
 
-<aside class="ovw" aria-label="Module overview">
-  <p class="ovw-kicker">At a glance</p>
+<aside class="ovw" aria-label="Module mental model">
+  <p class="ovw-kicker">The mental model</p>
   <p class="ovw-claim">{claim}</p>
-
-  <div class="ovw-cols" style={`--ovw-n:${groups.length}`}>
-    {
-      groups.map((g) => (
-        <div class="ovw-col">
-          <p class="ovw-h">{g.title}</p>
-          <ul class="ovw-list">
-            {g.items.map((it) => (
-              <li>{it}</li>
-            ))}
-          </ul>
-        </div>
-      ))
-    }
-  </div>
-
+  <div class="ovw-fig"><slot /></div>
   {
     close && (
       <p class="ovw-close">
-        <span class="ovw-tag" data-kind={closeLabel.toLowerCase()}>{closeLabel}</span>
+        <span class="ovw-tag" data-kind={closeLabel.toLowerCase()}>
+          {closeLabel}
+        </span>
         {close}
       </p>
     )

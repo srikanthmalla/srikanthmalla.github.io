@@ -15,16 +15,23 @@ import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Stack from '../../../components/Stack.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
   claim="Four numbers decide how K3 serves: what you hold, what you touch per token, how tokens reach experts, and how much of the cache grows with context."
-  groups={[
-    { title: 'The model', items: ['2.78 T total, ~104 B active per token', '896 experts, top-16, plus shared', 'LatentMoE dispatches at 3,584 — half of 7,168', '93 layers: 69 KDA + 24 gated MLA'] },
-    { title: 'Numbers', items: ['~1.56 TB of weights at native MXFP4', '1M-token context window', 'MXFP4 weights, MXFP8 activations', 'QAT from the SFT stage onward'] },
-    { title: 'What each governs', items: ['total → minimum cluster size', 'active → decode traffic per step', 'experts → the all-to-all and EP degree', 'the 69/24 split → how memory grows'] },
-  ]}
-  close="“K3 has 32B active parameters.” That is Kimi K2's figure. K3 activates ~104 B, and a 3× error there propagates into every capacity estimate."
-/>
+  close="“K3 has 32B active parameters.” That is Kimi K2's figure. K3 activates about 104 B, and a 3× error there propagates into every capacity estimate."
+>
+  <MentalModel
+    alt="A causal chain: 2.78 trillion parameters must be held but only 104 billion are touched per token, dispatched to 16 of 896 experts at a halved latent width, across 93 layers of which only 24 grow a cache with context."
+    nodes={[
+      { label: '2.78 T held', sub: '~1.56 TB at MXFP4', above: ['non-negotiable, resident'], below: ['sets the minimum cluster'] },
+      { label: '~104 B touched', sub: 'per token', tone: 1, above: ['the MoE bargain'], below: ['sets decode traffic'] },
+      { label: '16 of 896 experts', sub: 'at a 3,584 latent', tone: 2, above: ['half the 7,168 width'], below: ['halves the all-to-all'] },
+      { label: '69 KDA + 24 MLA', sub: 'of 93 layers', tone: 1, above: ['only 24 grow with context'], below: ['which is why 1M is affordable'] },
+    ]}
+    via={['but', 'via', 'over']}
+  />
+</Overview>
 
 ## The core mental model
 

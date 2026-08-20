@@ -17,17 +17,23 @@ import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
-  claim="Codesign is a symptom, not a virtue: ML is one of the few domains where the hardware/software interface leaks and the workload is narrow enough to specialise for."
-  groups={[
-    { title: 'The abstraction', items: ['compute, memory, interconnect — exhaustive', 'each exposes capacity, bandwidth, latency, granularity', 'plus: who decides placement', 'compute creates value; the rest is logistics'] },
-    { title: 'Numbers', items: ['INT8 MAC ≈ 0.2 pJ', 'DRAM access ≈ 640 pJ', 'one fetch ≈ 3200 MACs', 'the ratio is a trend, not a snapshot'] },
-    { title: 'What follows', items: ['every technique is a way of not moving data', 'balance is about a workload distribution', 'choose resources and mapping jointly'] },
-  ]}
-  closeLabel="Carry"
-  close="Design a memory system for the mapping you have and you get a chip excellent at a mapping nobody will use in three years."
-/>
+  claim="Codesign is a symptom, not a virtue: the interface leaks and the workload is narrow, so hardware and mapping have to be chosen together."
+  close="Design a memory system for the mapping you have and you get a chip that is excellent at a mapping nobody will use in three years."
+>
+  <MentalModel
+    alt="A causal chain: a leaky interface plus a narrow stable workload makes specialisation pay, so every machine reduces to compute, memory and interconnect, where moving data costs three thousand times more than the arithmetic it feeds."
+    nodes={[
+      { label: 'the interface leaks', sub: 'and the workload is narrow', above: ['neither alone is enough'], below: ['so specialising pays'] },
+      { label: 'three resources', sub: 'compute · memory · interconnect', tone: 1, above: ['exhaustive, at every level'], below: ['+ who decides placement'] },
+      { label: '1 fetch ≈ 3200 MACs', sub: '640 pJ vs 0.2 pJ', tone: 3, above: ['arithmetic is nearly free'], below: ['moving operands is the cost'] },
+      { label: 'choose both together', sub: 'resources and mapping', tone: 2, above: ['neither optimum is joint'], below: ['that is the whole discipline'] },
+    ]}
+    via={['so', 'where', 'hence']}
+  />
+</Overview>
 
 ## The core mental model
 

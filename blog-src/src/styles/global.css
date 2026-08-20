@@ -788,12 +788,10 @@ html.js .prose .figbox:not([data-open]):not(.is-open) {
   text-wrap: balance;
 }
 
-.prose .ovw-cols {
-  display: grid;
-  grid-template-columns: repeat(var(--ovw-n, 3), minmax(0, 1fr));
-  gap: 0.9rem 1.4rem;
-  padding-block-start: 0.9rem;
+.prose .ovw-fig {
+  padding-block-start: 0.85rem;
   border-block-start: 1px solid var(--rule-soft);
+  overflow-x: auto;
 }
 
 @media (max-width: 620px) {
@@ -871,4 +869,27 @@ html.js .prose .figbox:not([data-open]):not(.is-open) {
   color: var(--accent);
   background: color-mix(in oklab, var(--accent) 12%, var(--bg-sunken));
   border-color: color-mix(in oklab, var(--accent) 30%, transparent);
+}
+
+/* The overview diagram is wider than a phone column and scrolls inside its own
+   box, exactly as a figure does — so it gets the same right-edge affordance. */
+@media (max-width: 680px) {
+  .prose .ovw {
+    position: relative;
+  }
+
+  .prose .ovw-fig::after {
+    content: '';
+    position: absolute;
+    inset-block: 0 auto;
+    inset-inline-end: 1px;
+    width: 2.25rem;
+    height: 100%;
+    pointer-events: none;
+    background: linear-gradient(to right, transparent, var(--bg-raised) 78%);
+  }
+
+  .prose .ovw-fig {
+    position: relative;
+  }
 }

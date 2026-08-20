@@ -16,16 +16,23 @@ import FigRef from '../../../components/FigRef.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
-  claim="For codesign the analytic model is not the fast option, it is the only option — there is no silicon to measure, so the quality of your cost model is the quality of your chip."
-  groups={[
-    { title: 'Two ways to price', items: ['analytic: closed-form access counts × energy table', 'empirical: compile, run, time it', 'analytic works on hardware that does not exist', 'hybrid learned proxy is where compilers landed'] },
-    { title: 'Numbers', items: ['analytic ~µs, 10⁵–10⁷ mappings', 'measured ~ms–s, 10³–10⁴', 'typical error 10–30%, always optimistic'] },
-    { title: 'The bias', items: ['every omitted effect is one-sided', 'bank conflicts, row locality, throttling, interference', 'use for ranking, verify the top-k', 'provision against the pessimistic end'] },
-  ]}
+  claim="For codesign the analytic model is not the fast option, it is the only one — there is no silicon to measure, so the quality of your cost model is the quality of your chip."
   close="A model validated on kernels is validated. The errors that matter only appear in composition, and the workload is what you are provisioning for."
-/>
+>
+  <MentalModel
+    alt="A causal chain: affine loops make access counts closed-form, so millions of mappings can be priced without simulation, but every omitted effect is optimistic, so the model must be used for ranking and calibrated against real silicon."
+    nodes={[
+      { label: 'affine loops', sub: 'counts in closed form', above: ['footprint × fetch count'], below: ['no simulation needed'] },
+      { label: 'price 10⁵–10⁷', sub: 'in microseconds each', tone: 1, above: ['× an energy table'], below: ['before any silicon exists'] },
+      { label: 'always optimistic', sub: 'never random', tone: 3, above: ['conflicts · rows · throttling'], below: ['errors compound one way'] },
+      { label: 'rank, then measure', sub: 'and derate', tone: 2, above: ['calibrate on last generation'], below: ['provision at the pessimistic end'] },
+    ]}
+    via={['so', 'but', 'hence']}
+  />
+</Overview>
 
 ## The core mental model
 

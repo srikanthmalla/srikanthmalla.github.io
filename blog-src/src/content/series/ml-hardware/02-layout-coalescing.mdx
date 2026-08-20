@@ -19,16 +19,23 @@ import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
 import Grid from '../../../components/Grid.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
   claim="Coalescing is a count of memory transactions, not a property of thread indices — the set of sectors a warp touches is the only thing that matters."
-  groups={[
-    { title: 'The mechanisms', items: ['sectors, not lanes', 'bank conflicts on shared memory', 'padding versus swizzling', 'tiling for reuse'] },
-    { title: 'Numbers', items: ['32 B sector granularity', 'stride 8 → 12.5% efficiency', '32 banks, conflict-free needs distinct banks', 'tile T buys intensity ≈ T/2'] },
-    { title: 'The tension', items: ['bigger tile → more reuse', '…but more registers and shared memory', '…so fewer resident blocks and less latency hiding'] },
-  ]}
-  close="100% coalescing efficiency and 60% of peak is normal — efficiency says you used every byte fetched, not that you fetched few enough."
-/>
+  close="“Consecutive threads must read consecutive addresses.” Any permutation inside one sector is free; it is the sector count that is billed."
+>
+  <MentalModel
+    alt="A causal chain: memory transacts in fixed 32-byte sectors, so a warp's access pattern is billed by the set of sectors it touches, so a stride of eight wastes seven eighths of the bandwidth, and the fix is layout rather than more parallelism."
+    nodes={[
+      { label: '32 B sectors', sub: 'the unit billed', above: ['not bytes, not lanes'], below: ['fetch is all-or-nothing'] },
+      { label: 'a warp = a set', sub: 'of sectors touched', tone: 2, above: ['order within one is free'], below: ['count is what costs'] },
+      { label: 'stride 8', sub: '12.5% used', tone: 3, above: ['4 useful bytes of 32'], below: ['bandwidth spent, discarded'] },
+      { label: 'more warps', sub: 'waste it faster', breaks: true, above: ['concurrency cannot recover it'], below: ['fix the layout instead'] },
+    ]}
+    via={['billed by', 'so', 'and']}
+  />
+</Overview>
 
 ## The core mental model
 

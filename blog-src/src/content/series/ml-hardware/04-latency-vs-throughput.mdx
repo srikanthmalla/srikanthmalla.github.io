@@ -18,16 +18,23 @@ import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
   claim="Every throughput virtue — batching, occupancy, amortization, high utilization — inverts into a defect once the objective is the critical path of one request."
-  groups={[
-    { title: 'The inversion', items: ['utilisation becomes a defect', 'batching becomes a tax', 'amortization has nobody to amortise over', 'a barrier samples the tail'] },
-    { title: 'Numbers', items: ['delay grows like 1/(1−ρ)', 'ρ = 0.5 → 2×, ρ = 0.8 → 5×, ρ = 0.95 → 20×', 'provision a fast path at ρ ≈ 0.3'] },
-    { title: 'The new objective', items: ['critical-path depth replaces roofline', 'worst case, not average', 'the deadline is the specification'] },
-  ]}
   close="Optimising the average. In a deadline system the mean describes no request you are being paid for."
-/>
+>
+  <MentalModel
+    alt="A causal chain: queueing delay grows as one over one minus utilisation, so high utilisation becomes a defect, so a fast path is provisioned at about thirty percent, and critical-path depth replaces roofline as the objective."
+    nodes={[
+      { label: 'delay ∝ 1/(1−ρ)', sub: 'queueing, always', above: ['ρ = 0.5 → 2×'], below: ['ρ = 0.95 → 20×'] },
+      { label: 'high ρ = defect', sub: 'not efficiency', tone: 3, above: ['the wall is vertical'], below: ['bursts find it first'] },
+      { label: 'provision ρ ≈ 0.3', sub: 'buy distance', tone: 1, above: ['deliberately idle silicon'], below: ['that idleness is the product'] },
+      { label: 'depth, not roofline', sub: 'the new objective', tone: 2, above: ['worst case is the spec'], below: ['batching is now a tax'] },
+    ]}
+    via={['so', 'therefore', 'and']}
+  />
+</Overview>
 
 ## The core mental model
 

@@ -17,16 +17,23 @@ import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
-  claim="Aggregate throughput rose 8.7× while per-user speed fell 6.2× — and the reason it is not linear is that routed expert weights do not amortise under batching."
-  groups={[
-    { title: 'The measurement', items: ['1 request → 16.8 tok/s', '54 requests → 146.9 aggregate, ~2.7 each', 'p50 latency 28.3 s → 60 s, max 102 s', 'TTFT held at 0.37–0.54 s'] },
-    { title: 'Why batching returns less', items: ['54×16 draws touch most of 896 experts', 'so weight traffic grows with batch', 'load imbalance sets the step time', 'speculation inverts under load'] },
-    { title: 'Three ceilings', items: ['capacity — concurrency × context ≤ pool', 'the running-request cap', 'acceptable per-user latency — usually the real one'] },
-  ]}
+  claim="Aggregate throughput rose 8.7× while per-user speed fell 6.2× — because routed expert weights do not amortise under batching the way dense weights do."
   close="Benchmarking at batch 1 and planning at batch 64. Those are two different servers, and only one of them has users on it."
-/>
+>
+  <MentalModel
+    alt="A causal chain: on a dense model batching amortises one weight read across the batch, but on K3 different tokens route to different experts, so a larger batch touches most of 896 experts and weight traffic grows with it."
+    nodes={[
+      { label: 'dense: batch is free', sub: 'read weights once', above: ['used by every sequence'], below: ['throughput scales nearly linearly'] },
+      { label: 'K3: tokens diverge', sub: '16 of 896 each', tone: 3, above: ['54 × 16 = 864 draws'], below: ['touching most of them'] },
+      { label: 'traffic grows too', sub: 'with the batch', tone: 3, above: ['tokens grow linearly'], below: ['weight reads do not'] },
+      { label: '8.7×, not 54×', sub: '2.7 tok/s each', breaks: true, above: ['plus imbalance and capacity'], below: ['your SLO caps it lower still'] },
+    ]}
+    via={['but', 'so', 'giving']}
+  />
+</Overview>
 
 ## The core mental model
 

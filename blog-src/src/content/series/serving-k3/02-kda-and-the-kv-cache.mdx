@@ -17,16 +17,23 @@ import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
-  claim="69 of 93 layers keep a fixed-size recurrent state instead of a growing KV cache — which is what makes a million tokens affordable and what breaks everything built on paged KV."
-  groups={[
-    { title: 'Two state types', items: ['MLA: paged, append-only, position-indexed', 'KDA: one object, overwritten every token', 'only the first can be shared', 'only the first can be partially fetched'] },
-    { title: 'Numbers', items: ['~26% of layers grow with context', 'roughly a 4× cut in the scaling term', 'naive speculative snapshot ~512 KB/step', 'ReplaySSM: ~16 KB — 32× less'] },
-    { title: 'The recurring fix', items: ['checkpoint at intervals', 'replay from the nearest one below', 'copy-on-write to branch', 'and prove the replay is bit-identical'] },
-  ]}
-  close="Offloading a KDA state like a KV page. It has no pages, no positions, and no immutability — three properties every KV technique assumes."
-/>
+  claim="69 of 93 layers keep a fixed-size recurrent state instead of a growing KV cache — which makes a million tokens affordable and breaks everything built on paged KV."
+  close="Offloading a KDA state like a KV page. It has no pages, no positions and no immutability — three properties every KV technique assumes."
+>
+  <MentalModel
+    alt="A causal chain: most layers hold a fixed recurrent state rather than a growing cache, so context is cheap, but that state is overwritten every token and therefore cannot be shared, forcing checkpoint-and-replay everywhere."
+    nodes={[
+      { label: '69 KDA, 24 MLA', sub: 'of 93 layers', above: ['only 24 grow with context'], below: ['~4× cheaper per token'] },
+      { label: 'overwritten in place', sub: 'every single token', tone: 3, above: ['S₂ does not survive S₃'], below: ['no per-token record'] },
+      { label: 'so nothing to share', sub: 'and nothing to page', tone: 3, above: ['prefix caching assumes both'], below: ['so do offload and transfer'] },
+      { label: 'checkpoint and replay', sub: 'the answer, every time', tone: 1, above: ['copy-on-write to branch'], below: ['prove the replay is exact'] },
+    ]}
+    via={['but', 'so', 'fix:']}
+  />
+</Overview>
 
 ## The core mental model
 

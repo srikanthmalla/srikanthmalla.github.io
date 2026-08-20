@@ -18,16 +18,23 @@ import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
-  claim="The mean describes no request that ever happened; what you need is p50 for whether the fast path is fast, p99.9 for how often you fall off it, and p99/p50 as the jitter metric."
-  groups={[
-    { title: 'Where jitter comes from', items: ['cold caches and cold branch predictors', 'page faults and TLB misses', 'DVFS, C-states, SMIs', 'scheduler preemption and migration'] },
-    { title: 'The fixes', items: ['core pinning and isolation', 'busy-poll instead of interrupts', 'huge pages — carefully', 'keep the path warm by exercising it'] },
-    { title: 'The measurement', items: ['coordinated omission makes p99 a fiction', 'your load generator stalls with the system', 'record intended send time, not actual'] },
-  ]}
-  close="Coordinated omission. If the harness waits for a slow response before sending the next request, it stops sampling exactly when the system is worst."
-/>
+  claim="The mean describes no request that ever happened — you want p50 for whether the fast path is fast, p99.9 for how often you fall off it, and their ratio as the jitter metric."
+  close="Coordinated omission. A harness that waits for a slow response before sending the next request stops sampling exactly when the system is worst."
+>
+  <MentalModel
+    alt="A causal chain: jitter comes from cold state, the operating system and power management, which produces a long tail, which is measured wrongly by a harness that stalls with the system, so the fix is to keep the path warm and record intended send times."
+    nodes={[
+      { label: 'sources of jitter', sub: 'not your code', above: ['cold cache · TLB · page faults'], below: ['DVFS · C-states · SMIs'] },
+      { label: 'a long tail', sub: 'p99.9 ≫ p50', tone: 3, above: ['the mean hides it'], below: ['the ratio is the metric'] },
+      { label: 'measured wrong', sub: 'if the harness stalls', tone: 3, above: ['it stops sending'], below: ['so it stops sampling'] },
+      { label: 'warm + pinned', sub: 'and honest timing', tone: 1, above: ['exercise the path'], below: ['record intended send time'] },
+    ]}
+    via={['give', 'and it is', 'fix:']}
+  />
+</Overview>
 
 ## The core mental model
 

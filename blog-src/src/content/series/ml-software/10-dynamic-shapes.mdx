@@ -15,16 +15,23 @@ import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Bars from '../../../components/Bars.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
-  claim="Specialisation buys speed and costs reuse, and since compilation is expensive, the reuse is what decides whether you ever amortise it."
-  groups={[
-    { title: 'The mechanism', items: ['the first compile specialises on the shape', 'a changed shape fails a guard', 'recompile, or mark the dim dynamic', 'symbolic shapes carry constraints, not values'] },
-    { title: 'Numbers', items: ['40 distinct shapes ⇒ 40 compilations', 'bucketing to powers of two ⇒ ~6', 'fully dynamic ⇒ 1, but slower code'] },
-    { title: 'The sharp edges', items: ['0/1 specialisation — batch 1 is special', 'a recompile cap that falls back silently', 'symbolic shapes stop at data-dependent sizes'] },
-  ]}
+  claim="Specialisation buys speed and costs reuse, and since compilation is expensive the reuse is what decides whether you ever amortise it."
   close="Silently falling back to eager. Past the recompile cap it stops erroring and starts being slow, which no metric you watch will show."
-/>
+>
+  <MentalModel
+    alt="A causal chain: the first compile specialises on the observed shape, a new shape fails a guard and recompiles, so varied traffic never amortises, and the practical answer is bucketing rather than full dynamism."
+    nodes={[
+      { label: 'specialise on a shape', sub: 'constants everywhere', above: ['best possible code'], below: ['guards record the shape'] },
+      { label: 'a new shape', sub: 'fails the guard', tone: 3, above: ['recompile from scratch'], below: ['40 shapes → 40 compiles'] },
+      { label: 'go dynamic?', sub: 'one compile, worse code', tone: 2, above: ['symbols, not values'], below: ['0/1 still specialises'] },
+      { label: 'bucket instead', sub: 'pad to a few sizes', tone: 1, above: ['~6 compiles, bounded'], below: ['what production actually does'] },
+    ]}
+    via={['then', 'or', 'so']}
+  />
+</Overview>
 
 ## The core mental model
 

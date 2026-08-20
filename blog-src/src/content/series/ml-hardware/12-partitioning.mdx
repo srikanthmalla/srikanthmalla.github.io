@@ -19,16 +19,23 @@ import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
 import Flow from '../../../components/Flow.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
   claim="Put a function in hardware if it is on the critical path, stable over months, and bounded in time — and the third conjunct is the one people drop."
-  groups={[
-    { title: 'The rule', items: ['critical path', 'stable over months, not days', 'bounded, data-independent duration', 'variable-time hardware loses to fixed-time software'] },
-    { title: 'Numbers', items: ['FPGA on-path 350–900 ns', 'CPU + kernel bypass 2–5 µs', 'trigger path 20–100 ns — a different measurement', 'microburst 1–5 M msg/s'] },
-    { title: 'The interface', items: ['price ladder, never a hash map', 'double-buffered params with one commit bit', 'risk checks last, independent, fail-closed', 'host never in the loop of a decision'] },
-  ]}
   close="Putting the risk check inside the strategy. It exists for the case where the strategy misbehaves, so sharing state with it defeats the purpose."
-/>
+>
+  <MentalModel
+    alt="Three conjuncts decide what goes on silicon — critical path, stability over months, and bounded data-independent duration — and dropping the third is what makes projects fail, because determinism was the reason to leave the CPU."
+    nodes={[
+      { label: 'on the critical path', sub: 'conjunct 1', above: ['otherwise it changes nothing'], below: ['obvious, rarely wrong'] },
+      { label: 'stable for months', sub: 'conjunct 2', tone: 2, above: ['synthesis takes hours'], below: ['params in registers instead'] },
+      { label: 'bounded in time', sub: 'conjunct 3', tone: 1, above: ['data-independent duration'], below: ['the one people drop'] },
+      { label: 'or it belongs on the host', sub: 'even if fast on average', breaks: true, above: ['variable-time HW < fixed-time SW'], below: ['determinism was the point'] },
+    ]}
+    via={['and', 'and', 'else']}
+  />
+</Overview>
 
 ## The core mental model
 

@@ -19,16 +19,23 @@ import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
 import Timeline from '../../../components/Timeline.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
   claim="What kills a latency path across a bus is not bandwidth but the number of times a dependency has to cross it — a rate against a count."
-  groups={[
-    { title: 'The mechanisms', items: ['posted writes versus non-posted reads', 'a read is a full round trip', 'DMA moves the crossing off the critical path', 'NUMA placement decides which memory'] },
-    { title: 'Numbers', items: ['PCIe round trip ~1 µs', 'a device-register read stalls for all of it', 'kernel bypass: 2–5 µs tick-to-trade', 'FPGA on-path: 350–900 ns'] },
-    { title: 'Where the gap comes from', items: ['two PCIe crossings', 'the software stack', 'not arithmetic — the model is 20–30 ns either way'] },
-  ]}
-  close="Plenty of bandwidth and PCIe-bound are routinely both true of one system, because they are statements about different quantities."
-/>
+  close="“PCIe is 64 GB/s, so moving a kilobyte is free.” The kilobyte is free; the round trip you waited for is not."
+>
+  <MentalModel
+    alt="A causal chain: a write is posted and does not wait, a read is non-posted and costs a full round trip, so the cost of a bus is the number of dependent crossings, and batching them into one crossing is the fix."
+    nodes={[
+      { label: 'writes are posted', sub: 'fire and forget', above: ['no acknowledgement waited on'], below: ['cheap, and misleading'] },
+      { label: 'reads are not', sub: 'full round trip', tone: 3, above: ['~1 µs on PCIe'], below: ['the pipeline drains'] },
+      { label: 'count crossings', sub: 'not bytes', tone: 1, above: ['a rate vs a count'], below: ['3 crossings = 3 × latency'] },
+      { label: 'CPU 2–5 µs', sub: 'FPGA 350–900 ns', tone: 2, above: ['the gap is the two crossings'], below: ['not the arithmetic'] },
+    ]}
+    via={['but', 'so', 'hence']}
+  />
+</Overview>
 
 ## The core mental model
 

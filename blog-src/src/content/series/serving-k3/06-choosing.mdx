@@ -15,16 +15,23 @@ import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Bars from '../../../components/Bars.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
-  claim="Three circulating numbers span 25× and all three are honest — they are measurements of different things on different machines, so you cannot choose an engine from them."
-  groups={[
-    { title: 'What actually differs', items: ['hardware and precision path', 'native MXFP4 vs Marlin dequantization', 'NVLink domain vs two InfiniBand nodes', 'whether speculation was on'] },
-    { title: 'Numbers', items: ['16.8 tok/s — 16×H200, single request', '111–118 — GB300, batch 1, no spec', '370–423 — the same, with DSpark', 'both engines ~113–118 before speculation'] },
-    { title: 'Choose on', items: ['SGLang: long context (DCP), prefill-heavy', 'vLLM: offloading and routing ecosystem', 'or whichever you already operate'] },
-  ]}
+  claim="Three circulating numbers span 25× and all three are honest — they measure different things on different machines, so you cannot pick an engine from them."
   close="Reading the 25× spread as an engine difference. The same engine produced numbers at both ends of it."
-/>
+>
+  <MentalModel
+    alt="A causal chain: hardware, precision path and whether speculation was enabled each move the reported decode rate more than the engines differ from each other, so the choice has to be made on operational fit instead."
+    nodes={[
+      { label: '16.8 tok/s', sub: '16×H200, Marlin', above: ['dequantizing path'], below: ['two nodes over InfiniBand'] },
+      { label: '111–118', sub: 'GB300, native MXFP4', tone: 2, above: ['one NVLink domain'], below: ['both engines agree here'] },
+      { label: '370–423', sub: 'the same, speculating', tone: 1, above: ['batch 1, idle machine'], below: ['a latency figure'] },
+      { label: 'so choose on fit', sub: 'not on tok/s', tone: 1, above: ['DCP? offloading? already run it?'], below: ['then benchmark your own'] },
+    ]}
+    via={['vs', 'vs', 'hence']}
+  />
+</Overview>
 
 ## The core mental model
 

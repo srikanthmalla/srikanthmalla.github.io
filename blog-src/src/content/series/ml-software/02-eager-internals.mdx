@@ -15,16 +15,23 @@ import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Timeline from '../../../components/Timeline.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
-  claim="One `c = a + b` is closer to a dozen operations than one, almost all of them on the CPU — roughly 8 µs of host work to launch 2 µs of GPU work."
-  groups={[
-    { title: 'What runs per op', items: ['Python → C extension boundary', 'schema parsing of the argument list', 'dispatcher walks the key priority order', 'autograd records a tape node', 'allocator serves an output buffer'] },
-    { title: 'Numbers', items: ['~8 µs CPU, ~2 µs GPU', 'the launch is async — the CPU runs ahead', 'the tape is built whether or not you call backward'] },
-    { title: 'The consequence', items: ['small models are launch-bound, not compute-bound', 'a faster GPU can be slower per sample', 'the fix is fewer launches, not faster kernels'] },
-  ]}
-  close="Reading GPU utilization as a performance number. It says a kernel was resident, not that it was doing useful work."
-/>
+  claim="Python, the dispatcher, the autograd tape and the allocator all run before your kernel does — which is why a small model is launch-bound rather than compute-bound."
+  close="Reading GPU utilization as a performance number. It says a kernel was resident, not that the machine was doing useful work."
+>
+  <MentalModel
+    alt="A causal chain: one Python-level operation costs about eight microseconds of CPU work, which exceeds the two microseconds of GPU work it launches, so the device idles and the fix is fewer launches rather than faster kernels."
+    nodes={[
+      { label: 'one torch op', sub: 'c = a + b', above: ['looks like 1 operation'], below: ['is closer to a dozen'] },
+      { label: '~8 µs CPU', sub: 'per op, every op', tone: 3, above: ['Python · schema · dispatch', 'autograd · allocator'], below: ['and all of it serial'] },
+      { label: '~2 µs GPU', sub: 'the actual work', tone: 1, above: ['launched async'], below: ['device idles waiting'] },
+      { label: 'launch-bound', sub: 'not compute-bound', breaks: true, above: ['a faster GPU cannot help'], below: ['fix: fewer launches'] },
+    ]}
+    via={['costs', 'feeds', 'so']}
+  />
+</Overview>
 
 ## The core mental model
 

@@ -15,16 +15,23 @@ import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Flow from '../../../components/Flow.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
-  claim="The model can be running perfectly and your agent still fails — the API surface is the least-hardened layer of the stack, and its failures are quiet."
-  groups={[
-    { title: 'The mechanism', items: ['one stream: reasoning + answer + calls', '--reasoning-parser kimi_k3', '--tool-call-parser kimi_k3', 'XGrammar constrains during decoding'] },
-    { title: 'Two failure modes', items: ['parser omitted → control tokens as text', 'unexpected format → empty tool_calls, HTTP 200', 'both look like a model decision'] },
-    { title: 'Numbers', items: ['KVV: 30 failures, 26 from one missing feature', 'conformance failures cluster in the API layer', 'the weights are fixed and correct'] },
-  ]}
+  claim="The model can be running perfectly and your agent still fails — the API surface is the least-hardened layer, and its failures are quiet."
   close="An empty tool_calls array is not a decision. Treat it as a fault with retry and fallback, and alert on its rate."
-/>
+>
+  <MentalModel
+    alt="A causal chain: one token stream carries reasoning, answer and tool calls, parsers split it into API fields, but a missing parser leaks control tokens as text and an unexpected format returns an empty tool list with a 200."
+    nodes={[
+      { label: 'one token stream', sub: 'three regions in it', above: ['reasoning · answer · calls'], below: ['delimited by control tokens'] },
+      { label: 'parsers split it', sub: 'kimi_k3, both of them', tone: 1, above: ['you must ask for them'], below: ['not inferred from the model'] },
+      { label: 'omit them', sub: 'tokens become text', tone: 3, above: ['looks like a refusal'], below: ['sends you to the wrong layer'] },
+      { label: 'or format drifts', sub: 'empty tool_calls, 200', breaks: true, above: ['prompt- and run-dependent'], below: ['constrain with XGrammar instead'] },
+    ]}
+    via={['and', 'but', 'or']}
+  />
+</Overview>
 
 ## The core mental model
 

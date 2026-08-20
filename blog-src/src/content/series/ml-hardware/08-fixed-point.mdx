@@ -16,16 +16,23 @@ import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Stack from '../../../components/Stack.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
   claim="A Q-format is a contract about where the binary point sits, and every fixed-point multiply is a decision — made once, statically, by you — about which bits to keep."
-  groups={[
-    { title: 'The mechanisms', items: ['Qm.n as a contract, not a type', 'double-width product, wider accumulator', 'guard bits against overflow', 'saturate rather than wrap'] },
-    { title: 'Numbers', items: ['int8 × int8 → int16, accumulate in int32', 'truncation bias grows linearly in K', 'random rounding error grows as √K', '256-term dot product needs ~8 guard bits'] },
-    { title: 'What it buys', items: ['bit-exact reproducibility, free', 'same result on every machine, every run', 'replayable decisions'] },
-  ]}
-  close="int8 means 8 bits everywhere. The operands are 8 bits; the product is 16 and the accumulator is 32, and forgetting that is how accuracy collapses."
-/>
+  close="“int8 means 8 bits everywhere.” The operands are 8 bits; the product is 16 and the accumulator 32, and forgetting that is how accuracy collapses."
+>
+  <MentalModel
+    alt="A causal chain: Q-format fixes the binary point, a multiply doubles the width, the accumulator needs guard bits for a long reduction, and the shift back down is a static design decision that buys bit-exact reproducibility."
+    nodes={[
+      { label: 'Qm.n', sub: 'a contract, not a type', above: ['you place the point'], below: ['the compiler will not'] },
+      { label: 'product doubles', sub: '8 × 8 → 16', tone: 2, above: ['free in hardware'], below: ['accumulate wider still'] },
+      { label: 'guard bits', sub: '~log₂K of them', tone: 1, above: ['256 terms → ~8 bits'], below: ['saturate, never wrap'] },
+      { label: 'the shift back', sub: 'which bits survive', tone: 3, above: ['chosen once, statically'], below: ['buys bit-exact replay'] },
+    ]}
+    via={['then', 'needs', 'ends in']}
+  />
+</Overview>
 
 ## The core mental model
 

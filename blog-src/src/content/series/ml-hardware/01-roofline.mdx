@@ -19,15 +19,23 @@ import Bars from '../../../components/Bars.astro';
 import Overview from '../../../components/Overview.astro';
 
 <Overview
-  claim="Roofline bounds you by min(peak, bandwidth × intensity) — and intensity belongs to a triple of algorithm, boundary and implementation, not to the algorithm alone."
-  groups={[
-    { title: 'The model', items: ['P = min(π, βI)', 'one roof per memory level', 'ridge point I* = π/β', 'name the boundary or say nothing'] },
-    { title: 'Numbers', items: ['H100 ridge ≈ 295 FLOP/byte', 'prefill I ≈ n/3, crosses at n ≈ 900', 'decode I ≈ 1 — 300× below', 'decode intensity ≈ batch size'] },
-    { title: 'Where it stops', items: ['it is a steady-state throughput model', 'batch 1 breaks every assumption', 'its prescription — batch and reuse — is the one move you lack'] },
-  ]}
-  closeLabel="Carry"
-  close="Roofline is a diagram of the hardware on which a mapping is a point. Keep it for telling you what you are not limited by."
-/>
+  claim="Roofline is min(peak, bandwidth × intensity) — and where you land on it is chosen by the implementation, not given by the algorithm."
+  close="It is a steady-state throughput model. At batch 1 against a deadline you are in a regime it does not describe, and its one prescription — batch and reuse — is the move you lack."
+>
+  <Roofline
+    alt="H100 roofline. Decode at batch 1 sits at intensity 1, far down the bandwidth slope; batching moves it right along that slope; prefill sits at the ridge point of 295 FLOP per byte."
+    peak={989}
+    bw={3.35}
+    peakLabel="989 TFLOP/s"
+    bwLabel="3.35 TB/s"
+    points={[
+      { x: 1, y: 3.35, label: 'decode, B = 1', tone: 3 },
+      { x: 32, y: 107, label: 'B = 32', tone: 3 },
+      { x: 300, label: 'prefill · B ≈ 300', tone: 1, flip: true },
+    ]}
+    arrows={[{ from: 0, dir: 'upright', label: 'batch = move right' }]}
+  />
+</Overview>
 
 ## The core mental model
 

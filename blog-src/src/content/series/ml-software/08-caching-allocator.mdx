@@ -15,16 +15,23 @@ import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Timeline from '../../../components/Timeline.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
-  claim="cudaMalloc synchronises the device, so PyTorch caches blocks instead — steady-state training makes essentially zero driver allocations, and the price of that is fragmentation."
-  groups={[
-    { title: 'The mechanism', items: ['size-binned free lists', 'split large blocks, coalesce on free', 'blocks are owned by a stream', 'first iteration pays; later ones hit the list'] },
-    { title: 'The failure', items: ['OOM asking 2 GB with 8 GB free', 'the free memory is not contiguous', 'expandable segments attack it directly', 'the snapshot shows what the summary hides'] },
-    { title: 'Why not plan ahead', items: ['XLA can — its shapes are static', 'eager shapes arrive as they arrive', 'the same trade as everywhere else'] },
-  ]}
+  claim="cudaMalloc synchronises the device, so PyTorch caches blocks instead — and the price of never calling the driver is fragmentation."
   close="Reaching for empty_cache(). It hands memory back to the driver and guarantees the next allocation pays a synchronising cudaMalloc."
-/>
+>
+  <MentalModel
+    alt="A causal chain: a real device allocation synchronises and drains the pipeline, so blocks are cached in size-binned free lists, which makes steady state allocation-free but leaves free memory split into unusable pieces."
+    nodes={[
+      { label: 'cudaMalloc syncs', sub: 'drains the pipeline', above: ['not merely slow'], below: ['defeats async launch'] },
+      { label: 'cache the blocks', sub: 'size-binned free lists', tone: 1, above: ['split and coalesce'], below: ['owned by a stream'] },
+      { label: '~zero driver calls', sub: 'in steady state', tone: 1, above: ['the whole point'], below: ['first iteration pays'] },
+      { label: 'fragmentation', sub: 'OOM with GB free', breaks: true, above: ['free, but not contiguous'], below: ['expandable segments fix it'] },
+    ]}
+    via={['so', 'giving', 'costing']}
+  />
+</Overview>
 
 ## The core mental model
 

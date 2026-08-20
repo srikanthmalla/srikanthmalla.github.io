@@ -16,16 +16,23 @@ import FigRef from '../../../components/FigRef.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
 import Overview from '../../../components/Overview.astro';
+import MentalModel from '../../../components/MentalModel.astro';
 
 <Overview
   claim="Hardware exploits sparsity only when the pattern is constrained enough that tile shape, access granularity and the static schedule all survive."
-  groups={[
-    { title: 'Three kinds', items: ['unstructured — indices become data-dependent', 'structured — declared at design time', 'dynamic — the extents themselves vary', 'only the third removes the shape entirely'] },
-    { title: 'Numbers', items: ['90% unstructured → 1–2× in practice', '2:4 → 1.5–2×, near its theoretical bound', '2 bits of metadata per 4 elements', 'CSR index costs 4× an INT8 payload'] },
-    { title: 'Why 2:4 works', items: ['fixed ratio, so extents stay static', 'positional metadata, no pointer chase', 'decode is a mux in the operand path', 'tile shape unchanged'] },
-  ]}
   close="Counting FLOPs removed. Skipping a multiply saves the resource you were not charged for and wrecks the two you were."
-/>
+>
+  <MentalModel
+    alt="A causal chain: every static mapping assumes a dense rectangular space; unstructured sparsity keeps the extents but breaks the indices, structured sparsity is shaped to the array and survives, and dynamic routing removes the shape entirely."
+    nodes={[
+      { label: 'mappings assume', sub: 'dense and rectangular', above: ['integer extents, affine indices'], below: ['everything in Part P rests here'] },
+      { label: 'unstructured', sub: 'indices go data-dependent', tone: 3, above: ['90% removed'], below: ['1–2× delivered'] },
+      { label: '2:4 survives', sub: 'shaped to the array', tone: 1, above: ['fixed ratio, mux decode'], below: ['tile shape unchanged'] },
+      { label: 'MoE removes the shape', sub: 'extents are data', breaks: true, above: ['no shape to map at all'], below: ['pad and drop to get it back'] },
+    ]}
+    via={['but', 'unless', 'and']}
+  />
+</Overview>
 
 ## The core mental model
 
