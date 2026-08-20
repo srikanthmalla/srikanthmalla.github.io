@@ -16,6 +16,18 @@ import FigRef from '../../../components/FigRef.astro';
 import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="A solver of order p has global error O(h^p), so going from first to second order is not a 2× improvement — at low step counts it is closer to an order of magnitude."
+  groups={[
+    { title: 'The mechanism', items: ['local error O(h^{p+1}), global O(h^p)', 'diffusion ODEs are semi-linear', 'exponential integrators solve the linear part exactly', 'only the non-linear remainder is approximated'] },
+    { title: 'Numbers', items: ['DDIM needs ~50 steps', 'DPM-Solver++ reaches it in ~15', 'multistep reuses past evaluations — free order', 'the gap widens as you demand accuracy'] },
+    { title: 'The floor', items: ['better solvers stop around 10–20 steps', 'below that the trajectory genuinely curves', 'that is the field, not a numerical deficiency'] },
+  ]}
+  closeLabel="Carry"
+  close="To go below roughly ten steps you must change what is being integrated — which is Module 9, and it is distillation rather than analysis."
+/>
 
 ## The core mental model
 

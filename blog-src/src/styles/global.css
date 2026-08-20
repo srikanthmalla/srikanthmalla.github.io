@@ -755,3 +755,120 @@ html.js .prose .figbox:not([data-open]):not(.is-open) {
   color: var(--ink);
   font-weight: 620;
 }
+
+/* ---------------------------------------------------------------------------
+   Module overview — the map at the trailhead. Always open, no trigger, and
+   HTML rather than SVG so it reflows on a phone instead of scrolling sideways.
+--------------------------------------------------------------------------- */
+.prose .ovw {
+  margin-block: 0 2.25rem;
+  padding: 1rem 1.15rem 1.1rem;
+  border: 1px solid var(--rule);
+  border-radius: 7px;
+  background: var(--bg-raised);
+  font-family: var(--font-sans);
+}
+
+.prose .ovw-kicker {
+  margin: 0 0 0.5rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.prose .ovw-claim {
+  margin: 0 0 1rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--ink-strong);
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+.prose .ovw-cols {
+  display: grid;
+  grid-template-columns: repeat(var(--ovw-n, 3), minmax(0, 1fr));
+  gap: 0.9rem 1.4rem;
+  padding-block-start: 0.9rem;
+  border-block-start: 1px solid var(--rule-soft);
+}
+
+@media (max-width: 620px) {
+  .prose .ovw-cols {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}
+
+.prose .ovw-h {
+  margin: 0 0 0.4rem;
+  font-size: 0.6875rem;
+  font-weight: 650;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.prose .ovw-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.prose .ovw-list > li {
+  position: relative;
+  padding-inline-start: 0.72rem;
+  margin: 0;
+}
+
+.prose .ovw-list > li + li {
+  margin-block-start: 0.28rem;
+}
+
+.prose .ovw-list > li::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: 0;
+  inset-block-start: 0.56em;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--ink-faint);
+}
+
+.prose .ovw-close {
+  margin: 0.95rem 0 0;
+  padding-block-start: 0.8rem;
+  border-block-start: 1px solid var(--rule-soft);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+
+.prose .ovw-tag {
+  display: inline-block;
+  margin-inline-end: 0.5rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 3px;
+  font-size: 0.625rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--trap);
+  background: var(--trap-bg);
+  border: 1px solid color-mix(in oklab, var(--trap) 30%, transparent);
+  vertical-align: 0.08em;
+}
+
+/* Only an actual trap wears the trap colour; "Carry" and friends are neutral. */
+.prose .ovw-tag:not([data-kind='trap']) {
+  color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 12%, var(--bg-sunken));
+  border-color: color-mix(in oklab, var(--accent) 30%, transparent);
+}

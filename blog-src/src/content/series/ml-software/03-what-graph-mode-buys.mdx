@@ -16,6 +16,17 @@ import FigRef from '../../../components/FigRef.astro';
 import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="Graph mode attacks exactly three overheads — launch, fusion and memory planning — and they bind in different regimes, which is why the same compile gives 3× on one model and 1.0× on another."
+  groups={[
+    { title: 'The three', items: ['launch elimination — many small ops', 'fusion — elementwise memory traffic', 'memory planning — allocation churn'] },
+    { title: 'Numbers', items: ['small model, batch 1: 1.5–3×', 'elementwise-heavy: 1.5–2×', 'transformer training: 1.1–1.4×', 'already-fused cuBLAS GEMMs: ~1.0×'] },
+    { title: 'Predicting it', items: ['count ops and their sizes first', 'fusion helps by cutting traffic, not FLOPs', 'nothing left to fuse ⇒ nothing to gain'] },
+  ]}
+  close="Benchmarking the first call. Compilation is on it, so you measured the compiler rather than the compiled code."
+/>
 
 ## The core mental model
 

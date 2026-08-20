@@ -14,6 +14,17 @@ import SelfCheck from '../../../components/SelfCheck.astro';
 import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Timeline from '../../../components/Timeline.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="A serving stack is where every constraint in this series collides: paged memory, continuous batching and piecewise compilation all exist because the naive versions fight each other."
+  groups={[
+    { title: 'The mechanisms', items: ['paged KV — fixed blocks, a block table', 'continuous batching — admit at token granularity', 'chunked prefill — bound the interruption', 'piecewise compilation around the dynamic parts'] },
+    { title: 'Why each exists', items: ['contiguous KV wasted ~70% to fragmentation', 'static batching idles slots as sequences finish', 'prefill and decode fight for the same step'] },
+    { title: 'Numbers', items: ['paging lifts KV utilisation past 90%', 'decode intensity ≈ batch size', 'so a full slot is intensity, not politeness'] },
+  ]}
+  close="Reporting throughput without latency. They are one dial, and the setting that maximises tokens/s is one your users will not accept."
+/>
 
 ## The core mental model
 

@@ -14,6 +14,18 @@ import SelfCheck from '../../../components/SelfCheck.astro';
 import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Flow from '../../../components/Flow.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="GPU, TPU, Groq and Cerebras are four points on one axis — how much uncertainty is left for runtime, and who absorbs it — not four unrelated philosophies."
+  groups={[
+    { title: 'The curve', items: ['GPU: hardware absorbs it — caches, schedulers', 'TPU: compiler absorbs placement — VMEM, XLA', 'Groq: compiler absorbs time itself, cycle-exact', 'Cerebras: removes a memory level'] },
+    { title: 'Numbers', items: ['H100: 50 MB L2, 80 GB HBM', 'Groq: 230 MB SRAM, no DRAM', 'Cerebras: 44 GB SRAM at ~21 PB/s', 'TPU v5p: 128 MiB VMEM, no data caches'] },
+    { title: 'Moving right', items: ['efficiency rises — no tags, no schedulers', 'failure turns from degrading into a cliff', 'compiler difficulty grows superlinearly'] },
+  ]}
+  closeLabel="Carry"
+  close="GPUs won not by being most efficient but by never falling off a cliff. Budget the compiler as the primary deliverable, and ask who else must change."
+/>
 
 ## The core mental model
 

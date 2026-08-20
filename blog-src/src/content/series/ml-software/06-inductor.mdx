@@ -14,6 +14,17 @@ import SelfCheck from '../../../components/SelfCheck.astro';
 import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Timeline from '../../../components/Timeline.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="Fusion is a scheduling problem, not a peephole rewrite: which operations share a loop nest is a global decision, and everything after it is mechanical."
+  groups={[
+    { title: 'The mechanism', items: ['lower to a loop-level IR', 'schedule: group nodes into kernels', 'then emit Triton, mechanically', 'pattern-match back to library kernels'] },
+    { title: 'The trade', items: ['fusing cuts HBM round trips', 'but holds more values live', 'spill or a smaller tile undoes the gain', 'so fusion groups are capped'] },
+    { title: 'What it will not generate', items: ['the big GEMM — cuBLAS/CUTLASS wins', 'FlashAttention — matched, not rebuilt', 'anything a human already solved better'] },
+  ]}
+  close="Assuming fusion is always a win. Past a point it shrinks the tile, and the square-root law charges you for that."
+/>
 
 ## The core mental model
 

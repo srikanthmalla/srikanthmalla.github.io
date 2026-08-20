@@ -17,6 +17,17 @@ import FigRef from '../../../components/FigRef.astro';
 import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="Below a certain size you stop executing the network and start being it — weights become constants in the multipliers and the memory axis disappears rather than improving."
+  groups={[
+    { title: 'The mechanisms', items: ['constant-coefficient multipliers', 'full unrolling into gates', 'adder-tree depth, not MAC count', 'weights in registers or block RAM'] },
+    { title: 'Numbers', items: ['adder tree over N terms is ⌈log₂N⌉ levels', 'a 128→128 layer is 16 K multipliers unrolled', 'compiled weights cost 5–10× less area than loadable'] },
+    { title: 'What breaks first', items: ['routing congestion, then area, then fanout', 'weight updates need a resynthesis', 'the model size the budget allows co-designs the model'] },
+  ]}
+  close="Fully unrolled means one cycle. It means one initiation interval; the depth is still the adder tree, and depth is what the deadline sees."
+/>
 
 ## The core mental model
 

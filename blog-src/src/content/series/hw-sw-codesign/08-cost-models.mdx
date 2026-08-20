@@ -15,6 +15,17 @@ import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="For codesign the analytic model is not the fast option, it is the only option — there is no silicon to measure, so the quality of your cost model is the quality of your chip."
+  groups={[
+    { title: 'Two ways to price', items: ['analytic: closed-form access counts × energy table', 'empirical: compile, run, time it', 'analytic works on hardware that does not exist', 'hybrid learned proxy is where compilers landed'] },
+    { title: 'Numbers', items: ['analytic ~µs, 10⁵–10⁷ mappings', 'measured ~ms–s, 10³–10⁴', 'typical error 10–30%, always optimistic'] },
+    { title: 'The bias', items: ['every omitted effect is one-sided', 'bank conflicts, row locality, throttling, interference', 'use for ranking, verify the top-k', 'provision against the pessimistic end'] },
+  ]}
+  close="A model validated on kernels is validated. The errors that matter only appear in composition, and the workload is what you are provisioning for."
+/>
 
 ## The core mental model
 

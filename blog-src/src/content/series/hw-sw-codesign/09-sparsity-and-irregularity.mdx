@@ -15,6 +15,17 @@ import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="Hardware exploits sparsity only when the pattern is constrained enough that tile shape, access granularity and the static schedule all survive."
+  groups={[
+    { title: 'Three kinds', items: ['unstructured — indices become data-dependent', 'structured — declared at design time', 'dynamic — the extents themselves vary', 'only the third removes the shape entirely'] },
+    { title: 'Numbers', items: ['90% unstructured → 1–2× in practice', '2:4 → 1.5–2×, near its theoretical bound', '2 bits of metadata per 4 elements', 'CSR index costs 4× an INT8 payload'] },
+    { title: 'Why 2:4 works', items: ['fixed ratio, so extents stay static', 'positional metadata, no pointer chase', 'decode is a mux in the operand path', 'tile shape unchanged'] },
+  ]}
+  close="Counting FLOPs removed. Skipping a multiply saves the resource you were not charged for and wrecks the two you were."
+/>
 
 ## The core mental model
 

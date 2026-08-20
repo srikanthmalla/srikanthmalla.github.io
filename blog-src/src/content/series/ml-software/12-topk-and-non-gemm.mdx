@@ -14,6 +14,17 @@ import SelfCheck from '../../../components/SelfCheck.astro';
 import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Bars from '../../../components/Bars.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="top-k barely does any arithmetic and is still expensive, because it is a data-dependent reduction with a large input and a tiny output — and compression is what made it visible."
+  groups={[
+    { title: 'Why it is hard', items: ['no arithmetic to amortise a fetch', 'data-dependent control flow', 'a global reduction with a small payload', 'sorting is the wrong shape for it'] },
+    { title: 'What to do instead', items: ['radix select — histogram by digit, recurse', 'never a full argsort for a threshold', 'top-p by cumulative mass without sorting'] },
+    { title: 'Numbers', items: ['was ~1% of a decode step', 'became 5–15% after quant and spec decode', 'back to 1–2% once graphed'] },
+  ]}
+  close="argsort to get a threshold. You paid to order everything in order to learn one boundary."
+/>
 
 ## The core mental model
 

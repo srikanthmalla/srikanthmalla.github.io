@@ -16,6 +16,17 @@ import FigRef from '../../../components/FigRef.astro';
 import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="Capacity planning is one subtraction: the weights are non-negotiable, and what remains after framework overhead is your entire concurrency-times-context budget."
+  groups={[
+    { title: 'The measurement', items: ['16×H200, SGLang TP16+EP16', '~102.75 GB of weights per GPU', '7.95 GB KV pool → ~308,608 tokens', 'mem-fraction-static 0.85'] },
+    { title: 'Cluster shapes', items: ['8 × B300 / GB300 / MI355X', '16 × B200 or H200', '32 × H100', 'Moonshot recommends 64+ for production'] },
+    { title: 'Cold start', items: ['~13 min total', '11.2 min loading 1.56 TB', 'so autoscaling is off the table', 'provision for peak, not average'] },
+  ]}
+  close="Sizing from the weight footprint alone. It produces a cluster that loads the model and serves nobody."
+/>
 
 ## The core mental model
 

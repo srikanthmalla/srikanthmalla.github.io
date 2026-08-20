@@ -16,6 +16,17 @@ import FigRef from '../../../components/FigRef.astro';
 import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="A mapping is four decisions — tiling, permutation, spatial assignment, binding — and it is what makes arithmetic intensity a property of the mapping rather than the algorithm."
+  groups={[
+    { title: 'The four decisions', items: ['tiling — a factor per loop per level', 'permutation — what gets re-fetched', 'spatial assignment — what unrolls across hardware', 'binding — which tensor lives where'] },
+    { title: 'Numbers', items: ['GEMM naive: I ≈ 1/6 FLOP/byte', 'tiled at T=128: I ≈ 32', 'all resident: I ≈ N/6', '10⁸–10¹² legal mappings per conv layer'] },
+    { title: 'What is fixed when', items: ['tiling and binding: compile time', 'permutation: compile time, if RTL allows', 'spatial assignment: tape-out, forever'] },
+  ]}
+  close="Reading operational intensity off the algorithm. Assert an operation is memory-bound without naming tile sizes and you have skipped the step that decides it."
+/>
 
 ## The core mental model
 

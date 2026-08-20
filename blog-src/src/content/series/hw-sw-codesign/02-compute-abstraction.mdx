@@ -16,6 +16,17 @@ import FigRef from '../../../components/FigRef.astro';
 import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="Peak FLOP/s is the least useful number about a compute unit — the interface is the shape of its native operation and the condition under which that shape fills."
+  groups={[
+    { title: 'The shapes', items: ['tensor core: m16n8k16 per warp', 'TPU MXU: [8,128] @ [128,128]', 'v6e: 256×256 systolic', 'anything not a multiple is padded'] },
+    { title: 'Numbers', items: ['H100 ridge ≈ 295 FLOP/byte', 'TPU v6e ≈ 575', 'modern parts need 200–600', 'large-scale training MFU 35–50%'] },
+    { title: 'Two ways to lose', items: ['shape mismatch — array cannot fill', 'feed starvation — memory too slow', 'opposite fixes; compare against the ridge', 'a third state: latency-bound'] },
+  ]}
+  close="Occupancy is utilization. Occupancy hides latency; the tile that raises intensity lowers it, so chasing it walks you away from the tile you want."
+/>
 
 ## The core mental model
 

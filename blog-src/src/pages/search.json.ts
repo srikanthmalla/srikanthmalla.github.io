@@ -37,7 +37,18 @@ export const GET: APIRoute = async () => {
       const body = e.body ?? '';
 
       const parts = body.split(/^##\s+(.+)$/gm);
-      const intro = toPlainText(parts[0] ?? '');
+      // The Overview card sits before the first h2, and toPlainText strips it
+      // with every other JSX tag — so pull its prose out first. Its claim is a
+      // one-line statement of the module's thesis, which is exactly the string
+      // someone skimming would search for.
+      const ov = /<Overview\b([\s\S]*?)\/>/.exec(parts[0] ?? '');
+      const overview = ov
+        ? [
+            ...[...ov[1].matchAll(/(?:claim|close)="([^"]*)"/g)].map((m) => m[1]),
+            ...[...ov[1].matchAll(/'((?:[^'\\]|\\.)*)'/g)].map((m) => m[1].replace(/\\'/g, "'")),
+          ].join(' · ')
+        : '';
+      const intro = `${overview} ${toPlainText(parts[0] ?? '')}`.trim();
 
       records.push({
         u: url,

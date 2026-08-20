@@ -14,6 +14,17 @@ import SelfCheck from '../../../components/SelfCheck.astro';
 import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Plot from '../../../components/Plot.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="Published break-evens span 2 B to 23.6 B tokens a month, and the spread is assumptions rather than disagreement — chiefly utilisation, which nobody states."
+  groups={[
+    { title: 'The four assumptions', items: ['cluster size — 8 GPUs vs 64', 'procurement — owned, on-demand, serverless', 'the API price compared against', 'utilisation — unstated and dominant'] },
+    { title: 'Numbers', items: ['8×B200 ≈ \$395 K to buy', '8×B300 ≈ \$59–63/hr on demand', '64×H200 serverless ≈ \$212 K/month', 'at 30% utilisation, triple any published figure'] },
+    { title: 'The decision', items: ['self-host for control, not for cost', 'unless volume is large and steady', 'bursty + self-hosted is the worst case', 'you cannot autoscale a 13-minute start'] },
+  ]}
+  close="Break-even calculated at 100% utilisation. Concurrency is capped by your latency SLO, so the saturated cluster describes a service nobody would use."
+/>
 
 ## The core mental model
 

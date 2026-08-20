@@ -15,6 +15,17 @@ import SelfCheck from '../../../components/SelfCheck.astro';
 import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Timeline from '../../../components/Timeline.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="A tree ensemble is routing, not arithmetic — which is why it is nearly free in gates, awful on a CPU, and why FLOPs tell you nothing about its cost."
+  groups={[
+    { title: 'The mechanisms', items: ['all comparisons evaluate in parallel', 'depth 6 costs ~3 logic levels, not 6', 'every tree is independent', 'latency = tree depth + one reduction'] },
+    { title: 'Numbers', items: ['model evaluation 20–30 ns', 'feature pipeline 100–400 ns — the real bottleneck', 'output range computable at compile time'] },
+    { title: 'Why a CPU hates it', items: ['unpredictable branches', 'pointer chasing per node', 'no reuse to amortise'] },
+  ]}
+  close="FLOPs tell you the cost. A comparison is not a FLOP, and the quantity that matters here is dependent-load depth."
+/>
 
 ## The core mental model
 

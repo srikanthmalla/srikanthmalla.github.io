@@ -16,6 +16,18 @@ import FigRef from '../../../components/FigRef.astro';
 import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="FlashAttention performs identical arithmetic to standard attention — what changed is the binding of one tensor — and prefill and decode are opposite points in the resource space running the same mathematics."
+  groups={[
+    { title: 'The re-binding', items: ['scores bound to SRAM, not HBM', 'tile both sequence axes', 'online softmax makes the reduction streamable', 'exact, not approximate'] },
+    { title: 'Numbers', items: ['standard attention I ≈ d/2 ≈ 64', 'FlashAttention I ≈ S/2 ≈ 4096', 'decode intensity ≈ batch size', 'GQA cuts KV ~8× against MHA'] },
+    { title: 'What that implies', items: ['single-stream token rate = model bytes ÷ bandwidth', 'KV capacity limits batch, so it is the throughput constraint', 'paging fixed fragmentation, not compute'] },
+  ]}
+  closeLabel="Carry"
+  close="When a mapping is blocked by a reduction, the unlock is an algebraic reformulation that makes the reduction streamable — then the mapping falls out."
+/>
 
 ## The core mental model
 

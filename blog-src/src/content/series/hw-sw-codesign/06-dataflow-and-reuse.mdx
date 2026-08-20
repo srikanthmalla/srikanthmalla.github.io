@@ -13,6 +13,18 @@ import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="Dataflow answers one question — which tensor do you refuse to re-fetch — and fixing that answer in RTL removes one dimension of the mapspace for the life of the chip."
+  groups={[
+    { title: 'The four answers', items: ['weight-stationary — TPU MXU', 'output-stationary — GPU tensor core', 'input-stationary — rarely primary', 'row-stationary — Eyeriss, for conv windows'] },
+    { title: 'Psums decide it', items: ['the only tensor with write traffic', 'the only one that cannot be broadcast', 'read and written K times', 'optimise the accumulator first'] },
+    { title: 'The commitment', items: ['systolic ⇒ weight-stationary permanently', 'so it wants a large batch', 'K and N as multiples of 128 (256 on v6e)', 'flexibility costs 10–30% area'] },
+  ]}
+  closeLabel="Carry"
+  close="A dataflow is a bet on a reuse structure. Row-stationary bet on sliding windows and lost within five years."
+/>
 
 ## The core mental model
 

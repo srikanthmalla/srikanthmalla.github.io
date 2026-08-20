@@ -16,6 +16,18 @@ import FigRef from '../../../components/FigRef.astro';
 import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="An interconnect is a memory level you cannot store anything in — same numbers, topology in place of capacity, collectives in place of load and store."
+  groups={[
+    { title: 'The ladder continues', items: ['NoC ≈ 10 TB/s', 'HBM 3.35–8 TB/s', 'NVLink 0.9–1.8 TB/s', 'IB ≈ 50 GB/s — a cliff at the chassis'] },
+    { title: 'Collectives', items: ['ring all-reduce moves ≈ 2S, independent of N', 'but O(N) hops — tree for small messages', 'hierarchical: reduce-scatter, then across, then gather'] },
+    { title: 'The beachfront limit', items: ['compute scales with area, off-package with perimeter', 'so FLOPs per off-chip byte degrades every generation', 'drives precision, SRAM growth, NVL72, co-packaged optics'] },
+  ]}
+  closeLabel="Carry"
+  close="An H100 needs ~1100 FLOP per NVLink byte and ~20,000 per NIC byte. Those two numbers decide the entire parallelism layout."
+/>
 
 ## The core mental model
 

@@ -14,6 +14,17 @@ import SelfCheck from '../../../components/SelfCheck.astro';
 import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Flow from '../../../components/Flow.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="vLLM contains the hybridness in one component — a single KV manager holding both block types — and gets its headline speed from speculative decoding rather than from kernels."
+  groups={[
+    { title: 'The design', items: ['one hybrid KV-cache manager', 'paged blocks + recurrent blocks, one budget', 'NIXL sees a page as two logical views', 'interval checkpointing, Marconi-style caching'] },
+    { title: 'Numbers', items: ['111 tok/s TP8, 118 TP16 — batch 1', '370 with DSpark — 3.14×', 'custom collectives 1.7–4.5× over NCCL', 'metadata prep 870 µs → 34 µs'] },
+    { title: 'Published limits', items: ['prefix caching off by default', '12-head vision encoder will not shard TP=8', 'multi-node EP/DP needs RDMA or NVLink', 'tool-call parser can return empty'] },
+  ]}
+  close="Quoting 370 tok/s as throughput. It is batch-1 latency on an idle GB300, and speculation is exactly the feature that shrinks as the machine fills."
+/>
 
 ## The core mental model
 

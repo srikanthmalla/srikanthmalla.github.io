@@ -16,6 +16,18 @@ import FigRef from '../../../components/FigRef.astro';
 import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="Roofline bounds you by min(peak, bandwidth × intensity) — and intensity belongs to a triple of algorithm, boundary and implementation, not to the algorithm alone."
+  groups={[
+    { title: 'The model', items: ['P = min(π, βI)', 'one roof per memory level', 'ridge point I* = π/β', 'name the boundary or say nothing'] },
+    { title: 'Numbers', items: ['H100 ridge ≈ 295 FLOP/byte', 'prefill I ≈ n/3, crosses at n ≈ 900', 'decode I ≈ 1 — 300× below', 'decode intensity ≈ batch size'] },
+    { title: 'Where it stops', items: ['it is a steady-state throughput model', 'batch 1 breaks every assumption', 'its prescription — batch and reuse — is the one move you lack'] },
+  ]}
+  closeLabel="Carry"
+  close="Roofline is a diagram of the hardware on which a mapping is a point. Keep it for telling you what you are not limited by."
+/>
 
 ## The core mental model
 

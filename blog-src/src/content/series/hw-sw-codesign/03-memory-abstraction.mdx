@@ -17,6 +17,18 @@ import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
 import Grid from '../../../components/Grid.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="A memory level is five numbers, and the two nobody quotes — access granularity and who decides placement — are the ones that determine whether your code works."
+  groups={[
+    { title: 'The five', items: ['capacity, bandwidth, latency', 'granularity — the minimum transfer', 'who decides: cache or scratchpad', 'same SRAM, different contract'] },
+    { title: 'Numbers', items: ['32 B sector; stride 8 → 12.5% used', 'SRAM ≈ 1 pJ/byte, HBM ≈ 50', 'H100: 50 MB L2, 228 KB SMEM/SM', 'bytes in flight ≈ 1.3 MB'] },
+    { title: 'Why ML picks scratchpad', items: ['loop bounds known ahead', 'affine indices — access sequence computable', 'reuse statically derivable', 'price: unproven shapes cannot be scheduled at all'] },
+  ]}
+  closeLabel="Carry"
+  close="Latency is a concurrency problem and granularity is a layout problem. Only one of the two has a general solution."
+/>
 
 ## The core mental model
 

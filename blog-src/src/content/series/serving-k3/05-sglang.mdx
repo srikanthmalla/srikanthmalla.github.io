@@ -15,6 +15,18 @@ import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="SGLang makes a more aggressive memory decision — one pool allocated from both ends — and pairs it with two parallelism strategies chosen because prefill and decode want opposite things."
+  groups={[
+    { title: 'The design', items: ['KDA from one end, MLA KV from the other', 'no pre-sizing guess, no fragmentation', 'PP8×TP1 chunked pipeline for prefill', 'DCP8 shards MLA KV by token position'] },
+    { title: 'Numbers', items: ['~113 tok/s batch 1, ~423 with DSpark', 'prefill 1.7× TEP8, P2P hides 91% of comms', 'DCP8: 7.9× logical KV capacity', '2,808 tok/s per GPU, disaggregated'] },
+    { title: 'The waterfall', items: ['communication fusion +27.6 — the biggest line', 'launch elimination + MoE fusion +19.9', 'compute kernels only +10.3', 'all-reduce is a sync point at batch 1'] },
+  ]}
+  closeLabel="Carry"
+  close="DCP scales context length, not request count — the per-request KDA constant is untouched, so it does nothing for many short sessions."
+/>
 
 ## The core mental model
 

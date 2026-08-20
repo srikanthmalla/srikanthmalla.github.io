@@ -18,6 +18,17 @@ import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
 import Grid from '../../../components/Grid.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="Coalescing is a count of memory transactions, not a property of thread indices — the set of sectors a warp touches is the only thing that matters."
+  groups={[
+    { title: 'The mechanisms', items: ['sectors, not lanes', 'bank conflicts on shared memory', 'padding versus swizzling', 'tiling for reuse'] },
+    { title: 'Numbers', items: ['32 B sector granularity', 'stride 8 → 12.5% efficiency', '32 banks, conflict-free needs distinct banks', 'tile T buys intensity ≈ T/2'] },
+    { title: 'The tension', items: ['bigger tile → more reuse', '…but more registers and shared memory', '…so fewer resident blocks and less latency hiding'] },
+  ]}
+  close="100% coalescing efficiency and 60% of peak is normal — efficiency says you used every byte fetched, not that you fetched few enough."
+/>
 
 ## The core mental model
 

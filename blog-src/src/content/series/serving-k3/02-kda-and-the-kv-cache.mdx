@@ -16,6 +16,17 @@ import FigRef from '../../../components/FigRef.astro';
 import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="69 of 93 layers keep a fixed-size recurrent state instead of a growing KV cache — which is what makes a million tokens affordable and what breaks everything built on paged KV."
+  groups={[
+    { title: 'Two state types', items: ['MLA: paged, append-only, position-indexed', 'KDA: one object, overwritten every token', 'only the first can be shared', 'only the first can be partially fetched'] },
+    { title: 'Numbers', items: ['~26% of layers grow with context', 'roughly a 4× cut in the scaling term', 'naive speculative snapshot ~512 KB/step', 'ReplaySSM: ~16 KB — 32× less'] },
+    { title: 'The recurring fix', items: ['checkpoint at intervals', 'replay from the nearest one below', 'copy-on-write to branch', 'and prove the replay is bit-identical'] },
+  ]}
+  close="Offloading a KDA state like a KV page. It has no pages, no positions, and no immutability — three properties every KV technique assumes."
+/>
 
 ## The core mental model
 

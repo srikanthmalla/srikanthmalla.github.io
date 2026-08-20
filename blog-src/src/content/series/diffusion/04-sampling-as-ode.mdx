@@ -14,6 +14,18 @@ import SelfCheck from '../../../components/SelfCheck.astro';
 import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Timeline from '../../../components/Timeline.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="There is a deterministic ODE with the same marginals as the SDE at every time — which turns sampling from a stochastic simulation into numerical integration."
+  groups={[
+    { title: 'The two views', items: ['reverse SDE — noise injected each step', 'probability-flow ODE — no noise term', 'identical marginals, different trajectories', 'the ODE is reproducible and invertible'] },
+    { title: 'What it unlocks', items: ['any integrator you like', 'step count becomes an error-analysis question', 'latent interpolation and inversion', 'exact likelihoods'] },
+    { title: 'What stochasticity buys', items: ['it corrects accumulated error', 'so the SDE can be more forgiving', 'a real trade, not a strict improvement'] },
+  ]}
+  closeLabel="Carry"
+  close="Once sampling is integration, the sampler literature is standard numerical analysis applied to a field that had been treating step count as a hyperparameter."
+/>
 
 ## The core mental model
 

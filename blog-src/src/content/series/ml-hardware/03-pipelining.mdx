@@ -15,6 +15,17 @@ import SelfCheck from '../../../components/SelfCheck.astro';
 import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Timeline from '../../../components/Timeline.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="Initiation interval and depth are different quantities that move in opposite directions, and almost every latency-hiding tool trades the second for the first."
+  groups={[
+    { title: 'The mechanisms', items: ['II = how often you can start', 'depth = input to its own answer', 'multi-buffering, prefetch, warp swapping', 'all three are one trick'] },
+    { title: 'Numbers', items: ['bytes in flight = bandwidth × latency', '≈1.3 MB outstanding on an H100', 'prefetch distance is a ratio, not a constant'] },
+    { title: 'Where it stops', items: ['nothing to overlap at batch 1', 'a deadline shorter than depth cannot be pipelined away', 'double buffering with no spare capacity buys nothing'] },
+  ]}
+  close="Deeper pipelines are faster only for throughput. Against a deadline, depth is the number you are being judged on."
+/>
 
 ## The core mental model
 

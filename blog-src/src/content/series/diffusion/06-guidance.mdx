@@ -14,6 +14,18 @@ import SelfCheck from '../../../components/SelfCheck.astro';
 import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Timeline from '../../../components/Timeline.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="Classifier-free guidance samples from a sharpened distribution rather than the model's own, and it costs a second network evaluation at every step."
+  groups={[
+    { title: 'The mechanism', items: ['train with the condition randomly dropped', 'one network learns conditional and unconditional', 'extrapolate away from the unconditional', 'w = 1 is no guidance'] },
+    { title: 'Numbers', items: ['CFG doubles NFE per step', 'drop rate typically 10–20%', 'typical w in the 3–8 range', 'quoted step counts and latencies differ by 2× because of this'] },
+    { title: 'The trade', items: ['higher w: better prompt adherence', 'lower diversity, saturated outputs', 'it is sampling from p·p(c|x)^w, not from p'] },
+  ]}
+  closeLabel="Carry"
+  close="Guidance distillation exists to fold the second evaluation back into one — which is why it appears in every fast-sampling recipe."
+/>
 
 ## The core mental model
 

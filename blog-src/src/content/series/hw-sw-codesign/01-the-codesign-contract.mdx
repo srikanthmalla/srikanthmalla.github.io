@@ -16,6 +16,18 @@ import FigRef from '../../../components/FigRef.astro';
 import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="Codesign is a symptom, not a virtue: ML is one of the few domains where the hardware/software interface leaks and the workload is narrow enough to specialise for."
+  groups={[
+    { title: 'The abstraction', items: ['compute, memory, interconnect — exhaustive', 'each exposes capacity, bandwidth, latency, granularity', 'plus: who decides placement', 'compute creates value; the rest is logistics'] },
+    { title: 'Numbers', items: ['INT8 MAC ≈ 0.2 pJ', 'DRAM access ≈ 640 pJ', 'one fetch ≈ 3200 MACs', 'the ratio is a trend, not a snapshot'] },
+    { title: 'What follows', items: ['every technique is a way of not moving data', 'balance is about a workload distribution', 'choose resources and mapping jointly'] },
+  ]}
+  closeLabel="Carry"
+  close="Design a memory system for the mapping you have and you get a chip excellent at a mapping nobody will use in three years."
+/>
 
 ## The core mental model
 

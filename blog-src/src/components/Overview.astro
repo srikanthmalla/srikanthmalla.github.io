@@ -1,0 +1,57 @@
+---
+/**
+ * The module's whole argument on one card, shown at the top of the page.
+ *
+ * Deliberately *not* a <Figure>: figures are click-to-reveal evidence for a
+ * specific claim, whereas this is the map at the trailhead — you want it before
+ * you have decided to read anything, and you want it again when you come back
+ * to skim. So it is always open and needs no trigger.
+ *
+ * HTML rather than SVG, because it is a card of text: it reflows on a phone
+ * instead of scrolling sideways, and the chips wrap on their own.
+ */
+interface Group {
+  title: string;
+  items: string[];
+}
+interface Props {
+  /** The module's thesis, one sentence. */
+  claim: string;
+  /** Two to four titled lists. Keep items to a few words each. */
+  groups: Group[];
+  /** Closing strip: usually the trap, sometimes the thing to carry forward. */
+  closeLabel?: string;
+  close?: string;
+}
+
+const { claim, groups, closeLabel = 'Trap', close } = Astro.props;
+---
+
+<aside class="ovw" aria-label="Module overview">
+  <p class="ovw-kicker">At a glance</p>
+  <p class="ovw-claim">{claim}</p>
+
+  <div class="ovw-cols" style={`--ovw-n:${groups.length}`}>
+    {
+      groups.map((g) => (
+        <div class="ovw-col">
+          <p class="ovw-h">{g.title}</p>
+          <ul class="ovw-list">
+            {g.items.map((it) => (
+              <li>{it}</li>
+            ))}
+          </ul>
+        </div>
+      ))
+    }
+  </div>
+
+  {
+    close && (
+      <p class="ovw-close">
+        <span class="ovw-tag" data-kind={closeLabel.toLowerCase()}>{closeLabel}</span>
+        {close}
+      </p>
+    )
+  }
+</aside>

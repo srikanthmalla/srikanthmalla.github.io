@@ -17,6 +17,17 @@ import FigRef from '../../../components/FigRef.astro';
 import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="The mean describes no request that ever happened; what you need is p50 for whether the fast path is fast, p99.9 for how often you fall off it, and p99/p50 as the jitter metric."
+  groups={[
+    { title: 'Where jitter comes from', items: ['cold caches and cold branch predictors', 'page faults and TLB misses', 'DVFS, C-states, SMIs', 'scheduler preemption and migration'] },
+    { title: 'The fixes', items: ['core pinning and isolation', 'busy-poll instead of interrupts', 'huge pages — carefully', 'keep the path warm by exercising it'] },
+    { title: 'The measurement', items: ['coordinated omission makes p99 a fiction', 'your load generator stalls with the system', 'record intended send time, not actual'] },
+  ]}
+  close="Coordinated omission. If the harness waits for a slow response before sending the next request, it stops sampling exactly when the system is worst."
+/>
 
 ## The core mental model
 

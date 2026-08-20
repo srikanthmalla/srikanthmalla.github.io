@@ -14,6 +14,17 @@ import SelfCheck from '../../../components/SelfCheck.astro';
 import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Timeline from '../../../components/Timeline.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="cudaMalloc synchronises the device, so PyTorch caches blocks instead — steady-state training makes essentially zero driver allocations, and the price of that is fragmentation."
+  groups={[
+    { title: 'The mechanism', items: ['size-binned free lists', 'split large blocks, coalesce on free', 'blocks are owned by a stream', 'first iteration pays; later ones hit the list'] },
+    { title: 'The failure', items: ['OOM asking 2 GB with 8 GB free', 'the free memory is not contiguous', 'expandable segments attack it directly', 'the snapshot shows what the summary hides'] },
+    { title: 'Why not plan ahead', items: ['XLA can — its shapes are static', 'eager shapes arrive as they arrive', 'the same trade as everywhere else'] },
+  ]}
+  close="Reaching for empty_cache(). It hands memory back to the driver and guarantees the next allocation pays a synchronising cudaMalloc."
+/>
 
 ## The core mental model
 

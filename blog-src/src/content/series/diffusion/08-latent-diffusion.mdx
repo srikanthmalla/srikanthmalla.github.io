@@ -15,6 +15,18 @@ import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="Latent diffusion splits the problem: an autoencoder does perceptual compression once, and the diffusion model does semantic composition in a space 48× smaller."
+  groups={[
+    { title: 'The split', items: ['autoencoder handles high-frequency detail', 'diffusion handles composition', 'the encoder is not a generative model', 'a small KL or VQ penalty, not a real prior'] },
+    { title: 'Numbers', items: ['8× spatial, 4 channels', '512²×3 → 64²×4 = 48× fewer elements', 'attention is quadratic, so far more in some layers', 'perceptual and adversarial losses do the work'] },
+    { title: 'What it costs', items: ['the autoencoder is a hard ceiling on detail', 'artefacts it cannot represent are unreachable', 'latent scale must be normalised or the schedule lies'] },
+  ]}
+  closeLabel="Carry"
+  close="The compression is chosen so the discarded bits are the ones perception does not use — which is why an 8× downsample still reconstructs crisply."
+/>
 
 ## The core mental model
 

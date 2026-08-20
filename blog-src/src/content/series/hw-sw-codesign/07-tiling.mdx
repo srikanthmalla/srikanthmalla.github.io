@@ -16,6 +16,17 @@ import FigRef from '../../../components/FigRef.astro';
 import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="Traffic falls as the square root of capacity, so doubling SRAM buys 1.41× — which is why incremental capacity is a weak lever and a threshold that fits the working set is everything."
+  groups={[
+    { title: 'The closed form', items: ['3T² ≤ C, so T = √(C/3)', 'traffic = Θ(N³/√C)', 'matches the Hong–Kung I/O bound', '4× capacity to halve traffic'] },
+    { title: 'Where it fails', items: ['GEMV — no area reuse at any capacity', 'streaming traffic — fusion, not tiling', 'the threshold regime — traffic collapses to Θ(N²)'] },
+    { title: 'Double buffering', items: ['costs √2 in traffic, halving reuse capacity', 'converts load + compute into max(·,·)', 'deepen when latency-bound, not when memory-bound'] },
+  ]}
+  close="More cache will fix our bandwidth problem. It fixes √2 per doubling, and only if the traffic was capacity traffic rather than compulsory."
+/>
 
 ## The core mental model
 

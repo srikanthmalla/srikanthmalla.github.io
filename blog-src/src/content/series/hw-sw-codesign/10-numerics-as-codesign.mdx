@@ -14,6 +14,17 @@ import SelfCheck from '../../../components/SelfCheck.astro';
 import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Grid from '../../../components/Grid.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="Precision is the only knob that moves all three resources at once — and the block size of a scaled format is a hardware parameter, not a numerics one."
+  groups={[
+    { title: 'The mechanism', items: ['block scaling solves range, not precision', 'MX: 32 elements, E8M0 shared scale', 'NVFP4: 16 elements, E4M3 scale', 'the block must divide the array K-tile'] },
+    { title: 'Numbers', items: ['MXFP4 is really 4.25 bits/value', 'FP4 E2M1 has three magnitudes', 'accumulate in FP32 — error grows as √K', 'swamping makes narrow accumulators wrong, not noisy'] },
+    { title: 'Spend it where it binds', items: ['decode → weight bits and KV cache', 'prefill → the operand format the MAC supports natively', 'distributed → the wire format', 'never → accumulators or master weights'] },
+  ]}
+  close="“We quantized the model to 4 bits.” That names one number and hides four decisions: which tensors, what block size, which scale type, accumulating into what."
+/>
 
 ## The core mental model
 

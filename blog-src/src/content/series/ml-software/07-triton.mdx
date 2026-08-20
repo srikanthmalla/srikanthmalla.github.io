@@ -14,6 +14,17 @@ import SelfCheck from '../../../components/SelfCheck.astro';
 import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Grid from '../../../components/Grid.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="Triton moves the abstraction from the thread to the block: you name a tile, and the compiler assigns threads, vectorises, and picks the memory pattern."
+  groups={[
+    { title: 'What you keep', items: ['block sizes — a judgement call', 'the algorithm and its tiling', 'masking at the boundaries'] },
+    { title: 'What it takes over', items: ['lane-to-address mapping', 'coalescing and vectorisation', 'shared-memory staging and swizzling', 'register allocation'] },
+    { title: 'Numbers', items: ['a Triton kernel is ~10× shorter than CUDA C', 'autotune searches blocks, stages, warps', 'those five numbers are a multi-level tiling'] },
+  ]}
+  close="constexpr multiplies your kernels. Each distinct value is a separate compilation, so a careless one turns a kernel into dozens."
+/>
 
 ## The core mental model
 

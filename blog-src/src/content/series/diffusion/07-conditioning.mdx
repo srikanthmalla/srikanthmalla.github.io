@@ -14,6 +14,18 @@ import SelfCheck from '../../../components/SelfCheck.astro';
 import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Stack from '../../../components/Stack.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="A condition can enter in four places, and they form a hierarchy from global to spatial — picking the wrong site is the usual reason a condition is ignored."
+  groups={[
+    { title: 'The four sites', items: ['adaptive norm — timestep, class', 'cross-attention — text', 'input concatenation — pixel-aligned maps', 'auxiliary branch — ControlNet'] },
+    { title: 'How to choose', items: ['by how much spatial structure it carries', 'one vector ⇒ normalisation', 'many tokens ⇒ cross-attention', 'already aligned ⇒ concatenate'] },
+    { title: 'Numbers', items: ['AdaLN costs two vectors per block', 'cross-attention is quadratic in the token count', 'ControlNet roughly doubles parameters'] },
+  ]}
+  closeLabel="Carry"
+  close="Strength of control and cost run together. Spend at the coarsest site that can express the condition, not the strongest one available."
+/>
 
 ## The core mental model
 

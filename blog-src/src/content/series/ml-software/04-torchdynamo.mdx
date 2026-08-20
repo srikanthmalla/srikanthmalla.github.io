@@ -14,6 +14,17 @@ import SelfCheck from '../../../components/SelfCheck.astro';
 import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Flow from '../../../components/Flow.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="Dynamo evaluates CPython bytecode symbolically and stops the moment it meets something it cannot represent — the graph break is what made capture succeed where tracing and scripting failed."
+  groups={[
+    { title: 'The mechanism', items: ['bytecode — not source, not executed ops', 'symbolic evaluation builds an FX graph', 'guards record why the graph is valid', 'unsupported construct ⇒ break and resume'] },
+    { title: 'Why not the alternatives', items: ['trace: silently bakes in control flow', 'script: a language nobody wanted', 'bytecode is always available'] },
+    { title: 'The cost', items: ['a break splits one graph into two', 'losing cross-boundary fusion', 'guards must be cheap and complete', 'guard design is the hard part'] },
+  ]}
+  close="fullgraph=False hides the problem. It keeps you running while quietly deleting most of the benefit."
+/>
 
 ## The core mental model
 

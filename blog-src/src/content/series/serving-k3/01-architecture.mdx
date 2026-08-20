@@ -14,6 +14,17 @@ import SelfCheck from '../../../components/SelfCheck.astro';
 import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Stack from '../../../components/Stack.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="Four numbers decide how K3 serves: what you hold, what you touch per token, how tokens reach experts, and how much of the cache grows with context."
+  groups={[
+    { title: 'The model', items: ['2.78 T total, ~104 B active per token', '896 experts, top-16, plus shared', 'LatentMoE dispatches at 3,584 — half of 7,168', '93 layers: 69 KDA + 24 gated MLA'] },
+    { title: 'Numbers', items: ['~1.56 TB of weights at native MXFP4', '1M-token context window', 'MXFP4 weights, MXFP8 activations', 'QAT from the SFT stage onward'] },
+    { title: 'What each governs', items: ['total → minimum cluster size', 'active → decode traffic per step', 'experts → the all-to-all and EP degree', 'the 69/24 split → how memory grows'] },
+  ]}
+  close="“K3 has 32B active parameters.” That is Kimi K2's figure. K3 activates ~104 B, and a 3× error there propagates into every capacity estimate."
+/>
 
 ## The core mental model
 

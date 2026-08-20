@@ -15,6 +15,17 @@ import SelfCheck from '../../../components/SelfCheck.astro';
 import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Stack from '../../../components/Stack.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="A Q-format is a contract about where the binary point sits, and every fixed-point multiply is a decision — made once, statically, by you — about which bits to keep."
+  groups={[
+    { title: 'The mechanisms', items: ['Qm.n as a contract, not a type', 'double-width product, wider accumulator', 'guard bits against overflow', 'saturate rather than wrap'] },
+    { title: 'Numbers', items: ['int8 × int8 → int16, accumulate in int32', 'truncation bias grows linearly in K', 'random rounding error grows as √K', '256-term dot product needs ~8 guard bits'] },
+    { title: 'What it buys', items: ['bit-exact reproducibility, free', 'same result on every machine, every run', 'replayable decisions'] },
+  ]}
+  close="int8 means 8 bits everywhere. The operands are 8 bits; the product is 16 and the accumulator is 32, and forgetting that is how accuracy collapses."
+/>
 
 ## The core mental model
 

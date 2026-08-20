@@ -14,6 +14,18 @@ import SelfCheck from '../../../components/SelfCheck.astro';
 import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Flow from '../../../components/Flow.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="ε, x₀, v and the score are one quantity in four coordinate systems — given x_t and the schedule each is an invertible function of the others, so what differs is weighting, not content."
+  groups={[
+    { title: 'The four targets', items: ['ε — predict the noise added', 'x₀ — predict the clean sample', 'v — a rotation of the two', 'score ∇log p — what the ODE wants'] },
+    { title: 'Why it matters anyway', items: ['each implies a different loss weighting across t', 'ε over-weights high noise', 'x₀ over-weights low noise', 'v is better conditioned at both ends'] },
+    { title: 'The connection', items: ['denoising = score matching, via Tweedie', 'so the network is a score estimator', 'which is what makes sampling an ODE'] },
+  ]}
+  closeLabel="Carry"
+  close="Parameterisation is a training-dynamics decision, not a modelling one. The learned object is the same either way."
+/>
 
 ## The core mental model
 

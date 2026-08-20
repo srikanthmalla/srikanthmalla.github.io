@@ -16,6 +16,18 @@ import FigRef from '../../../components/FigRef.astro';
 import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="DP, TP, PP, EP and SP are Module 5's four decisions applied one level up, with the interconnect as the memory level — and each costs exactly the collective it forces."
+  groups={[
+    { title: 'Strategy → collective', items: ['DP: all-reduce gradients, once per step', 'TP: all-reduce activations, twice per layer', 'PP: point-to-point, but a bubble', 'EP: all-to-all with data-dependent sizes'] },
+    { title: 'Numbers', items: ['TP supplies ≈ H FLOP/byte — 8192 at H=8192', 'DP supplies ≈ 3 × tokens/step ≈ 10⁷', 'NVLink needs 1100, a NIC needs 20,000', '1F1B bubble = (p−1)/(mv)'] },
+    { title: 'The placement rule', items: ['TP innermost — only NVLink meets it', 'PP in the middle — its cost is not bandwidth', 'DP outermost — largest headroom', 'the assignment is forced, not chosen'] },
+  ]}
+  closeLabel="Carry"
+  close="Overlap is double buffering one level out, and gradient accumulation is the lever when the network limits DP — because DP's ratio is the one you control."
+/>
 
 ## The core mental model
 

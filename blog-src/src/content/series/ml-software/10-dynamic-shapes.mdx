@@ -14,6 +14,17 @@ import SelfCheck from '../../../components/SelfCheck.astro';
 import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Bars from '../../../components/Bars.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="Specialisation buys speed and costs reuse, and since compilation is expensive, the reuse is what decides whether you ever amortise it."
+  groups={[
+    { title: 'The mechanism', items: ['the first compile specialises on the shape', 'a changed shape fails a guard', 'recompile, or mark the dim dynamic', 'symbolic shapes carry constraints, not values'] },
+    { title: 'Numbers', items: ['40 distinct shapes ⇒ 40 compilations', 'bucketing to powers of two ⇒ ~6', 'fully dynamic ⇒ 1, but slower code'] },
+    { title: 'The sharp edges', items: ['0/1 specialisation — batch 1 is special', 'a recompile cap that falls back silently', 'symbolic shapes stop at data-dependent sizes'] },
+  ]}
+  close="Silently falling back to eager. Past the recompile cap it stops erroring and starts being slow, which no metric you watch will show."
+/>
 
 ## The core mental model
 

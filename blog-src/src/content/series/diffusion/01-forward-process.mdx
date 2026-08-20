@@ -16,6 +16,18 @@ import FigRef from '../../../components/FigRef.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
 import Flow from '../../../components/Flow.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="The forward process is designed backwards from one requirement: the marginal must have a closed form, so you can jump to any noise level in a single step."
+  groups={[
+    { title: 'The construction', items: ['Gaussian noise on a schedule', 'x_t = √ᾱ·x₀ + √(1−ᾱ)·ε', 'ᾱ is the cumulative product', 'variance-preserving by design'] },
+    { title: 'Why closed form', items: ['sample x₀, sample t, sample ε — done', 'one network evaluation per gradient step', 'without it, unroll hundreds per example', 'the approach would be uncompetitive'] },
+    { title: 'What it fixes', items: ['the endpoint must be pure noise', 'the path must stay tractable', 'every later choice inherits these'] },
+  ]}
+  closeLabel="Carry"
+  close="Everything downstream — the objective, the sampler, the schedule — is a consequence of the forward process being analytically invertible in distribution."
+/>
 
 ## The core mental model
 

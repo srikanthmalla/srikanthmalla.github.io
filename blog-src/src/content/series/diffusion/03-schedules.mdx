@@ -16,6 +16,18 @@ import FigRef from '../../../components/FigRef.astro';
 import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="Timestep index is a bad coordinate — log-SNR is the one that means something, and a schedule is just a choice of how fast to sweep it."
+  groups={[
+    { title: 'The coordinate', items: ['λ = log(ᾱ/(1−ᾱ))', 'runs about +10 down to −10', 'plot against λ and schedules become comparable'] },
+    { title: 'Numbers', items: ['linear β spends 45% of steps below λ = −3', 'cosine spends 14%', 'below −3 the image is essentially gone', 'that gap is the whole argument for cosine'] },
+    { title: 'What it decides', items: ['where training samples land', 'where sampling steps are spent', 'resolution changes the effective SNR — shift the schedule'] },
+  ]}
+  closeLabel="Carry"
+  close="Given a fixed budget of training and sampling steps, schedule design is the question of where in log-SNR to put them."
+/>
 
 ## The core mental model
 

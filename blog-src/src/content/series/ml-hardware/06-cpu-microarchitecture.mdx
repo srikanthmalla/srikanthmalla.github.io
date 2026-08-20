@@ -15,6 +15,17 @@ import SelfCheck from '../../../components/SelfCheck.astro';
 import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Flow from '../../../components/Flow.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="A core that is not retiring is front-end bound, back-end bound or mis-speculating — three diagnoses that look identical from outside and need opposite fixes."
+  groups={[
+    { title: 'The mechanisms', items: ['dependent chains versus ILP', 'false sharing on a 64 B line', 'store buffers and memory ordering', 'AVX-512 licence downclock'] },
+    { title: 'Numbers', items: ['64 B cache line', 'FMA latency ~4 cycles, throughput 2/cycle', 'a contended lock costs ~100× a 5 ns operation', 'unroll by latency ÷ throughput'] },
+    { title: 'The structures', items: ['SPSC ring with separated head and tail lines', 'x86 gives you acquire/release for free', 'branchless when the branch is unpredictable'] },
+  ]}
+  close="Padding to 64 bytes fixes false sharing. It fixes the sharing you thought of — adjacent-line prefetch and the next allocation can put it right back."
+/>
 
 ## The core mental model
 

@@ -14,6 +14,17 @@ import SelfCheck from '../../../components/SelfCheck.astro';
 import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Bars from '../../../components/Bars.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="Three circulating numbers span 25× and all three are honest — they are measurements of different things on different machines, so you cannot choose an engine from them."
+  groups={[
+    { title: 'What actually differs', items: ['hardware and precision path', 'native MXFP4 vs Marlin dequantization', 'NVLink domain vs two InfiniBand nodes', 'whether speculation was on'] },
+    { title: 'Numbers', items: ['16.8 tok/s — 16×H200, single request', '111–118 — GB300, batch 1, no spec', '370–423 — the same, with DSpark', 'both engines ~113–118 before speculation'] },
+    { title: 'Choose on', items: ['SGLang: long context (DCP), prefill-heavy', 'vLLM: offloading and routing ecosystem', 'or whichever you already operate'] },
+  ]}
+  close="Reading the 25× spread as an engine difference. The same engine produced numbers at both ends of it."
+/>
 
 ## The core mental model
 

@@ -18,6 +18,17 @@ import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
 import Flow from '../../../components/Flow.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="Put a function in hardware if it is on the critical path, stable over months, and bounded in time — and the third conjunct is the one people drop."
+  groups={[
+    { title: 'The rule', items: ['critical path', 'stable over months, not days', 'bounded, data-independent duration', 'variable-time hardware loses to fixed-time software'] },
+    { title: 'Numbers', items: ['FPGA on-path 350–900 ns', 'CPU + kernel bypass 2–5 µs', 'trigger path 20–100 ns — a different measurement', 'microburst 1–5 M msg/s'] },
+    { title: 'The interface', items: ['price ladder, never a hash map', 'double-buffered params with one commit bit', 'risk checks last, independent, fail-closed', 'host never in the loop of a decision'] },
+  ]}
+  close="Putting the risk check inside the strategy. It exists for the case where the strategy misbehaves, so sharing state with it defeats the purpose."
+/>
 
 ## The core mental model
 

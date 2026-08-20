@@ -16,6 +16,17 @@ import FigRef from '../../../components/FigRef.astro';
 import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="Aggregate throughput rose 8.7× while per-user speed fell 6.2× — and the reason it is not linear is that routed expert weights do not amortise under batching."
+  groups={[
+    { title: 'The measurement', items: ['1 request → 16.8 tok/s', '54 requests → 146.9 aggregate, ~2.7 each', 'p50 latency 28.3 s → 60 s, max 102 s', 'TTFT held at 0.37–0.54 s'] },
+    { title: 'Why batching returns less', items: ['54×16 draws touch most of 896 experts', 'so weight traffic grows with batch', 'load imbalance sets the step time', 'speculation inverts under load'] },
+    { title: 'Three ceilings', items: ['capacity — concurrency × context ≤ pool', 'the running-request cap', 'acceptable per-user latency — usually the real one'] },
+  ]}
+  close="Benchmarking at batch 1 and planning at batch 64. Those are two different servers, and only one of them has users on it."
+/>
 
 ## The core mental model
 

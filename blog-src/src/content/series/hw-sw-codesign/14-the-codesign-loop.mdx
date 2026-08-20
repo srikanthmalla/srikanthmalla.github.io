@@ -14,6 +14,18 @@ import SelfCheck from '../../../components/SelfCheck.astro';
 import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Timeline from '../../../components/Timeline.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="The architecture is frozen against a prediction two to three years out, so once silicon is fixed the compiler is the only remaining variable — and it is funded as a support function."
+  groups={[
+    { title: 'The loop', items: ['characterise → mapping study → freeze', 'RTL and compiler in parallel', 'freeze-to-production: 2.5–4 years', 'the workload drifts every 3–5'] },
+    { title: 'Safe to fix in silicon', items: ['deep reductions over dense rectangular tiles', 'the memory hierarchy', 'data movement dominating energy'] },
+    { title: 'Must stay soft', items: ['batch composition and sequence length', 'sparsity structure and routing', 'numerical format', 'the exact operator set'] },
+  ]}
+  closeLabel="Carry"
+  close="Fix the numbers, keep the mapping soft. Three of the five loss terms between peak and delivered belong to the compiler — a hardware generation, on silicon you already own."
+/>
 
 ## The core mental model
 

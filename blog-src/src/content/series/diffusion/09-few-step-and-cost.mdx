@@ -16,6 +16,18 @@ import FigRef from '../../../components/FigRef.astro';
 import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
+import Overview from '../../../components/Overview.astro';
+
+<Overview
+  claim="Solvers take you from 1000 steps to about 20 and stop, because below that the trajectory genuinely curves — to go further you must change what is being integrated."
+  groups={[
+    { title: 'The distillation family', items: ['progressive — two teacher steps into one', 'consistency — every point maps to one endpoint', 'adversarial — a discriminator restores detail', 'each asks the student to match something different'] },
+    { title: 'Numbers', items: ['DDPM 1000 → DDIM 50 → DPM-Solver++ 20', 'distilled 4, consistency/adversarial 1', 'CFG doubles all of these unless distilled too'] },
+    { title: 'Where cost goes', items: ['NFE × model size, mostly', 'the VAE decode is a fixed tail', 'at one step it stops being negligible'] },
+  ]}
+  closeLabel="Carry"
+  close="The break between 20 steps and 4 is where the work stops being numerical analysis and starts being training."
+/>
 
 ## The core mental model
 

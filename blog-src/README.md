@@ -40,6 +40,7 @@ src/
     Probe.astro                   one Critical-thinking question + its answer
     SelfCheck.astro               question visible, answer behind a native <details>
     Search.astro                  overlay; fetches /blog/search.json on first use
+    Overview.astro                the "at a glance" card at the top of a module
     FigRef.astro                  inline dotted-underline trigger for a Figure
     Figure.astro                  the collapsible figure panel + caption
     Roofline.astro                log-log roofline; points, arrows, ridge
@@ -105,6 +106,26 @@ as an appendix rather than as part of the argument:
 
 Every table in beat 2 opens with a sentence saying what it is for. A section
 that starts on a bare `|` reads as a dump; the lead-in is what makes it a beat.
+
+## The overview card
+
+Every module opens with an `<Overview>` — a claim, two to four titled lists, and
+a closing strip — placed before the first `##`. It is deliberately *not* a
+`<Figure>`: figures are click-to-reveal evidence for one claim, this is the map
+at the trailhead, so it is always open and needs no trigger. HTML rather than
+SVG, so it reflows to one column on a phone instead of scrolling sideways.
+
+```mdx
+<Overview
+  claim="The module's thesis, one sentence."
+  groups={[{ title: 'The mechanism', items: ['a few words each', '…'] }, …]}
+  closeLabel="Trap"        {/* anything else renders in the accent, not red */}
+  close="The thing to watch for."
+/>
+```
+
+`search.json.ts` pulls the claim, the close and every item into the module's
+intro record, so a module is findable by its thesis and not only by its blurb.
 
 ## Figures
 
