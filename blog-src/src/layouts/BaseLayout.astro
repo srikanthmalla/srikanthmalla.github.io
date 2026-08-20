@@ -275,6 +275,50 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
           ref.click();
         });
 
+        /* ---- swipe between modules -------------------------------------
+           The page is full of horizontally scrollable things — wide tables,
+           chart figures, the overview diagram — so a swipe that starts inside
+           one of those is the reader scrolling it, not navigating. Everything
+           else is guarded on distance, straightness and duration so an ordinary
+           vertical scroll never trips it. */
+        (() => {
+          const go = (sel) => {
+            const a = document.querySelector(sel);
+            if (a) window.location.href = a.getAttribute('href');
+          };
+          const scrollableX = (el) => {
+            for (let n = el; n && n !== document.body; n = n.parentElement) {
+              if (n.scrollWidth > n.clientWidth + 2) {
+                const ox = getComputedStyle(n).overflowX;
+                if (ox === 'auto' || ox === 'scroll') return true;
+              }
+            }
+            return false;
+          };
+
+          let x0 = 0, y0 = 0, t0 = 0, armed = false;
+
+          addEventListener('touchstart', (e) => {
+            if (e.touches.length !== 1) { armed = false; return; }
+            const t = e.touches[0];
+            armed = !scrollableX(e.target) && !e.target.closest('[data-rail]');
+            x0 = t.clientX; y0 = t.clientY; t0 = Date.now();
+          }, { passive: true });
+
+          addEventListener('touchend', (e) => {
+            if (!armed) return;
+            armed = false;
+            const t = e.changedTouches[0];
+            const dx = t.clientX - x0;
+            const dy = t.clientY - y0;
+            /* Far enough, flat enough, and quick enough to be deliberate. */
+            if (Math.abs(dx) < 70) return;
+            if (Math.abs(dx) < Math.abs(dy) * 2) return;
+            if (Date.now() - t0 > 800) return;
+            go(dx < 0 ? '[data-next]' : '[data-prev]');
+          }, { passive: true });
+        })();
+
         /* Deep link: /page/#fig-foo opens that figure. */
         if (location.hash.startsWith('#fig-')) {
           document.querySelector('[data-figref="' + CSS.escape(location.hash.slice(5)) + '"]')?.click();

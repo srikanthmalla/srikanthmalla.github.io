@@ -75,9 +75,136 @@ const href = (e: Entry) => `${base}/${seriesId}/${slugOf(e)}/`;
       </nav>
     </footer>
   </article>
+
+  {/* Pointer affordance only: the footer pager is the accessible path, and
+      keyboard users already have [ and ]. Duplicating those links into the
+      accessibility tree would announce every module twice. */}
+  {
+    prev && (
+      <a class="edgenav is-prev" href={href(prev)} aria-hidden="true" tabindex="-1">
+        <span class="edgenav-key">←</span>
+        <span class="edgenav-tip">
+          {prev.data.n}. {prev.data.title}
+        </span>
+      </a>
+    )
+  }
+  {
+    next && (
+      <a class="edgenav is-next" href={href(next)} aria-hidden="true" tabindex="-1">
+        <span class="edgenav-key">→</span>
+        <span class="edgenav-tip">
+          {next.data.n}. {next.data.title}
+        </span>
+      </a>
+    )
+  }
 </BaseLayout>
 
 <style>
+  /* ---- floating previous/next ------------------------------------------
+     Fixed to the viewport edges, vertically centred. Hidden below 900px,
+     where the reading column reaches the edges and there is no gutter to sit
+     in — swipe covers that case instead.
+  --------------------------------------------------------------------- */
+  .edgenav {
+    display: none;
+  }
+
+  @media (min-width: 900px) {
+    .edgenav {
+      position: fixed;
+      inset-block-start: 50%;
+      transform: translateY(-50%);
+      z-index: 30;
+      display: grid;
+      place-items: center;
+      width: 2.5rem;
+      height: 2.5rem;
+      border: 1px solid var(--rule);
+      border-radius: 50%;
+      background: var(--bg-raised);
+      color: var(--ink-muted);
+      text-decoration: none;
+      box-shadow: var(--shadow);
+      opacity: 0.55;
+      transition:
+        opacity 0.15s ease,
+        color 0.15s ease,
+        border-color 0.15s ease;
+    }
+
+    .edgenav:hover {
+      opacity: 1;
+      color: var(--ink-strong);
+      border-color: var(--ink-faint);
+    }
+
+    .edgenav.is-prev {
+      inset-inline-start: 0.9rem;
+    }
+
+    .edgenav.is-next {
+      inset-inline-end: 0.9rem;
+    }
+
+    /* Clear the sticky rail rather than floating on top of it. */
+    @media (min-width: 1024px) {
+      .edgenav.is-prev {
+        inset-inline-start: calc(17.5rem + 0.9rem);
+      }
+    }
+
+    .edgenav-key {
+      font-family: var(--font-sans);
+      font-size: 1rem;
+      line-height: 1;
+    }
+
+    /* The title, revealed on hover — so the button says where it goes. */
+    .edgenav-tip {
+      position: absolute;
+      inset-block-start: 50%;
+      transform: translateY(-50%);
+      max-width: 15rem;
+      padding: 0.35rem 0.6rem;
+      border: 1px solid var(--rule);
+      border-radius: 5px;
+      background: var(--bg-raised);
+      box-shadow: var(--shadow);
+      font-family: var(--font-sans);
+      font-size: 0.75rem;
+      font-weight: 550;
+      line-height: 1.3;
+      color: var(--ink-strong);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s ease;
+    }
+
+    .edgenav.is-prev .edgenav-tip {
+      inset-inline-start: calc(100% + 0.5rem);
+    }
+
+    .edgenav.is-next .edgenav-tip {
+      inset-inline-end: calc(100% + 0.5rem);
+    }
+
+    .edgenav:hover .edgenav-tip {
+      opacity: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .edgenav,
+    .edgenav-tip {
+      transition: none;
+    }
+  }
+
   .wrap {
     padding: 3rem 1.25rem 6rem;
     max-width: 68ch;

@@ -175,6 +175,26 @@ colourblind separation against the red. Validate any change with the dataviz
 skill's `validate_palette.js` against surface `#191c23` (dark) and `#ffffff`
 (light). One data series gets one colour; identity comes from direct labels.
 
+## Moving between modules
+
+Four ways, all pointing at the same two links:
+
+- the footer pager — the canonical, accessible one
+- `[` and `]`
+- floating buttons at the viewport edges, shown at 900px and up; below that the
+  reading column reaches the edges and there is no gutter to sit in
+- swipe left/right on a touch screen
+
+The floating buttons are `aria-hidden` with `tabindex="-1"` on purpose: the
+footer pager already exposes both links, and duplicating them into the
+accessibility tree would announce every module twice.
+
+The swipe handler ignores a gesture that starts inside anything horizontally
+scrollable — wide tables, chart figures, the overview diagram — because there
+that gesture is the reader scrolling it. It also requires 70px of travel, twice
+as much horizontal as vertical movement, and under 800ms, so an ordinary scroll
+never trips it.
+
 ## Gotchas
 
 - `/.nojekyll` at the repo root is required — Jekyll would strip `_astro/`.
