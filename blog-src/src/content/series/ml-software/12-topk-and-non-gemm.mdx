@@ -11,6 +11,9 @@ tags: ['top-k', 'sort', 'radix select', 'sampling', 'FlashInfer', 'vocabulary', 
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Bars from '../../../components/Bars.astro';
 
 ## The core mental model
 
@@ -19,8 +22,25 @@ control flow. GEMM is the ideal case, and everything in Parts K and L is tuned f
 top-$k$, sort, argmax over a large axis — is the opposite on every axis. Its arithmetic intensity is
 essentially zero, since it reads $n$ values and does comparisons rather than FLOPs. Its access
 pattern is irregular once you start moving elements. It has a **serial dependency**: a comparison
-tree's depth is logarithmic at best, and naive approaches are worse. And its output size is small
-while its input is large, so it is a pure reduction with an awkward payload.
+tree's depth is logarithmic at best, and naive approaches are worse. <FigRef for="tail">And its output size is small
+while its input is large, so it is a pure reduction with an awkward payload.</FigRef>
+
+<Figure
+  id="tail"
+  caption="Amdahl arriving from below. The non-GEMM work did not get slower — everything around it got faster, so the same fixed cost went from roughly 1% of a decode step to 5–15%. Capturing the step in a CUDA graph pushes it back toward 1–2%. Nothing was optimised away; the denominator moved."
+>
+  <Bars
+    alt="Bar chart of the non-GEMM share of a decode step: about one percent before compression, five to fifteen percent after quantization and speculative decoding, and one to two percent once the step is graphed."
+    log={false}
+    unit="%"
+    xLabel="share of a decode step spent outside the GEMMs"
+    items={[
+      { label: 'before compression', value: 1, tone: 1, display: '~1%' },
+      { label: 'after quant + spec decode', value: 10, tone: 3, display: '5–15%' },
+      { label: 'once graphed', value: 1.5, tone: 1, display: '1–2%' },
+    ]}
+  />
+</Figure>
 
 For years this did not matter, because the vocabulary was 32k and the top-$k$ was a rounding error
 next to a 7B-parameter forward pass. Two things changed. **Vocabularies grew**: Llama 3 uses 128k

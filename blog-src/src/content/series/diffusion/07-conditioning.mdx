@@ -11,12 +11,31 @@ tags: ['cross-attention', 'ControlNet', 'LoRA', 'IP-Adapter', 'attention injecti
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Stack from '../../../components/Stack.astro';
 
 ## The core mental model
 
 Every conditioning mechanism answers the same question — *where in the network does the signal
-enter?* — and the answer determines what it can control. There are four places, and they form a
-rough hierarchy from global to spatial.
+enter?* — and the answer determines what it can control. <FigRef for="cond-sites">There are four places, and they form a
+rough hierarchy from global to spatial.</FigRef>
+
+<Figure
+  id="cond-sites"
+  caption="Where a condition can enter, ordered by how much spatial structure it carries. A timestep is one vector for the whole image and belongs in the normalisation; a text prompt needs cross-attention because different tokens should reach different regions; a depth map is already pixel-aligned with the output and enters as extra input planes. Picking the wrong site is the usual reason a condition is ignored."
+>
+  <Stack
+    alt="Four conditioning sites from global to spatial: adaptive normalisation for timestep and class, cross-attention for text, concatenated input channels for aligned maps, and an auxiliary branch such as ControlNet."
+    axis="global → spatial"
+    layers={[
+      { label: 'adaptive norm (AdaLN / FiLM)', note: 'timestep, class — one vector', width: 0.42, tone: 2 },
+      { label: 'cross-attention', note: 'text — many tokens, learned placement', width: 0.66, tone: 1 },
+      { label: 'input concatenation', note: 'depth, edges — pixel-aligned already', width: 0.86, tone: 1 },
+      { label: 'auxiliary branch (ControlNet)', note: 'strong control, extra network', width: 1, tone: 3 },
+    ]}
+  />
+</Figure>
 
 **Timestep-style embeddings**, injected by adding to features or by modulating normalisation
 (AdaLN, FiLM), are inherently global: one vector per sample scales and shifts whole feature maps.

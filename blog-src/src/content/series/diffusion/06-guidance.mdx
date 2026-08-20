@@ -11,14 +11,38 @@ tags: ['classifier-free guidance', 'CFG', 'classifier guidance', 'diversity', 'r
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Timeline from '../../../components/Timeline.astro';
 
 ## The core mental model
 
 Classifier guidance came first and its derivation is clean. Bayes gives
 $\nabla\log p(x \mid c) = \nabla\log p(x) + \nabla\log p(c \mid x)$, so adding the gradient of a
 classifier trained on noisy inputs steers the unconditional score toward class $c$. Scaling that
-second term by $w$ samples from something proportional to $p(x)\,p(c\mid x)^w$ — a genuine
-distribution, just sharpened.
+second term by $w$ samples from something proportional to $p(x)\,p(c\mid x)^w$ — <FigRef for="cfg-cost">a genuine
+distribution, just sharpened.</FigRef>
+
+<Figure
+  id="cfg-cost"
+  caption="What classifier-free guidance costs at inference. Every step needs both a conditional and an unconditional prediction, so the network runs twice per step — guidance doubles the NFE for the same number of solver steps. This is why guidance distillation exists, and why quoted step counts and quoted latencies so often disagree by exactly a factor of two."
+>
+  <Timeline
+    alt="Two timelines of one sampling step. Without guidance the network runs once; with classifier-free guidance it runs twice, conditional and unconditional, before combining."
+    span={10}
+    axisLabel="one sampling step →"
+    rows={[
+      { label: 'no guidance', note: '1 NFE/step', blocks: [
+        { at: 0, len: 4, label: 'conditional', tone: 1 }, { at: 4, len: 1, label: 'step', tone: 2 },
+      ] },
+      { label: 'CFG', note: '2 NFE/step', blocks: [
+        { at: 0, len: 4, label: 'conditional', tone: 1 },
+        { at: 4, len: 4, label: 'unconditional', tone: 3 },
+        { at: 8, len: 1, label: 'step', tone: 2 },
+      ] },
+    ]}
+  />
+</Figure>
 
 Classifier-free guidance removes the separate classifier by training one network with the condition
 randomly dropped (typically 10–20% of the time), so it learns both $\varepsilon_\theta(x_t, c)$ and

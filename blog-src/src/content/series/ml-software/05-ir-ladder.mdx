@@ -11,6 +11,9 @@ tags: ['ATen', 'Prims', 'functionalization', 'AOTAutograd', 'FakeTensor', 'MLIR'
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Stack from '../../../components/Stack.astro';
 
 ## The core mental model
 
@@ -21,8 +24,24 @@ So the graph descends a **ladder**, and each rung removes one class of difficult
 `torch.nn.functional.gelu` becomes `erf`, multiplies and adds — with **Prims** at the bottom as a
 few dozen primitives with precise semantics. A backend can then implement a small set instead of
 two thousand. Second **functionalization**: in-place ops and views are rewritten into pure
-out-of-place forms, so `x.add_(1)` becomes a new tensor. Aliasing and mutation are what make
-reordering and fusion unsound, and removing them is what makes the graph optimisable at all.
+out-of-place forms, so `x.add_(1)` becomes a new tensor. <FigRef for="ladder">Aliasing and mutation are what make
+reordering and fusion unsound, and removing them is what makes the graph optimisable at all.</FigRef>
+
+<Figure
+  id="ladder"
+  caption="The descent, drawn to the operator count at each rung. The narrowing is the point: a backend that would have had to implement two thousand operators with their overloads and in-place variants implements seventy instead. What is lost on the way down — that this cluster of primitives *was* a softmax — is what pattern matching recovers on the way back up."
+>
+  <Stack
+    alt="A narrowing stack of intermediate representations: torch and FX at about 2000 operators, ATen at 2000, core ATen at 250, and Prims at 70."
+    axis="decomposition"
+    layers={[
+      { label: 'torch / FX', note: '~2000 ops — what you wrote', width: 1, tone: 2 },
+      { label: 'ATen', note: "~2000 — the dispatcher's set", width: 0.92, tone: 2 },
+      { label: 'Core ATen', note: '~250 — backend-implementable', width: 0.55, tone: 1 },
+      { label: 'Prims', note: '~70 — minimal, precise', width: 0.28, tone: 1 },
+    ]}
+  />
+</Figure>
 
 Third, and the piece that surprises people, **AOTAutograd**. Eager builds the backward tape at run
 time (Module 2), which would leave backward uncompiled. AOTAutograd instead traces *both* directions

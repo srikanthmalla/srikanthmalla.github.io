@@ -11,13 +11,31 @@ tags: ['epsilon prediction', 'v-prediction', 'x0 prediction', 'ELBO', 'loss weig
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Flow from '../../../components/Flow.astro';
 
 ## The core mental model
 
 Given $x_t = \sqrt{\bar\alpha_t}x_0 + \sqrt{1-\bar\alpha_t}\varepsilon$, knowing any one of
 $x_0$, $\varepsilon$, or the score determines the others exactly, because the relation is linear
-and $x_t$ is known at inference. So the four common targets are one quantity in four coordinate
-systems:
+and $x_t$ is known at inference. <FigRef for="targets">So the four common targets are one quantity in four coordinate
+systems:</FigRef>
+
+<Figure
+  id="targets"
+  caption="One quantity, four coordinate systems. Each target is an invertible reparameterisation of the others given x_t and the schedule, so a network trained on any of them can be read as any other. What differs is the *weighting* the choice implies across noise levels — which is why the parameterisation matters for training dynamics and not at all for what is being learned."
+>
+  <Flow
+    alt="Four equivalent prediction targets — noise epsilon, clean sample x-zero, velocity v, and the score — as reparameterisations of one another."
+    steps={[
+      { label: 'ε-prediction', sub: 'the noise added', tone: 1 },
+      { label: 'x₀-prediction', sub: 'the clean sample', tone: 2 },
+      { label: 'v-prediction', sub: 'a rotation of the two', tone: 2 },
+      { label: 'score', sub: 'what the ODE wants', tone: 3 },
+    ]}
+  />
+</Figure>
 
 $$
 \hat x_0 = \frac{x_t - \sqrt{1-\bar\alpha_t}\,\hat\varepsilon}{\sqrt{\bar\alpha_t}},

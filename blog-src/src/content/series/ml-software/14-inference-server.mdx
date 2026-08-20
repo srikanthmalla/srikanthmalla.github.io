@@ -11,6 +11,9 @@ tags: ['vLLM', 'SGLang', 'continuous batching', 'paged attention', 'KV cache', '
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Timeline from '../../../components/Timeline.astro';
 
 ## The core mental model
 
@@ -19,9 +22,31 @@ frameworks reimplement so much of PyTorch's runtime is that the two halves of th
 opposition. **Continuous batching** wants maximum flexibility: requests arrive and finish at
 arbitrary times, so the running batch should change every single step, admitting a new sequence the
 moment a slot frees. **CUDA Graphs** want the opposite: a fixed set of kernels with fixed shapes at
-fixed addresses (Module 9). Naively you can have throughput or you can have low per-step overhead,
+fixed addresses (Module 9). <FigRef for="contbatch">Naively you can have throughput or you can have low per-step overhead,
 and at batch 1 to 8 — where launch cost is a large fraction of a decode step — you cannot afford to
-give up the second.
+give up the second.</FigRef>
+
+<Figure
+  id="contbatch"
+  caption="Why continuous batching is a throughput mechanism rather than a scheduling nicety. Under static batching a finished sequence leaves its slot idle until the whole batch drains, and an arriving request waits for the next one. Admitting at token granularity keeps the slots full — and since decode's arithmetic intensity is roughly the batch size, a full slot is not politeness, it is intensity."
+>
+  <Timeline
+    alt="Two timelines. Static batching shows a slot going idle when a sequence finishes and a new request waiting for the next batch. Continuous batching shows the new request admitted immediately into the freed slot."
+    span={12}
+    axisLabel="decode steps →"
+    rows={[
+      { label: 'static', note: 'slot idles', blocks: [
+        { at: 0, len: 4, label: 'seq A done', tone: 2 },
+        { at: 4, len: 3, label: 'idle', idle: true },
+        { at: 7, len: 5, label: 'next batch', tone: 2 },
+      ] },
+      { label: 'continuous', note: 'slot stays full', blocks: [
+        { at: 0, len: 4, label: 'seq A done', tone: 2 },
+        { at: 4, len: 8, label: 'seq C admitted at once', tone: 1 },
+      ] },
+    ]}
+  />
+</Figure>
 
 The reconciliation has three parts, and they are the architecture of every modern server.
 **PagedAttention** removes the KV cache from the shape problem: instead of one contiguous buffer per

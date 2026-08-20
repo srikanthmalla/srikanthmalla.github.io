@@ -11,6 +11,9 @@ tags: ['codesign loop', 'design space exploration', 'tape-out', 'compiler', 'wor
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Timeline from '../../../components/Timeline.astro';
 
 ## The core mental model
 
@@ -20,9 +23,33 @@ in parallel; tape out; bring up silicon; and then spend the chip's entire commer
 gap between what it can do and what the compiler can reach. Written out like that, two structural
 facts become impossible to miss. The first is that **the architecture is frozen against a prediction
 of a workload two to three years out**, using a cost model that cannot be validated until after the
-prediction has already been committed. The second is that **once the silicon is fixed, the compiler is
-the only remaining variable** — which places it on the critical path of the chip's delivered value
+prediction has already been committed. <FigRef for="loop">The second is that **once the silicon is fixed, the compiler is
+the only remaining variable**</FigRef> — which places it on the critical path of the chip's delivered value
 while it is, in nearly every organisation, funded as a support function for the hardware.
+
+<Figure
+  id="loop"
+  caption="The loop, drawn against what is still soft at each point. The first nine months are workload characterisation and the mapping study — the only window in which the architecture is a free variable. The architecture freezes against a prediction of a workload two to three years out, and everything after the freeze can only be fixed in software. Since the workload has drifted every three to five years for a decade, the freeze-to-production window is roughly as long as the interval it is betting against."
+>
+  <Timeline
+    alt="Timeline of the codesign loop from workload characterisation through mapping study, architecture freeze, RTL, tape-out and bring-up to production, showing that only the compiler remains adjustable after the freeze."
+    span={48}
+    axisLabel="months →"
+    rows={[
+      { label: 'architecture', note: 'frozen at month 9', blocks: [
+        { at: 0, len: 9, label: 'study', tone: 2 },
+        { at: 9, len: 39, label: 'frozen — against a prediction', idle: true },
+      ] },
+      { label: 'silicon', blocks: [
+        { at: 9, len: 16, label: 'RTL + verification', tone: 2 },
+        { at: 25, len: 8, label: 'tape-out', tone: 2 },
+      ] },
+      { label: 'compiler', note: 'the only variable', blocks: [
+        { at: 9, len: 39, label: 'the whole rest of the chip’s value lives here', tone: 1 },
+      ] },
+    ]}
+  />
+</Figure>
 
 Those two facts interact badly, and the interaction is the subject of this module. The workload will
 drift: it has drifted every three to five years for a decade, from dense convolution to residual

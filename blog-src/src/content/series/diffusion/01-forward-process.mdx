@@ -15,11 +15,33 @@ import Figure from '../../../components/Figure.astro';
 import FigRef from '../../../components/FigRef.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
+import Flow from '../../../components/Flow.astro';
 
 ## The core mental model
 
-The forward process adds Gaussian noise on a schedule, and the single property that
-everything else is built on is that its **marginal has a closed form**:
+The forward process adds Gaussian noise on a schedule, and <FigRef for="fwd">the single property that
+everything else is built on is that its **marginal has a closed form**</FigRef>:
+
+<Figure
+  id="fwd"
+  caption="Why the closed form matters operationally. Without it, producing a training example at step 700 means simulating 700 noise additions. With it you jump straight there: sample x₀, sample t, sample ε, done. That is the difference between one network evaluation per gradient step and several hundred — the approach is uncompetitive without it."
+>
+  <Flow
+    alt="Two routes to a noised sample at step 700: simulating the chain step by step, versus jumping directly using the closed-form marginal."
+    steps={[
+      { label: 'x₀', sub: 'clean sample' },
+      { label: 'x₁', sub: 'add noise', tone: 3, ghost: true },
+      { label: '… 700 steps …', sub: 'unroll the chain', tone: 3, ghost: true },
+      { label: 'x₇₀₀', sub: 'finally', tone: 3, ghost: true },
+    ]}
+    branchFrom={0}
+    branchLabel="closed-form marginal"
+    branch={[
+      { label: 'sample t, sample ε', sub: 'one draw each', tone: 1 },
+      { label: 'x₇₀₀ directly', sub: 'one line, no chain', tone: 1 },
+    ]}
+  />
+</Figure>
 
 $$
 q(x_t \mid x_0) = \mathcal{N}\!\left(\sqrt{\bar\alpha_t}\,x_0,\; (1-\bar\alpha_t) I\right),

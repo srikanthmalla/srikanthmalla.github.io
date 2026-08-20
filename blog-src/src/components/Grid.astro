@@ -1,0 +1,125 @@
+---
+/**
+ * A matrix of cells with some of them highlighted.
+ *
+ * For arguments about *which elements* — a tile carved out of a matrix, the two
+ * survivors in every four under 2:4 sparsity, the lanes a warp actually touches
+ * under a stride, the ranks a shard lands on. Two grids side by side is the
+ * common case, so `right` mirrors the whole set of props.
+ */
+interface Cell {
+  r: number;
+  c: number;
+  tone?: 1 | 2 | 3;
+  label?: string;
+}
+interface Panel {
+  rows: number;
+  cols: number;
+  cells?: Cell[];
+  title?: string;
+  /** One label per row, drawn to the left of the grid. */
+  rowLabels?: string[];
+  /** Line under the grid. */
+  note?: string;
+}
+interface Props {
+  left: Panel;
+  right?: Panel;
+  alt: string;
+}
+
+const { left, right, alt } = Astro.props;
+
+const W = 620;
+const gapMid = 44;
+const labelW = Math.max(
+  left.rowLabels ? 74 : 0,
+  right?.rowLabels ? 74 : 0,
+);
+const panelW = right ? (W - gapMid) / 2 - labelW : W * 0.62 - labelW;
+const T = 20;
+
+const cellFor = (p: Panel) => {
+  const s = Math.min(Math.floor((panelW - 2) / p.cols) - 3, 30);
+  return Math.max(10, s);
+};
+const cs = Math.min(cellFor(left), right ? cellFor(right) : 99);
+const gap = 3;
+const gridH = Math.max(left.rows, right?.rows ?? 0) * (cs + gap);
+const H = T + gridH + (left.note || right?.note ? 30 : 12);
+
+const draw = (p: Panel, ox: number) => {
+  const out: { x: number; y: number; tone?: number; label?: string }[] = [];
+  const map = new Map((p.cells ?? []).map((c) => [`${c.r},${c.c}`, c]));
+  for (let r = 0; r < p.rows; r++) {
+    for (let c = 0; c < p.cols; c++) {
+      const hit = map.get(`${r},${c}`);
+      out.push({ x: ox + c * (cs + gap), y: T + r * (cs + gap), tone: hit?.tone, label: hit?.label });
+    }
+  }
+  return out;
+};
+
+const leftOx = labelW;
+const rightOx = labelW + panelW + gapMid + labelW;
+const leftCells = draw(left, leftOx);
+const rightCells = right ? draw(right, rightOx) : [];
+const rowY = (r: number) => T + r * (cs + gap) + cs / 2 + 4;
+---
+
+<svg
+  class="chart diagram"
+  viewBox={`0 0 ${W} ${H}`}
+  role="img"
+  aria-label={alt}
+  preserveAspectRatio="xMidYMid meet"
+>
+  {left.title && <text class="d-cap" x={leftOx} y="12">{left.title}</text>}
+  {right?.title && <text class="d-cap" x={rightOx} y="12">{right.title}</text>}
+
+  {
+    leftCells.map((c) => (
+      <rect
+        class={`d-box${c.tone ? ` is-${c.tone}` : ''}`}
+        x={c.x}
+        y={c.y}
+        width={cs}
+        height={cs}
+        rx="2"
+        style={c.tone ? '' : 'opacity:0.45'}
+      />
+    ))
+  }
+  {
+    rightCells.map((c) => (
+      <rect
+        class={`d-box${c.tone ? ` is-${c.tone}` : ''}`}
+        x={c.x}
+        y={c.y}
+        width={cs}
+        height={cs}
+        rx="2"
+        style={c.tone ? '' : 'opacity:0.45'}
+      />
+    ))
+  }
+
+  {
+    left.rowLabels?.map((t, r) => (
+      <text class="d-sub d-end" x={leftOx - 10} y={rowY(r)}>
+        {t}
+      </text>
+    ))
+  }
+  {
+    right?.rowLabels?.map((t, r) => (
+      <text class="d-sub d-end" x={rightOx - 10} y={rowY(r)}>
+        {t}
+      </text>
+    ))
+  }
+
+  {left.note && <text class="d-sub" x={leftOx} y={T + gridH + 18}>{left.note}</text>}
+  {right?.note && <text class="d-sub" x={rightOx} y={T + gridH + 18}>{right.note}</text>}
+</svg>

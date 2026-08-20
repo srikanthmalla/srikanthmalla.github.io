@@ -16,6 +16,7 @@ import FigRef from '../../../components/FigRef.astro';
 import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
+import Grid from '../../../components/Grid.astro';
 
 ## The core mental model
 
@@ -26,8 +27,27 @@ is the minimum unit the level will transfer — a 32-byte sector, a 128-byte cac
 larger DRAM burst — and it is what converts a strided access pattern from "slightly worse" into
 "eight times worse", because asking for four useful bytes out of a 32-byte sector wastes seven eighths
 of the bandwidth you paid for. **Who decides** is the codesign field. A cache and a scratchpad can be
-the same SRAM macro, laid out identically, at the same distance from the compute; what differs is
-whether the hardware infers residency from the access stream or the compiler states it.
+the same SRAM macro, laid out identically, at the same distance from the compute; <FigRef for="cache-pad">what differs is
+whether the hardware infers residency from the access stream or the compiler states it.</FigRef>
+
+<Figure
+  id="cache-pad"
+  caption="The same SRAM under two contracts. The cache spends part of itself on tags and replacement state and infers what to keep from what you touched; the scratchpad spends none of that and does exactly what the compiler said. The array is identical — what differs is who is responsible for what sits in it, and that is the whole codesign decision."
+>
+  <Grid
+    alt="Two identical arrays of SRAM cells. The cache version reserves cells for tags and replacement metadata and marks some as conflict-evicted; the scratchpad version has every cell usable and compiler-assigned."
+    left={{ rows: 4, cols: 8, title: 'cache — hardware decides',
+      note: 'tags + replacement state; some capacity unreachable',
+      rowLabels: ['tags', 'data', 'data', 'data'],
+      cells: [...Array.from({length:8},(_,c)=>({r:0,c,tone:3})),
+              {r:1,c:2,tone:3},{r:2,c:5,tone:3},{r:3,c:1,tone:3}] }}
+    right={{ rows: 4, cols: 8, title: 'scratchpad — compiler decides',
+      note: 'every byte usable, timing deterministic',
+      rowLabels: ['tile A', 'tile A', 'tile B', 'stream'],
+      cells: [...Array.from({length:16},(_,i)=>({r:Math.floor(i/8),c:i%8,tone:1})),
+              ...Array.from({length:8},(_,c)=>({r:2,c,tone:2}))] }}
+  />
+</Figure>
 
 The reason that last field is a genuine design decision rather than a matter of taste is that the two
 options are optimal under different amounts of runtime uncertainty. A cache spends area and energy on

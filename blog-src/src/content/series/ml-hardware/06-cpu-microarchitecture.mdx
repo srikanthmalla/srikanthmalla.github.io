@@ -12,6 +12,9 @@ tags:
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Flow from '../../../components/Flow.astro';
 
 ## The core mental model
 
@@ -22,9 +25,24 @@ question of whether that window stays full of useful, independent work, and ther
 ways to fail. You can be **latency-bound**, where a chain of dependent operations means the window
 is full but almost everything in it is waiting. You can be **throughput-bound**, where you have run
 out of some resource — a port, a load buffer, decode bandwidth. Or you can be **flushing**, where
-mispredicted branches and memory-ordering violations throw away work you already did. Those three
+mispredicted branches and memory-ordering violations throw away work you already did. <FigRef for="cpu-stall">Those three
 diagnoses need three different fixes, and guessing between them is where most CPU optimisation
-effort is wasted.
+effort is wasted.</FigRef>
+
+<Figure
+  id="cpu-stall"
+  caption="The three reasons a core is not retiring instructions, and the fact that they look identical from outside. Only a top-down breakdown separates them, and each wants an opposite intervention — more independent work, better layout, or fewer unpredictable branches. Guessing costs you the effort and usually moves the wrong one."
+>
+  <Flow
+    alt="Three parallel diagnoses of a stalled CPU: front-end bound wanting more independent work, back-end memory bound wanting better layout, and bad speculation wanting fewer unpredictable branches."
+    steps={[
+      { label: 'core not retiring', sub: 'the symptom, identical in all three' },
+      { label: 'front-end bound', sub: 'starved of instructions', tone: 2 },
+      { label: 'back-end bound', sub: 'waiting on memory', tone: 1 },
+      { label: 'bad speculation', sub: 'work thrown away', tone: 3 },
+    ]}
+  />
+</Figure>
 
 The dependent-chain case has a Little's Law of its own, and it is the single most useful number in
 this module. An FMA has latency 4 cycles and throughput 2 per cycle, so saturating the units

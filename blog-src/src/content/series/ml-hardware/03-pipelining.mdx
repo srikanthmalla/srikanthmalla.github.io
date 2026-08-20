@@ -12,15 +12,35 @@ tags:
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Timeline from '../../../components/Timeline.astro';
 
 ## The core mental model
 
 Two numbers describe any pipeline and they are independent. **Initiation interval** ($II$) is the
 gap between accepting successive inputs; throughput is $1/II$. **Depth** is the time from an input
 entering to its own output emerging. A design with $II = 1$ and depth 200 is superb at throughput
-and useless against a 50-cycle deadline. Most engineering instinct optimises $II$, because most
-work is throughput work, and the instinct is so ingrained that people report depth improvements as
+and useless against a 50-cycle deadline. <FigRef for="ii-depth">Most engineering instinct optimises $II$, because most
+work is throughput work,</FigRef> and the instinct is so ingrained that people report depth improvements as
 regressions when they cost a cycle of $II$.
+
+<Figure
+  id="ii-depth"
+  caption="The same pipeline read two ways. Initiation interval is the horizontal gap between successive inputs — how often you can start one. Depth is the distance from an input entering to its own answer leaving. Deepening the pipeline shortens II and lengthens depth, which is a win for throughput work and a loss for a deadline, and the two are routinely reported as if they were one number."
+>
+  <Timeline
+    alt="Timeline showing four inputs entering a pipeline one initiation interval apart, each taking the full pipeline depth to produce its answer, so throughput and latency move in opposite directions."
+    span={14}
+    axisLabel="cycles →"
+    rows={[
+      { label: 'input A', note: 'depth = 6', blocks: [{ at: 0, len: 6, label: 'A in flight', tone: 1 }] },
+      { label: 'input B', blocks: [{ at: 2, len: 6, label: 'B in flight', tone: 2 }] },
+      { label: 'input C', blocks: [{ at: 4, len: 6, label: 'C in flight', tone: 2 }] },
+      { label: 'input D', note: 'II = 2', blocks: [{ at: 6, len: 6, label: 'D in flight', tone: 2 }] },
+    ]}
+  />
+</Figure>
 
 The cost of running $N$ items through a pipeline is $\text{depth} + N \cdot II$, so efficiency is
 $\frac{N \cdot II}{\text{depth} + N \cdot II}$. That fraction is the whole subject. At large $N$ it

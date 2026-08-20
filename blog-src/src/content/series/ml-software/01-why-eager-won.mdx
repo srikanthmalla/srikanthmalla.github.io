@@ -11,6 +11,9 @@ tags: ['TensorFlow', 'define-then-run', 'eager', 'JAX', 'tf.function', 'retracin
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Flow from '../../../components/Flow.astro';
 
 ## The core mental model
 
@@ -18,9 +21,30 @@ TensorFlow 1 was *right* about the machine and wrong about the human. Its bet wa
 you build a symbolic graph, hand it to a session, and the runtime gets a complete, static,
 analysable program before a single number moves. That is genuinely the best thing you can hand a
 compiler. It knows every shape, every dependency, every buffer lifetime — so it can fuse, plan
-memory to the byte, place ops across devices, and target something as unforgiving as a TPU. Every
+memory to the byte, place ops across devices, and target something as unforgiving as a TPU. <FigRef for="loops">Every
 performance argument for graph mode in this series was already true in 2016, and TensorFlow already
-had it.
+had it.</FigRef>
+
+<Figure
+  id="loops"
+  caption="The loop each framework put the developer in. TF1 made you build a whole graph, hand it to a session, and read a stack trace from inside the runtime — so the edit-run-inspect cycle ran through a compiler. Eager put the cycle back where the developer was standing. Every performance argument favoured the top row; every minute of a working day favoured the bottom one."
+>
+  <Flow
+    alt="Two developer loops. TF1: build graph, create session, run, and get an opaque runtime error far from the line that caused it. Eager: run a line, inspect the tensor, fix it immediately."
+    steps={[
+      { label: 'build graph', sub: 'describe the whole thing', tone: 3 },
+      { label: 'session.run', sub: 'hand it to the runtime', tone: 3 },
+      { label: 'error, somewhere', sub: 'no line, no pdb, no print', tone: 3 },
+    ]}
+    branchFrom={0}
+    branchLabel="eager instead"
+    branch={[
+      { label: 'run the line', sub: 'it executes now', tone: 1 },
+      { label: 'look at the tensor', sub: 'print, pdb, shape', tone: 1 },
+      { label: 'fix it', sub: 'seconds, not a rebuild', tone: 1 },
+    ]}
+  />
+</Figure>
 
 What it cost was the ability to *think in Python*. Your model was not a program that ran; it was a
 program that **built** a program. `print(x)` gave you `Tensor("add:0", shape=(?, 128))` rather than

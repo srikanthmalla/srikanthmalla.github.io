@@ -25,8 +25,25 @@ plus a set of rare, large excursions caused by machinery that has nothing to do 
 mean blends them into a number that describes no request that ever happened: with 99% of requests
 at 2 µs and 1% at 200 µs the mean is 4 µs, a value that occurs never. What you actually want is
 p50 to tell you whether the fast path is fast, p99 and p99.9 to tell you how often you fall off it,
-and the **ratio p99/p50 as the jitter metric** — because a 20× ratio and a 1.2× ratio are different
+<FigRef for="tail">and the **ratio p99/p50 as the jitter metric**</FigRef> — because a 20× ratio and a 1.2× ratio are different
 engineering problems even at identical means.
+
+<Figure
+  id="tail"
+  caption="A latency distribution as the percentile curve, which is the only view that shows the thing you care about. The mean sits near p50 and describes no request that ever happened; the interesting behaviour is the right-hand rise, and it is invisible on a histogram of typical requests because by definition almost none of them are there."
+>
+  <Plot
+    alt="Latency against percentile. The curve is nearly flat from p50 to p90 then rises sharply through p99 and p99.9, so the tail is many times the median."
+    series={[{ label: 'latency', tone: 1, points: [[50, 1], [75, 1.15], [90, 1.4], [99, 3.2], [99.9, 7.5], [99.99, 14]] }]}
+    marks={[
+      { x: 50, y: 1, label: 'p50 — what the mean describes', tone: 1 },
+      { x: 99.9, y: 7.5, label: 'p99.9', tone: 3, flip: true },
+    ]}
+    xLabel="percentile"
+    yLabel="latency, multiples of p50"
+    xTicks={[50, 75, 90, 99, 99.9, 99.99]}
+  />
+</Figure>
 
 Tails matter more than intuition allows because they amplify. A request touching $N$ independent
 components experiences roughly the maximum of $N$ latencies, so the probability of hitting at least

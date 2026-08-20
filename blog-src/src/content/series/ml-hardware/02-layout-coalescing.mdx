@@ -17,6 +17,7 @@ import FigRef from '../../../components/FigRef.astro';
 import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
+import Grid from '../../../components/Grid.astro';
 
 ## The core mental model
 
@@ -27,8 +28,23 @@ the only definition that predicts anything: a warp doing 32 contiguous 4-byte lo
 which is four sectors, and that is perfect. A warp doing 32 loads scattered across 32 different
 lines touches 32 sectors to deliver 128 useful bytes, which is 12.5% efficiency and eight times
 the traffic. Nothing here depends on the *order* of the lanes. A perfectly shuffled permutation
-inside one 128 B window is perfectly coalesced. The set of sectors is what matters, never the
-mapping from lane to address.
+inside one 128 B window is perfectly coalesced. <FigRef for="coalesce">The set of sectors is what matters, never the
+mapping from lane to address.</FigRef>
+
+<Figure
+  id="coalesce"
+  caption="Thirty-two lanes, and the 32-byte sectors their addresses fall into. Contiguous access touches four sectors and uses every byte of them. Stride 8 touches thirty-two sectors to fetch the same thirty-two values, so seven eighths of the bandwidth you paid for arrives and is discarded. Concurrency cannot recover it — it only wastes it faster."
+>
+  <Grid
+    alt="Two grids of memory sectors. Contiguous access lights four adjacent sectors fully; stride-8 access lights one cell in each of many sectors, wasting most of every fetch."
+    left={{ rows: 4, cols: 8, title: 'contiguous — 4 sectors, 100% used',
+      note: '128 bytes requested, 128 delivered',
+      cells: Array.from({length:32},(_,i)=>({r:Math.floor(i/8),c:i%8,tone:1})) }}
+    right={{ rows: 4, cols: 8, title: 'stride 8 — every sector touched',
+      note: '128 bytes requested, 1024 delivered',
+      cells: Array.from({length:4},(_,i)=>({r:i,c:0,tone:3})) }}
+  />
+</Figure>
 
 Layout, then, is one question asked repeatedly: **which index is contiguous?** In C, `A[i][j]`
 puts `j` adjacent, so a warp that varies `j` is coalesced and a warp that varies `i` strides by

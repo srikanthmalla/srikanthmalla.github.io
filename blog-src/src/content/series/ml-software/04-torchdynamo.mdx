@@ -11,6 +11,9 @@ tags: ['TorchDynamo', 'graph break', 'guards', 'FX graph', 'jit.trace', 'jit.scr
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Flow from '../../../components/Flow.astro';
 
 ## The core mental model
 
@@ -21,8 +24,29 @@ bakes in whichever branch the example took, a Python `len()` becomes a constant,
 unrolled to the length it happened to have. The model runs, produces plausible numbers, and is
 incorrect for any input that would have taken the other branch. `torch.jit.script` went the other
 way and *compiled* Python — but only a subset, TorchScript, with its own type system and its own
-error messages. It was correct, and it demanded you rewrite your model in a language nobody wanted
-to learn for a benefit they could not see.
+error messages. <FigRef for="dynamo">It was correct, and it demanded you rewrite your model in a language nobody wanted
+to learn for a benefit they could not see.</FigRef>
+
+<Figure
+  id="dynamo"
+  caption="Dynamo's contract. It evaluates bytecode until it meets something it cannot represent, then *stops* — emits the graph so far, runs the offending code in the interpreter, and starts a fresh graph after it. That fallback is the whole reason it succeeded where tracing and scripting did not: an unsupported construct costs you a seam, not an error."
+>
+  <Flow
+    alt="Flow from Python bytecode through Dynamo to an FX graph with guards and a compiled artifact. A dashed branch shows a graph break falling back to the Python interpreter and resuming capture afterwards."
+    steps={[
+      { label: 'Python bytecode', sub: 'what you wrote' },
+      { label: 'Dynamo', sub: 'symbolic evaluation', tone: 1 },
+      { label: 'FX graph + guards', sub: 'graph plus conditions', tone: 1 },
+      { label: 'compiled', sub: 'reused while guards hold', tone: 2 },
+    ]}
+    branchFrom={1}
+    branchLabel="cannot represent it"
+    branch={[
+      { label: 'graph break', sub: 'run it in Python', tone: 3, ghost: true },
+      { label: 'resume capture', sub: 'new graph after the seam', tone: 3, ghost: true },
+    ]}
+  />
+</Figure>
 
 Dynamo takes a third route: it hooks CPython's **frame evaluation API** (PEP 523), so before a
 Python function executes, Dynamo gets its bytecode. It symbolically interprets that bytecode,

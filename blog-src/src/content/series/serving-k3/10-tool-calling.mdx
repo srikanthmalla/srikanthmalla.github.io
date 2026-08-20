@@ -11,6 +11,9 @@ tags: ['tool calling', 'function calling', 'parser', 'XGrammar', 'structured out
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Flow from '../../../components/Flow.astro';
 
 ## The core mental model
 
@@ -19,10 +22,30 @@ where it is fast and your application still does not work, which for agentic dep
 likely outcome on day one. K3's raw output contains three distinct regions — reasoning, answer text,
 and tool calls — that must be separated and turned into an OpenAI-shaped API response. That separation
 is done by parsers you have to ask for explicitly: `--reasoning-parser kimi_k3` and
-`--tool-call-parser kimi_k3` on both vLLM and SGLang. Omit them and the model's control tokens flow
-through into your content field as text, which is the exact symptom reported historically for K2 on
+`--tool-call-parser kimi_k3` on both vLLM and SGLang. <FigRef for="parsers">Omit them and the model's control tokens flow
+through into your content field as text,</FigRef> which is the exact symptom reported historically for K2 on
 vLLM 0.10.0 — the model appears to refuse to call functions while actually calling them into a string
 nobody parses.
+
+<Figure
+  id="parsers"
+  caption="The path from one token stream to three API fields, and the two places it fails. Without the parsers the control tokens arrive as literal text and the model looks like it refuses to call functions. With them, the model can still emit a shape the parser does not expect, and you get an empty tool_calls array with a 200 — which most client code reads as a decision rather than a fault."
+>
+  <Flow
+    alt="One model output stream splitting into reasoning, content and tool calls via the kimi_k3 parsers, with failure branches for omitted parsers and unexpected formats."
+    steps={[
+      { label: 'one token stream', sub: 'reasoning + answer + calls' },
+      { label: 'kimi_k3 parsers', sub: 'reasoning + tool-call', tone: 1 },
+      { label: 'three API fields', sub: 'what your agent reads', tone: 2 },
+    ]}
+    branchFrom={1}
+    branchLabel="two ways it fails"
+    branch={[
+      { label: 'parser omitted', sub: 'control tokens as content text', tone: 3, ghost: true },
+      { label: 'unexpected format', sub: 'empty tool_calls, HTTP 200', tone: 3, ghost: true },
+    ]}
+  />
+</Figure>
 
 The parsers are necessary and not sufficient, because the model does not always emit what the parser
 expects. vLLM states plainly that they have "occasionally seen K3 emit a tool-call format its own

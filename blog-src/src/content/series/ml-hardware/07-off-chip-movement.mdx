@@ -17,14 +17,37 @@ import FigRef from '../../../components/FigRef.astro';
 import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
+import Timeline from '../../../components/Timeline.astro';
 
 ## The core mental model
 
 Off-chip is where latency budgets die, and the reason is that bandwidth is abundant while round
 trips are not. A PCIe Gen5 x16 link moves 64 GB/s, so a kilobyte crosses it in about 16
 nanoseconds of wire time — and a single small read of a device register costs **one to two
-microseconds**, a hundred times more. The number that matters is never the width of the pipe. It is
-how many times a dependency has to cross it.
+microseconds**, a hundred times more. The number that matters is never the width of the pipe. <FigRef for="crossings">It is
+how many times a dependency has to cross it.</FigRef>
+
+<Figure
+  id="crossings"
+  caption="Bandwidth is a rate; crossings are a count. A design that moves the same total bytes in one round trip instead of three is three times better on the axis that actually binds a latency path, and identical on the datasheet. This is why “we have plenty of PCIe bandwidth” and “we are PCIe-bound” are both routinely true of the same system."
+>
+  <Timeline
+    alt="Two timelines over the same link. Three dependent round trips serialise their latencies; one batched crossing carries the same bytes in a single traversal."
+    span={13}
+    axisLabel="time →"
+    rows={[
+      { label: '3 crossings', note: '3 × latency', blocks: [
+        { at: 0, len: 2, label: 'out', tone: 3 }, { at: 2, len: 2, label: 'back', tone: 3 },
+        { at: 4, len: 2, label: 'out', tone: 3 }, { at: 6, len: 2, label: 'back', tone: 3 },
+        { at: 8, len: 2, label: 'out', tone: 3 }, { at: 10, len: 2, label: 'back', tone: 3 },
+      ] },
+      { label: '1 crossing', note: '1 × latency', blocks: [
+        { at: 0, len: 2, label: 'out', tone: 1 }, { at: 2, len: 2, label: 'back', tone: 1 },
+        { at: 4, len: 8, label: 'the other two never happen', idle: true },
+      ] },
+    ]}
+  />
+</Figure>
 
 The exploitable asymmetry is **posted versus non-posted**. A write is posted: fire and forget,
 visible in a couple of hundred nanoseconds, and the core does not wait. A read is non-posted: it

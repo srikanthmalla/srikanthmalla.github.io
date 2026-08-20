@@ -11,6 +11,9 @@ tags: ['cost', 'break-even', 'self-hosting', 'TCO', 'GPU pricing', 'utilization'
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Plot from '../../../components/Plot.astro';
 
 ## The core mental model
 
@@ -19,9 +22,26 @@ one puts it above **2 billion output tokens a month** on an 8×B200 node, anothe
 billion tokens a month** on 64×H200 at serverless rates. That spread is not a factual dispute. It is
 the compounding of four independent assumptions: which hardware, at what price (owned, reserved, or
 on-demand), against which API price point, and — the one that dominates and that almost nobody states
-— **at what utilisation**. A cluster costs the same whether it is saturated or idle, so the break-even
-volume scales inversely with how full you keep it, and a deployment running at 20% utilisation needs
+— **at what utilisation**. <FigRef for="util">A cluster costs the same whether it is saturated or idle, so the break-even
+volume scales inversely with how full you keep it,</FigRef> and a deployment running at 20% utilisation needs
 five times the token volume of one running at 100%.
+
+<Figure
+  id="util"
+  caption="Break-even volume against utilisation, for a fixed monthly infrastructure cost. The published figures all sit at the far right — a saturated cluster — and real deployments live to the left, because concurrency is capped by a latency SLO and traffic is not flat. Divide any published break-even by your realistic duty cycle before using it."
+>
+  <Plot
+    alt="Break-even token volume against utilisation. The curve rises steeply as utilisation falls, so a deployment at 30 percent needs more than three times the volume of a saturated one."
+    series={[{ label: 'break-even volume', tone: 1, points: [[15, 6.7], [20, 5], [30, 3.3], [50, 2], [75, 1.33], [100, 1]] }]}
+    marks={[
+      { x: 30, y: 3.3, label: 'typical: 3.3× the published figure', tone: 3 },
+      { x: 100, y: 1, label: 'what the analyses assume', tone: 1, flip: true },
+    ]}
+    xLabel="utilisation, %"
+    yLabel="break-even volume, × the saturated figure"
+    xTicks={[0, 25, 50, 75, 100]}
+  />
+</Figure>
 
 The utilisation assumption is where Module 7 comes back and settles the economics. Aggregate
 throughput is what you are buying, and on K3 it scales strongly sublinearly with concurrency while

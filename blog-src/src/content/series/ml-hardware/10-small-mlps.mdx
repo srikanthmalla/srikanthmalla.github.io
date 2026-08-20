@@ -23,9 +23,25 @@ import Bars from '../../../components/Bars.astro';
 When the model is small, the weights are fixed, and the deadline is in nanoseconds, you stop
 *executing* the network and start *being* it. Every weight becomes a constant baked into the
 datapath. There is no weight fetch, no instruction fetch, no memory hierarchy, no scheduler — the
-entire model lives in wires and registers. This is the endpoint of two threads from earlier: Module
-1's observation that flattening the hierarchy removes "bytes over bandwidth" from the equation
+entire model lives in wires and registers. This is the endpoint of two threads from earlier: <FigRef for="small-mlp">Module
+1's observation that flattening the hierarchy removes</FigRef> "bytes over bandwidth" from the equation
 rather than shrinking it, and Module 4's willingness to spend area to reduce depth.
+
+<Figure
+  id="small-mlp"
+  caption="A small MLP with its weights in registers or block RAM does not sit on the roofline at all — the memory axis has been removed rather than improved. There is no fetch to amortise, so intensity is unbounded and the only remaining cost is the depth of the arithmetic. That is what makes nanosecond inference a different problem from fast inference."
+>
+  <Roofline
+    alt="Roofline showing a small MLP far to the right of the ridge point, past the compute ceiling region, because its weights never leave on-chip storage."
+    peak={989}
+    bw={3.35}
+    points={[
+      { x: 1, y: 3.35, label: 'weights in HBM', tone: 3 },
+      { x: 3000, label: 'weights in registers — no fetch at all', tone: 1, flip: true },
+    ]}
+    arrows={[{ from: 0, dir: 'right', label: 'flatten the hierarchy' }]}
+  />
+</Figure>
 
 Constant weights are worth more than they first appear. A multiply by a runtime value needs a full
 multiplier; a multiply by a *constant* becomes a small shift-add network, because the constant's

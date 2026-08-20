@@ -19,8 +19,27 @@ import Bars from '../../../components/Bars.astro';
 
 ## The core mental model
 
-Graph mode attacks exactly three overheads, and it is worth separating them because they have
-different sizes, different mechanisms, and different conditions under which they bind.
+<FigRef for="three">Graph mode attacks exactly three overheads, and it is worth separating them because they have
+different sizes, different mechanisms,</FigRef> and different conditions under which they bind.
+
+<Figure
+  id="three"
+  caption="The three overheads, and the fact that they bind in different regimes. Fusion pays where the work is elementwise and memory-bound; launch elimination pays where the ops are small and numerous; memory planning pays where allocation churn is the problem. A model already dominated by a few large cuBLAS matmuls has none of the three, which is why its speedup is about 1.0×."
+>
+  <Bars
+    alt="Bar chart of end-to-end speedup from graph mode by workload: small-model batch-1 inference 1.5 to 3 times, elementwise-heavy 1.5 to 2, diffusion U-net 1.3 to 1.8, transformer training 1.1 to 1.4, and already-fused big GEMMs about 1.0."
+    log={false}
+    unit="×"
+    xLabel="reported end-to-end speedup"
+    items={[
+      { label: 'small model, batch 1', value: 2.25, tone: 1, display: '1.5–3× — launch' },
+      { label: 'elementwise-heavy', value: 1.75, tone: 1, display: '1.5–2× — fusion' },
+      { label: 'diffusion U-net', value: 1.55, tone: 1, display: '1.3–1.8× — both' },
+      { label: 'transformer training', value: 1.25, tone: 1, display: '1.1–1.4× — fusion' },
+      { label: 'already-fused GEMMs', value: 1.0, tone: 3, display: '~1.0× — nothing left' },
+    ]}
+  />
+</Figure>
 
 **Launch overhead** is the per-op CPU cost from Module 2, around 5–10 µs. Capturing a graph lets you
 issue the same sequence without re-running Python, the dispatcher and autograd every iteration; CUDA

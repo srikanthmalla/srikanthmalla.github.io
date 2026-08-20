@@ -12,6 +12,9 @@ tags:
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Stack from '../../../components/Stack.astro';
 
 ## The core mental model
 
@@ -23,9 +26,25 @@ techniques sit at different points on the same area-versus-latency curve. A **lo
 $O(1)$ latency with area exponential in input width, viable to about ten or twelve bits.
 **Piecewise-linear** stores a slope and intercept per segment and costs one multiply-add, with area
 linear in segment count. A **minimax polynomial** costs $d$ multiply-adds for degree $d$, with
-coefficients chosen to minimise worst-case rather than average error. **CORDIC** uses only shifts
+coefficients chosen to minimise worst-case rather than average error. <FigRef for="nonlin">**CORDIC** uses only shifts
 and adds and produces one bit per iteration, so it is the answer when multipliers are scarce and
-latency is not the binding constraint.
+latency is not the binding constraint.</FigRef>
+<Figure
+  id="nonlin"
+  caption="Four ways to compute the same transcendental, ordered by what they spend. A lookup table is one memory access and all area; a polynomial trades area for multipliers; CORDIC needs neither but takes an iteration per bit. The right answer is set by which resource is scarce on your part — and on an FPGA with block RAM to spare, the unglamorous table usually wins."
+>
+  <Stack
+    alt="Four implementations of a nonlinearity ordered by resource cost: lookup table, piecewise linear, polynomial approximation, and CORDIC."
+    axis="less area, more latency"
+    layers={[
+      { label: 'lookup table', note: 'one access — all area, no arithmetic', width: 1, tone: 1 },
+      { label: 'piecewise linear', note: 'small table + one multiply-add', width: 0.72, tone: 1 },
+      { label: 'polynomial (minimax)', note: 'a few multipliers, no table', width: 0.5, tone: 2 },
+      { label: 'CORDIC', note: 'shifts and adds only — one bit per iteration', width: 0.28, tone: 3 },
+    ]}
+  />
+</Figure>
+
 
 The step that makes all four viable is **range reduction**, and it is the part most people skip.
 You never approximate a function over its whole domain. For $e^x$, write $x = k\ln 2 + r$ with

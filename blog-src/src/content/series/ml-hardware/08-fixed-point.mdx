@@ -12,6 +12,9 @@ tags:
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Stack from '../../../components/Stack.astro';
 
 ## The core mental model
 
@@ -22,8 +25,23 @@ normalisation, no special cases — an adder is just an adder, and a multiplier 
 The cost is that you now own the bookkeeping the floating-point unit used to do. Multiplication
 composes scales, so Q$a$.$b$ × Q$c$.$d$ lands in Q$(a{+}c)$.$(b{+}d)$ and needs the *sum* of the
 widths; addition requires equal scales, so aligning operands means shifting, and shifting right
-throws bits away. Every multiply in a fixed-point pipeline is therefore a decision about which bits
-to keep, made once, statically, by you.
+throws bits away. <FigRef for="qmul">Every multiply in a fixed-point pipeline is therefore a decision about which bits
+to keep, made once, statically, by you.</FigRef>
+
+<Figure
+  id="qmul"
+  caption="Two Q-format operands multiply into a double-width product, and the accumulator is wider still. The design decision is the window — which bits survive the shift back down. Take them too high and small values flush to zero; too low and large ones saturate. Floating point makes this choice per value at runtime; fixed point makes it once, at design time, for every value that will ever pass through."
+>
+  <Stack
+    alt="A stack showing 16-bit operands producing a 32-bit product, accumulated into 40 bits, then narrowed back to a 16-bit result by a chosen shift."
+    layers={[
+      { label: 'operand  Q1.15', note: '16 bits', width: 0.4, tone: 2 },
+      { label: 'product  Q2.30', note: '32 bits — double width, free', width: 0.8, tone: 2 },
+      { label: 'accumulator', note: '40 bits — guard bits against overflow', width: 1, tone: 1 },
+      { label: 'result after shift', note: '16 bits — you choose which', width: 0.4, tone: 3 },
+    ]}
+  />
+</Figure>
 
 Accumulator width is where this becomes concrete and where most people guess when they could
 derive. Summing $N$ products each $W$ bits wide needs $W + \lceil \log_2 N \rceil$ bits to remain

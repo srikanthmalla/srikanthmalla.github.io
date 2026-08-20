@@ -741,3 +741,17 @@ html.js .prose .figbox:not([data-open]):not(.is-open) {
 .d-end {
   text-anchor: end;
 }
+
+.prose .figbox-cap code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--bg-sunken);
+  border: 1px solid var(--rule-soft);
+  border-radius: 3px;
+  padding: 0.05em 0.28em;
+}
+
+.prose .figbox-cap strong {
+  color: var(--ink);
+  font-weight: 620;
+}

@@ -26,8 +26,25 @@ contexts can be, whether prefix caching helps — falls out of that remainder. O
 288 GB per GPU you are placing roughly **195 GiB of weights per GPU**, leaving something under 90 GB
 for cache, activations and workspace. On 16×H200 at 141 GB, weights drop to about **102.75 GB per
 GPU** and the [measured KV pool was 7.95 GB per GPU](https://huggingface.co/moonshotai/Kimi-K3/discussions/136).
-That second number is the single most useful measurement published about serving K3, because it is
-the only one taken on hardware most people actually have, and it is small.
+<FigRef for="budget">That second number is the single most useful measurement published about serving K3, because it is
+the only one taken on hardware most people actually have, and it is small.</FigRef>
+
+<Figure
+  id="budget"
+  caption="One GPU of the measured 16×H200 deployment. The weights are not negotiable and they take three quarters of the card; what is left after framework overhead, CUDA graphs and all-to-all buffers is 7.95 GB, and that sliver is your entire concurrency-times-context budget. Sizing from the weight footprint alone produces a cluster that loads the model and serves nobody."
+>
+  <Bars
+    alt="Bar chart of one H200's 141 GB: about 102.75 GB of weights, roughly 30 GB of framework overhead and workspace, and 7.95 GB left for the KV and state pool."
+    log={false}
+    unit=" GB"
+    xLabel="per-GPU memory on a 141 GB H200"
+    items={[
+      { label: 'weights', value: 102.75, tone: 2, display: '102.75 GB — fixed' },
+      { label: 'overhead + workspace', value: 30.3, tone: 3, display: '~30 GB' },
+      { label: 'KV + KDA pool', value: 7.95, tone: 1, display: '7.95 GB → ~308 K tokens' },
+    ]}
+  />
+</Figure>
 
 The reason 7.95 GB is the number to reason from rather than the 195 GiB figure is that it is what
 remains after everything real: framework overhead, CUDA graphs, activation workspace, the MoE

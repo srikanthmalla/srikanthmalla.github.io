@@ -19,9 +19,23 @@ interface Props {
 }
 
 const { id, caption, open = false } = Astro.props;
+
+/**
+ * `caption` is a plain prop, so MDX never runs markdown over it — `*emphasis*`
+ * and `` `code` `` would render as literal asterisks and backticks. Captions are
+ * authored here rather than supplied by a reader, so a three-rule inline pass is
+ * enough and is safer than remembering not to reach for markdown.
+ */
+const esc = (t: string) =>
+  t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const inline = (t: string) =>
+  esc(t)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>');
 ---
 
 <figure class="figbox" id={`fig-${id}`} data-figbox={id} data-open={open ? '' : undefined}>
   <div class="figbox-plot"><slot /></div>
-  {caption && <figcaption class="figbox-cap">{caption}</figcaption>}
+  {caption && <figcaption class="figbox-cap" set:html={inline(caption)} />}
 </figure>

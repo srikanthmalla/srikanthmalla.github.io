@@ -11,6 +11,9 @@ tags: ['GPU', 'TPU', 'Groq', 'Cerebras', 'SIMT', 'systolic', 'static scheduling'
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Flow from '../../../components/Flow.astro';
 
 ## The core mental model
 
@@ -23,8 +26,29 @@ nobody declared. That machinery costs area and energy on every single access, an
 that an unanticipated workload runs — slower, but it runs. A TPU pushes uncertainty onto the compiler:
 VMEM is a scratchpad, XLA schedules every transfer, and the array wants declared shapes. Groq pushes
 it all the way: no caches, no dynamic scheduling, every instruction taking a known number of cycles,
-with the compiler owning the entire timeline down to the cycle. Cerebras attacks a different axis
-entirely — it removes a memory level by putting the whole model in on-wafer SRAM.
+with the compiler owning the entire timeline down to the cycle. <FigRef for="uncertainty">Cerebras attacks a different axis
+entirely — it removes a memory level by putting the whole model in on-wafer SRAM.</FigRef>
+
+<Figure
+  id="uncertainty"
+  caption="The four designs on one axis: how much uncertainty is left for runtime, and who absorbs it. Moving right buys efficiency by deleting the hardware that copes with the unexpected — and converts the failure mode from degrading to cliffing. It is a coherent curve, not four unrelated philosophies, and where you can safely sit on it depends on whether you own the workload."
+>
+  <Flow
+    alt="Four architectures ordered by who absorbs runtime uncertainty: GPU with hardware caches and schedulers, TPU with a compiler-managed scratchpad, Groq with a fully static cycle-exact schedule, and Cerebras which removes the memory level entirely."
+    steps={[
+      { label: 'GPU', sub: 'hardware absorbs it', tone: 2 },
+      { label: 'TPU', sub: 'compiler absorbs placement', tone: 1 },
+      { label: 'Groq', sub: 'compiler absorbs time itself', tone: 3 },
+      { label: 'Cerebras', sub: 'removes a memory level', tone: 3 },
+    ]}
+    branchFrom={0}
+    branchLabel="what you trade as you move right"
+    branch={[
+      { label: 'efficiency rises', sub: 'no tags, no schedulers', tone: 1, ghost: true },
+      { label: 'failure becomes a cliff', sub: 'degrades → cannot run', tone: 3, ghost: true },
+    ]}
+  />
+</Figure>
 
 That single ordering explains most of the observable differences. It explains why TPUs get better
 energy per FLOP and worse behaviour on shapes XLA did not expect. It explains why Groq gets

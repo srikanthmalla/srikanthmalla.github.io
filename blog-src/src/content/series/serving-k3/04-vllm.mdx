@@ -11,6 +11,9 @@ tags: ['vLLM', 'DSpark', 'speculative decoding', 'hybrid KV manager', 'MegaMoE',
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Flow from '../../../components/Flow.astro';
 
 ## The core mental model
 
@@ -21,8 +24,23 @@ layers. Everything else follows from committing to that rather than running two 
 scheduler makes one admission decision per request against one pool; prefix caching consults one
 index; the disaggregation connector treats a shared page as two logical views (a token-level MLA
 cache and a request-level KDA state including convolution and recurrent components). It is the
-conservative architecture, in the good sense: fewer moving parts, and the hybrid-ness is contained
-inside one component rather than smeared across the engine.
+conservative architecture, in the good sense: <FigRef for="hybrid-mgr">fewer moving parts, and the hybrid-ness is contained
+inside one component rather than smeared across the engine.</FigRef>
+
+<Figure
+  id="hybrid-mgr"
+  caption="vLLM's containment strategy. Two block types with incompatible semantics sit under one manager, so the scheduler makes a single admission decision against a single budget rather than juggling two pools with a split that has to be guessed before the workload is known. The hybridness does not disappear — it is confined to one component, which is the conservative choice in the good sense."
+>
+  <Flow
+    alt="A single hybrid KV-cache manager holding paged KV blocks for the MLA layers and recurrent state blocks for the KDA layers, feeding one scheduler that makes one admission decision."
+    steps={[
+      { label: 'one scheduler', sub: 'one admission decision' },
+      { label: 'hybrid KV manager', sub: 'one budget, two block types', tone: 1 },
+      { label: 'paged KV', sub: '24 MLA layers', tone: 2 },
+      { label: 'recurrent blocks', sub: '69 KDA layers', tone: 3 },
+    ]}
+  />
+</Figure>
 
 The performance story is dominated by **speculative decoding**, and on this model that is not a
 tuning detail. Single-user decode lands at 111 tok/s at TP8 and 118 at TP16 — modest for a frontier

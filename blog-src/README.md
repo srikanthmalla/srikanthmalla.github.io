@@ -45,6 +45,10 @@ src/
     Roofline.astro                log-log roofline; points, arrows, ridge
     Plot.astro                    line plot, either axis log, direct-labelled
     Bars.astro                    horizontal bars, log by default
+    Flow.astro                    stages left-to-right, with an optional branch
+    Stack.astro                   vertical layers, `width` narrows them
+    Timeline.astro                rows of blocks on a shared time axis
+    Grid.astro                    a cell matrix with some cells highlighted
   layouts/
     BaseLayout.astro              shell, top bar, theme, progress, keyboard nav
     EntryLayout.astro             module header, prose column, pager
@@ -123,6 +127,16 @@ component opened mid-paragraph outright. Put it after the paragraph ends.
 Figures start collapsed only when `html.js` is set, so a reader without JS sees
 every figure expanded rather than none. `<Figure open>` opts out of collapsing.
 
+Not every idea wants a chart. Four diagram components cover the common abstract
+shapes — `Flow` for pipelines and decisions, `Stack` for levels and ladders,
+`Timeline` for what-happens-when, `Grid` for which-elements — and bespoke inline
+SVG inside a `<Figure>` handles the rest, using the `d-*` classes so it themes
+with everything else.
+
+Captions accept `*emphasis*`, `**strong**` and `` `code` ``: `caption` is a plain
+prop, so MDX never runs markdown over it, and `Figure` does a three-rule inline
+pass instead.
+
 Chart colours are `--fig-1/2/3`, separate from the UI accents: the UI set sits at
 OKLCH L 0.71-0.76, outside the 0.48-0.67 band that reads correctly as adjacent
 series marks on the dark surface. **Three slots only** — a fourth (teal) fails
@@ -142,6 +156,10 @@ skill's `validate_palette.js` against surface `#191c23` (dark) and `#ffffff`
 - A `|` inside `$math$` inside a markdown table splits the cell. Use `\lvert`.
 - An unescaped `$` before a digit pairs with the next one and remark-math eats
   the prose between them. Write `\$5.50`, never `$5.50`.
+- A caption is an HTML attribute, so a straight `"` inside it ends the attribute
+  and breaks the MDX parse. Use typographic quotes.
+- Anything that inserts imports must look only at the MDX preamble: `import
+  triton` inside a code fence also starts with `import `.
 - A `<FigRef>` must be a `<span role="button">`, not a `<button>`: a button stays
   inline-block whatever `display` you set, so a trigger phrase that wraps draws
   one full-width underline instead of one per line.

@@ -11,13 +11,39 @@ tags: ['Inductor', 'fusion', 'scheduler', 'loop ordering', 'memory planning', 'a
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Timeline from '../../../components/Timeline.astro';
 
 ## The core mental model
 
 Inductor's job is to turn a functionalized, decomposed graph into kernels, and almost all of its
 value is in one decision repeated thousands of times: **which operations go in the same kernel**.
-Everything else — index arithmetic, loop generation, emitting Triton — is mechanical once that is
-settled.
+<FigRef for="fusion">Everything else — index arithmetic, loop generation, emitting Triton — is mechanical once that is
+settled.</FigRef>
+
+<Figure
+  id="fusion"
+  caption="What the scheduler is actually deciding. Unfused, every intermediate makes a round trip through HBM; each arrow across the boundary is traffic on the resource the kernel is limited by. Fusing the chain keeps the intermediates in registers and touches HBM once at each end. The arithmetic is identical — only the number of boundary crossings changed."
+>
+  <Timeline
+    alt="Two timelines of an elementwise chain. Unfused, each operation reads from and writes to HBM. Fused, one kernel reads once, does all the work in registers, and writes once."
+    span={12}
+    axisLabel="HBM traffic →"
+    rows={[
+      { label: 'unfused', note: '4 round trips', blocks: [
+        { at: 0, len: 1.4, label: 'R', tone: 3 }, { at: 1.4, len: 1.2, label: 'norm', tone: 2 }, { at: 2.6, len: 1.4, label: 'W', tone: 3 },
+        { at: 4, len: 1.4, label: 'R', tone: 3 }, { at: 5.4, len: 1.2, label: 'gelu', tone: 2 }, { at: 6.6, len: 1.4, label: 'W', tone: 3 },
+        { at: 8, len: 1.4, label: 'R', tone: 3 }, { at: 9.4, len: 1.2, label: 'add', tone: 2 }, { at: 10.6, len: 1.4, label: 'W', tone: 3 },
+      ] },
+      { label: 'fused', note: '1 round trip', blocks: [
+        { at: 0, len: 1.4, label: 'R', tone: 3 },
+        { at: 1.4, len: 3.6, label: 'norm → gelu → add, in registers', tone: 1 },
+        { at: 5, len: 1.4, label: 'W', tone: 3 },
+      ] },
+    ]}
+  />
+</Figure>
 
 It works by lowering each operator into a **define-by-index representation**: a buffer plus a
 function from output index to the expression computing it, in terms of loads from other buffers.

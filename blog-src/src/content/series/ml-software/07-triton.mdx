@@ -11,13 +11,31 @@ tags: ['Triton', 'block programming', 'autotune', 'tl.load', 'num_warps', 'PTX',
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Grid from '../../../components/Grid.astro';
 
 ## The core mental model
 
 CUDA's unit of programming is the **thread**. You write what one thread does, then reason manually
 about how 32 of them coalesce into memory transactions, how to stage tiles through shared memory
 without bank conflicts, where to place `__syncthreads()`, and how to map your data onto a block and
-grid. All the hardware series' Module 2 concerns are yours to handle by hand.
+grid. <FigRef for="block-level">All the hardware series' Module 2 concerns are yours to handle by hand.</FigRef>
+
+<Figure
+  id="block-level"
+  caption="The abstraction Triton moved. CUDA makes you place every thread and reason about which lanes coalesce into which sector; Triton hands you a tile and generates the thread mapping itself. You give up control of the thing that is mechanical and keep control of the thing that is a judgement call — the block size. That is the whole trade, and it is why a Triton kernel is a tenth the length."
+>
+  <Grid
+    alt="Two views of the same tile. In CUDA each cell is an individually placed thread; in Triton the whole tile is one program instance and the compiler assigns threads."
+    left={{ rows: 4, cols: 8, title: 'CUDA — you place each thread',
+      note: 'lane → address mapping is yours',
+      cells: Array.from({length:32},(_,i)=>({r:Math.floor(i/8),c:i%8,tone:(i%3===0?3:2)})) }}
+    right={{ rows: 4, cols: 8, title: 'Triton — you name a block',
+      note: 'the compiler assigns threads and vectorises',
+      cells: Array.from({length:32},(_,i)=>({r:Math.floor(i/8),c:i%8,tone:1})) }}
+  />
+</Figure>
 
 Triton's unit is the **block**. You write what one *program instance* does to a whole tile of data,
 using operations on block-shaped values: `tl.load` a range of pointers, `tl.sum` along an axis,

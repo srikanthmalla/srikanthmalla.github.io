@@ -11,6 +11,9 @@ tags: ['Kimi K3', 'Moonshot AI', 'MoE', 'LatentMoE', 'MXFP4', 'architecture', 'a
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Stack from '../../../components/Stack.astro';
 
 ## The core mental model
 
@@ -21,7 +24,22 @@ everything about serving it — a hybrid attention stack in which most layers do
 conventional KV cache at all. For anyone whose job is to run it, four numbers do almost all the work:
 the total parameter count sets what you must hold, the active count sets your arithmetic per token,
 the expert configuration sets your communication pattern, and the KDA/MLA split sets how memory grows
-with context. Everything downstream in this series is a consequence of those four.
+with context. <FigRef for="k3-shape">Everything downstream in this series is a consequence of those four.</FigRef>
+
+<Figure
+  id="k3-shape"
+  caption="K3 by the numbers that decide how it serves. The gap between 2.78 T held and ~104 B touched per token is the whole MoE bargain — you pay capacity for all of it and arithmetic for a fraction. The 69/24 layer split is why a million-token context is affordable, and the 3,584-dim latent is why 896 experts at top-16 does not saturate the all-to-all."
+>
+  <Stack
+    alt="A stack showing 2.78 trillion total parameters, 104 billion active per token, 896 experts with 16 active, and 93 layers split 69 KDA to 24 gated MLA."
+    layers={[
+      { label: '2.78 T total parameters', note: 'what you must hold — ~1.56 TB at MXFP4', width: 1, tone: 2 },
+      { label: '~104 B active per token', note: 'what you must read each step', width: 0.28, tone: 1 },
+      { label: '896 experts, top-16', note: 'dispatched at a 3,584-dim latent', width: 0.5, tone: 1 },
+      { label: '93 layers: 69 KDA + 24 MLA', note: 'only 24 grow a cache with context', width: 0.72, tone: 3 },
+    ]}
+  />
+</Figure>
 
 The MoE configuration is unusual and worth understanding rather than memorising. K3 uses what
 Moonshot calls **Stable LatentMoE**: 896 routed experts with 16 active per token, where the router

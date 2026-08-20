@@ -11,6 +11,9 @@ tags: ['FP8', 'FP4', 'MX formats', 'MXFP4', 'NVFP4', 'block scaling', 'E8M0', 'a
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Grid from '../../../components/Grid.astro';
 
 ## The core mental model
 
@@ -20,9 +23,27 @@ hierarchy, halve the payload on every interconnect, and — because multiplier a
 super-linearly with mantissa width — get somewhere between 2× and 4× the arithmetic throughput per
 unit of area. Nothing else does that. Tiling trades memory traffic for capacity; dataflow trades one
 tensor's traffic for another's; parallelism trades compute for communication. Precision moves the
-whole frontier outward, and the only currency it spends is accuracy. That is why it keeps being the
-thing that actually ships, generation after generation, and why "the next format" is a more reliable
+whole frontier outward, and the only currency it spends is accuracy. <FigRef for="blocks">That is why it keeps being the
+thing that actually ships, generation after generation,</FigRef> and why "the next format" is a more reliable
 predictor of a hardware generation's gains than any microarchitectural change.
+
+<Figure
+  id="blocks"
+  caption="Why block scaling and not a better narrow float. A per-tensor scale must cover the whole spread, so it either clips the outliers or flushes the bulk to zero. A shared exponent per 32 elements only has to cover the spread *inside* a block, and the block boundary must land where the reduction datapath already breaks — which is why every shipping format uses a power-of-two block size."
+>
+  <Grid
+    alt="A row of 32 values under one per-tensor scale, against the same values grouped into blocks of eight, each with its own shared exponent."
+    left={{ rows: 1, cols: 32, title: 'one scale for the whole tensor',
+      note: 'outliers clip, or the bulk rounds to zero',
+      rowLabels: ['values'],
+      cells: [{r:0,c:3,tone:3},{r:0,c:17,tone:3},{r:0,c:28,tone:3}] }}
+    right={{ rows: 1, cols: 32, title: 'a shared exponent per block',
+      note: 'each block spans a far narrower range',
+      rowLabels: ['blocks'],
+      cells: [...Array.from({length:8},(_,c)=>({r:0,c,tone:1})),
+              ...Array.from({length:8},(_,c)=>({r:0,c:c+16,tone:2}))] }}
+  />
+</Figure>
 
 The reason precision reduction did not simply continue downward forever is dynamic range. FP16 has 5
 exponent bits and a range of about $10^{\pm 5}$, which was already tight enough to require loss

@@ -25,8 +25,27 @@ on the same continuous ladder, and it obeys the same rule — the mapping's job 
 rarely as possible and in units as large as possible. What replaces capacity is **topology**: instead
 of asking how many bytes fit, you ask which endpoints can reach which others and at what aggregate
 rate. And what replaces load and store is a small set of **collectives** — all-reduce, all-gather,
-reduce-scatter, all-to-all — which are the only access primitives that matter, because at this level
-you almost never move one value, you move a whole sharded tensor.
+reduce-scatter, all-to-all — <FigRef for="ladder-full">which are the only access primitives that matter, because at this level
+you almost never move one value, you move a whole sharded tensor.</FigRef>
+
+<Figure
+  id="ladder-full"
+  caption="One ladder, not two subjects. Each rung is roughly an order of magnitude down in bandwidth from the one above, and the interconnect rungs continue the same curve the on-chip ones started. The cliff worth noticing is at the package boundary — die-to-die is cheaper per byte than HBM, and everything past the chassis falls off hard."
+>
+  <Bars
+    alt="Log bar chart of bandwidth per endpoint from on-chip NoC at 10 terabytes per second down through HBM, NVLink and InfiniBand at 50 gigabytes per second."
+    unit=" GB/s"
+    xLabel="bandwidth per endpoint, GB/s (log)"
+    items={[
+      { label: 'register file', value: 100000, tone: 1 },
+      { label: 'SRAM / NoC', value: 10000, tone: 1 },
+      { label: 'HBM', value: 3350, tone: 1 },
+      { label: 'die-to-die (UCIe)', value: 1000, tone: 2 },
+      { label: 'NVLink 4 — scale-up', value: 900, tone: 2 },
+      { label: 'InfiniBand — scale-out', value: 50, tone: 3 },
+    ]}
+  />
+</Figure>
 
 Seeing it as one ladder rather than as a separate discipline is what makes the framework pay off,
 because the numbers really do continue smoothly. From SRAM at ~10 TB/s, to HBM at 3–8 TB/s, to NVLink

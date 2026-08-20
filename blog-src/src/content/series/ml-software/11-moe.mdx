@@ -11,6 +11,9 @@ tags: ['MoE', 'routing', 'capacity factor', 'grouped GEMM', 'expert parallelism'
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Grid from '../../../components/Grid.astro';
 
 ## The core mental model
 
@@ -18,7 +21,28 @@ A Mixture-of-Experts layer replaces one FFN with $E$ of them plus a router that 
 its top-$k$ experts. The point is to grow parameters without growing FLOPs per token: 8 experts with
 top-2 routing is roughly 4× the parameters at roughly the same compute. The problem is that the
 router's output **depends on the activations**, so the number of tokens each expert receives is
-unknown until the forward pass runs. Expert 3 might get 500 tokens this batch and 20 the next.
+unknown until the forward pass runs. <FigRef for="routing">Expert 3 might get 500 tokens this batch and 20 the next.</FigRef>
+
+<Figure
+  id="routing"
+  caption="Sixteen tokens routed across six experts. Ideal would be a flat distribution; real routing is lumpy, and because every expert runs in parallel the step ends when the *fullest* one finishes. The five cells in expert 2's row are what every other expert waits on, and the empty row is hardware doing nothing — the same step, paid twice."
+>
+  <Grid
+    alt="A grid of six experts by sixteen token slots. Expert 2 holds five tokens, several experts hold one or two, and two experts hold none, illustrating routing imbalance."
+    left={{
+      rows: 6, cols: 16, title: 'tokens routed to each expert',
+      rowLabels: ['expert 0', 'expert 1', 'expert 2', 'expert 3', 'expert 4', 'expert 5'],
+      note: 'the step ends when expert 2 finishes — everyone else idles',
+      cells: [
+        {r:0,c:0,tone:2},{r:0,c:1,tone:2},
+        {r:1,c:0,tone:2},
+        {r:2,c:0,tone:3},{r:2,c:1,tone:3},{r:2,c:2,tone:3},{r:2,c:3,tone:3},{r:2,c:4,tone:3},
+        {r:3,c:0,tone:2},{r:3,c:1,tone:2},{r:3,c:2,tone:2},
+        {r:4,c:0,tone:2},
+      ],
+    }}
+  />
+</Figure>
 
 That single fact defeats the entire apparatus of Parts K and L. Shapes are data-dependent, so
 symbolic shapes cannot help (Module 10) — there is no guard you can check in advance. Kernel launch

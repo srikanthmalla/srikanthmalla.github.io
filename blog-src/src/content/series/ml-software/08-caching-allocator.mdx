@@ -11,6 +11,9 @@ tags: ['caching allocator', 'fragmentation', 'expandable_segments', 'OOM', 'memo
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Timeline from '../../../components/Timeline.astro';
 
 ## The core mental model
 
@@ -18,8 +21,30 @@ import SelfCheck from '../../../components/SelfCheck.astro';
 tens to hundreds of microseconds and blocks the CPU while pending work drains. At Module 2's rate of
 thousands of tensor allocations per step, calling it directly would make PyTorch unusable. So
 PyTorch never really frees: it calls `cudaMalloc` to obtain large **segments**, carves tensors out of
-them, and on `free` returns the block to its own pool for immediate reuse. Steady-state training does
-essentially zero `cudaMalloc` calls, which is the whole point.
+them, and on `free` returns the block to its own pool for immediate reuse. <FigRef for="alloc">Steady-state training does
+essentially zero `cudaMalloc` calls, which is the whole point.</FigRef>
+
+<Figure
+  id="alloc"
+  caption="Why a cache and not just malloc. A real cudaMalloc synchronises the device, so it is not merely slow — it drains the pipeline the async launch model exists to keep full. The allocator makes the first iteration pay and every later one hit a free-list entry, which is what turns thousands of allocations per step into pointer arithmetic."
+>
+  <Timeline
+    alt="Two timelines. Direct cudaMalloc synchronises the device on every allocation, draining the pipeline. The caching allocator pays once on the first iteration and then serves from a free list."
+    span={12}
+    axisLabel="training steps →"
+    rows={[
+      { label: 'raw cudaMalloc', note: 'syncs every step', blocks: [
+        { at: 0, len: 2, label: 'malloc + sync', tone: 3 }, { at: 2, len: 1, label: 'work', tone: 1 },
+        { at: 3, len: 2, label: 'malloc + sync', tone: 3 }, { at: 5, len: 1, label: 'work', tone: 1 },
+        { at: 6, len: 2, label: 'malloc + sync', tone: 3 }, { at: 8, len: 1, label: 'work', tone: 1 },
+      ] },
+      { label: 'caching allocator', note: 'then ~zero', blocks: [
+        { at: 0, len: 2, label: 'malloc + sync', tone: 3 },
+        { at: 2, len: 10, label: 'free-list hits — no sync, no driver call', tone: 1 },
+      ] },
+    ]}
+  />
+</Figure>
 
 The structure that follows is a size-segregated free-list allocator. Requests are rounded and split
 into a **small pool** (blocks under 1 MB, carved from 2 MB segments) and a **large pool** (2 MB

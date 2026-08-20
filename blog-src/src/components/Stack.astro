@@ -1,0 +1,101 @@
+---
+/**
+ * Vertical layers, optionally narrowing as they descend.
+ *
+ * For anything with levels: the IR ladder, the memory hierarchy, a software
+ * stack, precision tiers. `width` as a fraction is what makes it more than a
+ * list — a ladder that narrows from 2000 operators to 70 says "this is a
+ * funnel" in a way a table of counts does not.
+ */
+interface Layer {
+  label: string;
+  /** Right-hand annotation: a count, a size, an owner. */
+  note?: string;
+  tone?: 1 | 2 | 3;
+  /** 0–1 fraction of full width. Default 1. */
+  width?: number;
+  ghost?: boolean;
+}
+interface Props {
+  layers: Layer[];
+  /** Small caption above the column. */
+  title?: string;
+  /** Draw a downward arrow beside the stack with this label. */
+  axis?: string;
+  alt: string;
+}
+
+const { layers, title, axis, alt } = Astro.props;
+
+const W = 620;
+const rowH = 38;
+const gapY = 8;
+const T = title ? 24 : 8;
+const L = axis ? 96 : 0;
+const R = 168;
+const full = W - L - R;
+const H = T + layers.length * (rowH + gapY) + 8;
+const uid = Math.abs([...alt].reduce((h, c) => (h * 37 + c.charCodeAt(0)) | 0, 5)).toString(36);
+---
+
+<svg
+  class="chart diagram"
+  viewBox={`0 0 ${W} ${H}`}
+  role="img"
+  aria-label={alt}
+  preserveAspectRatio="xMidYMid meet"
+>
+  <defs>
+    <marker id={`sa-${uid}`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+      <path d="M0 1 L9 5 L0 9 z" fill="context-stroke"></path>
+    </marker>
+  </defs>
+
+  {title && <text class="d-cap" x={L} y="12">{title}</text>}
+
+  {
+    axis && (
+      <>
+        <path
+          class="d-arrow is-1"
+          d={`M${L - 30} ${T + 6} L${L - 30} ${T + layers.length * (rowH + gapY) - gapY - 4}`}
+          marker-end={`url(#sa-${uid})`}
+        />
+        <text
+          class="d-sub"
+          transform={`rotate(-90 ${L - 40} ${T + (layers.length * (rowH + gapY)) / 2})`}
+          x={L - 40}
+          y={T + (layers.length * (rowH + gapY)) / 2}
+          style="text-anchor:middle">{axis}</text
+        >
+      </>
+    )
+  }
+
+  {
+    layers.map((l, i) => {
+      const w = Math.round(full * (l.width ?? 1));
+      const y = T + i * (rowH + gapY);
+      return (
+        <>
+          <rect
+            class={`d-box${l.tone ? ` is-${l.tone}` : ''}${l.ghost ? ' is-ghost' : ''}`}
+            x={L}
+            y={y}
+            width={w}
+            height={rowH}
+            rx="4"
+          />
+          <text class="d-lbl" x={L + 12} y={y + rowH / 2 + 4}>
+            {l.label}
+          </text>
+          {l.note && (
+            <text class="d-sub" x={L + full + 12} y={y + rowH / 2 + 4}>
+              {l.note}
+            </text>
+          )}
+        </>
+      );
+    })
+  }
+</svg>

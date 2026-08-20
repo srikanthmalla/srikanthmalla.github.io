@@ -11,13 +11,31 @@ tags: ['torch.compile', 'decision framework', 'profiling', 'custom ops', 'compil
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Flow from '../../../components/Flow.astro';
 
 ## The core mental model
 
-Every technique in this series removes a specific overhead, and none of them removes arithmetic. So
+Every technique in this series removes a specific overhead, and none of them removes arithmetic. <FigRef for="ceilings">So
 the decision procedure runs in one direction only: **measure which ceiling binds, then apply the
-mechanism that attacks it.** Reversing that — picking a tool and hoping — is how teams spend weeks on
+mechanism that attacks it.**</FigRef> Reversing that — picking a tool and hoping — is how teams spend weeks on
 `max-autotune` for a model that was bound by an all-to-all.
+
+<Figure
+  id="ceilings"
+  caption="The decision procedure, in the only direction it works. Each ceiling has one mechanism that attacks it and several that do nothing. Running it backwards — picking a tool because it is interesting and hoping the bottleneck matches — is how a team spends a quarter on graph capture for a workload that was bandwidth-bound the whole time."
+>
+  <Flow
+    alt="A measurement branching into three ceilings: launch-bound wants CUDA graphs, bandwidth-bound wants fusion and quantization, and compute-bound wants better kernels or more hardware."
+    steps={[
+      { label: 'measure', sub: 'which ceiling binds?' },
+      { label: 'launch-bound', sub: '→ CUDA Graphs', tone: 2 },
+      { label: 'bandwidth-bound', sub: '→ fusion, lower precision', tone: 1 },
+      { label: 'compute-bound', sub: '→ better kernels, or more silicon', tone: 3 },
+    ]}
+  />
+</Figure>
 
 The ceilings, in the order you should test them, are: is the CPU on the critical path (Module 2's
 inequality), is there fusible memory traffic (Module 3), is there launch overhead worth collapsing

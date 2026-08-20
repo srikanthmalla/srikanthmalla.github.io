@@ -11,6 +11,9 @@ tags: ['dispatcher', 'autograd', 'ATen', 'TensorImpl', 'dispatch keys', 'CPU ove
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Timeline from '../../../components/Timeline.astro';
 
 ## The core mental model
 
@@ -22,8 +25,32 @@ computes a *dispatch key set* from the arguments — CUDA, Autograd, and possibl
 Functionalize, or a subclass key — and jumps through the table in priority order. Autograd runs
 first: it allocates an `AddBackward0` node, records references to the inputs, and links it into the
 tape. Then the backend kernel runs, which asks the caching allocator for an output buffer, computes
-broadcasting and strides, picks a vectorised template, and finally issues `cudaLaunchKernel`. The
-kernel itself is asynchronous, so the CPU returns immediately and starts the next op.
+broadcasting and strides, picks a vectorised template, and finally issues `cudaLaunchKernel`. <FigRef for="eager-cost">The
+kernel itself is asynchronous, so the CPU returns immediately and starts the next op.</FigRef>
+
+<Figure
+  id="eager-cost"
+  caption="One `c = a + b`, to scale. The GPU work is the short block on the right; everything left of it is CPU. Because the launch is asynchronous the CPU runs ahead — which is exactly why such a model is launch-bound rather than compute-bound, and why the fix is to issue fewer launches rather than to make the kernel faster."
+>
+  <Timeline
+    alt="Timeline of a single eager operation: about 8 microseconds of CPU work — Python argument parsing, dispatcher, autograd tape, allocator — against about 2 microseconds of GPU kernel time."
+    span={11}
+    axisLabel="microseconds"
+    rows={[
+      { label: 'CPU', note: '~8 µs', blocks: [
+        { at: 0, len: 2, label: 'Python', tone: 3 },
+        { at: 2, len: 1.6, label: 'schema', tone: 3 },
+        { at: 3.6, len: 1.8, label: 'dispatch', tone: 3 },
+        { at: 5.4, len: 1.4, label: 'autograd', tone: 3 },
+        { at: 6.8, len: 1.2, label: 'alloc', tone: 3 },
+      ] },
+      { label: 'GPU', note: '~2 µs', blocks: [
+        { at: 0, len: 8, label: 'idle, waiting to be fed', idle: true },
+        { at: 8, len: 2, label: 'kernel', tone: 1 },
+      ] },
+    ]}
+  />
+</Figure>
 
 The consequence is that **eager mode's cost is a CPU cost**, and the GPU is frequently idle waiting
 for it. A small elementwise op on a modest tensor might take 2–4 µs of GPU time behind roughly

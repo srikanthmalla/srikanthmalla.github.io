@@ -17,6 +17,7 @@ import FigRef from '../../../components/FigRef.astro';
 import Roofline from '../../../components/Roofline.astro';
 import Plot from '../../../components/Plot.astro';
 import Bars from '../../../components/Bars.astro';
+import Flow from '../../../components/Flow.astro';
 
 ## The core mental model
 
@@ -26,8 +27,30 @@ conjuncts, and all three must hold. Put a function in hardware if **(a)** it is 
 path, **(b)** its logic is stable over months rather than days, and **(c)** its execution time is
 bounded and data-independent. The third is the one people drop, and dropping it is how projects
 fail: variable-time hardware is worse than fixed-time software, because determinism was the entire
-reason to leave the CPU. A function whose duration depends on its input belongs on the host even if
-it is fast on average.
+reason to leave the CPU. <FigRef for="tick">A function whose duration depends on its input belongs on the host even if
+it is fast on average.</FigRef>
+
+<Figure
+  id="tick"
+  caption="The tick-to-trade budget, allocated stage by stage. Everything on the top row is on silicon and in the datapath; the host row is deliberately off the critical path, setting conditions rather than making decisions. The gap between the two totals is almost entirely the two PCIe crossings and the software stack — not arithmetic."
+>
+  <Flow
+    alt="Flow of the fast path from wire to MAC, parse, book update, features, model, risk and back to the wire, with the host handling fitting, reconciliation and recovery off the critical path."
+    steps={[
+      { label: 'wire → MAC', sub: '50–100 ns', tone: 1 },
+      { label: 'parse', sub: '10–50 ns', tone: 1 },
+      { label: 'book', sub: '50–150 ns', tone: 1 },
+      { label: 'features', sub: '100–400 ns', tone: 3 },
+      { label: 'model', sub: '20–30 ns', tone: 1 },
+      { label: 'risk → TX', sub: '50–150 ns', tone: 1 },
+    ]}
+    branchFrom={2}
+    branchLabel="never in the loop of a decision"
+    branch={[
+      { label: 'host: fit, reconcile, recover', sub: 'sets the conditions, does not trade', tone: 2, ghost: true },
+    ]}
+  />
+</Figure>
 
 The order book is where this becomes concrete. Exchanges send incremental updates — add, modify,
 delete at a price level — and you must maintain best bid and ask plus depth. The data structure is

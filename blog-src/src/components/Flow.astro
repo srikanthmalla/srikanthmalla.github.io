@@ -1,0 +1,132 @@
+---
+/**
+ * A left-to-right chain of labelled stages with arrows between them.
+ *
+ * The workhorse for anything shaped like a pipeline: a compiler's passes, a
+ * request's path through a serving stack, a tick-to-trade budget. An optional
+ * second row hangs below one stage, for the fallback or slow path that most of
+ * these pipelines have.
+ */
+interface Step {
+  label: string;
+  /** Second line, smaller — a cost, a count, a mechanism. */
+  sub?: string;
+  tone?: 1 | 2 | 3;
+  /** Dashed outline: the path not taken, or a stage that may not run. */
+  ghost?: boolean;
+}
+interface Props {
+  steps: Step[];
+  /** Optional branch hanging below the stage at this index. */
+  branchFrom?: number;
+  branch?: Step[];
+  /** Label on the arrow into the branch. */
+  branchLabel?: string;
+  alt: string;
+}
+
+const { steps, branchFrom, branch = [], branchLabel, alt } = Astro.props;
+
+const W = 620;
+const gap = 26;
+const boxH = branch.length ? 46 : 52;
+const n = steps.length;
+const boxW = Math.floor((W - gap * (n - 1)) / n);
+const T = 16;
+const rowY = T;
+const branchY = rowY + boxH + 48;
+const H = branch.length ? branchY + boxH + 18 : rowY + boxH + 18;
+
+const x = (i: number) => i * (boxW + gap);
+const bw = branch.length ? Math.floor((W * 0.62 - gap * (branch.length - 1)) / branch.length) : 0;
+const bx = (i: number) => (branchFrom !== undefined ? Math.min(x(branchFrom), W - (bw + gap) * branch.length) : 0) + i * (bw + gap);
+const uid = Math.abs([...alt].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 11)).toString(36);
+---
+
+<svg
+  class="chart diagram"
+  viewBox={`0 0 ${W} ${H}`}
+  role="img"
+  aria-label={alt}
+  preserveAspectRatio="xMidYMid meet"
+>
+  <defs>
+    <marker id={`fa-${uid}`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+      <path d="M0 1 L9 5 L0 9 z" fill="context-stroke"></path>
+    </marker>
+  </defs>
+
+  {
+    steps.map((s, i) => (
+      <>
+        <rect
+          class={`d-box${s.tone ? ` is-${s.tone}` : ''}${s.ghost ? ' is-ghost' : ''}`}
+          x={x(i)}
+          y={rowY}
+          width={boxW}
+          height={boxH}
+          rx="4"
+        />
+        <text class="d-lbl d-mid" x={x(i) + boxW / 2} y={rowY + (s.sub ? boxH / 2 - 1 : boxH / 2 + 4)}>
+          {s.label}
+        </text>
+        {s.sub && (
+          <text class="d-sub d-mid" x={x(i) + boxW / 2} y={rowY + boxH / 2 + 14}>
+            {s.sub}
+          </text>
+        )}
+        {i < n - 1 && (
+          <path
+            class="d-arrow"
+            d={`M${x(i) + boxW + 4} ${rowY + boxH / 2} L${x(i + 1) - 4} ${rowY + boxH / 2}`}
+            marker-end={`url(#fa-${uid})`}
+          />
+        )}
+      </>
+    ))
+  }
+
+  {
+    branch.length > 0 && branchFrom !== undefined && (
+      <>
+        <path
+          class="d-arrow is-3 is-dashed"
+          d={`M${x(branchFrom) + boxW / 2} ${rowY + boxH + 3} L${x(branchFrom) + boxW / 2} ${branchY - 6}`}
+          marker-end={`url(#fa-${uid})`}
+        />
+        {branchLabel && (
+          <text class="d-sub" x={x(branchFrom) + boxW / 2 + 8} y={rowY + boxH + 26}>
+            {branchLabel}
+          </text>
+        )}
+        {branch.map((s, i) => (
+          <>
+            <rect
+              class={`d-box${s.tone ? ` is-${s.tone}` : ''}${s.ghost ? ' is-ghost' : ''}`}
+              x={bx(i)}
+              y={branchY}
+              width={bw}
+              height={boxH}
+              rx="4"
+            />
+            <text class="d-lbl d-mid" x={bx(i) + bw / 2} y={branchY + (s.sub ? boxH / 2 - 1 : boxH / 2 + 4)}>
+              {s.label}
+            </text>
+            {s.sub && (
+              <text class="d-sub d-mid" x={bx(i) + bw / 2} y={branchY + boxH / 2 + 14}>
+                {s.sub}
+              </text>
+            )}
+            {i < branch.length - 1 && (
+              <path
+                class="d-arrow"
+                d={`M${bx(i) + bw + 4} ${branchY + boxH / 2} L${bx(i + 1) - 4} ${branchY + boxH / 2}`}
+                marker-end={`url(#fa-${uid})`}
+              />
+            )}
+          </>
+        ))}
+      </>
+    )
+  }
+</svg>

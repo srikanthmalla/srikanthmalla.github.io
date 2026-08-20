@@ -11,13 +11,38 @@ tags: ['DDPM', 'DDIM', 'probability flow ODE', 'reverse SDE', 'sampler', 'determ
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Timeline from '../../../components/Timeline.astro';
 
 ## The core mental model
 
 The forward process is an SDE, and every diffusion SDE has a reverse-time SDE that undoes it, whose
 drift needs exactly one unknown quantity — the score, which Module 1 showed your network already
-estimates. That reverse SDE is DDPM sampling. The important result is the next one: **there is a
-deterministic ODE with the same marginal distributions at every time**,
+estimates. That reverse SDE is DDPM sampling. The important result is the next one: **<FigRef for="pfode">there is a
+deterministic ODE with the same marginal distributions at every time</FigRef>**,
+
+<Figure
+  id="pfode"
+  caption="The same marginals, two ways of reaching them. The SDE injects fresh noise at every step, so each run traces a different path and the sample is a draw. The probability-flow ODE drops the noise term: one smooth trajectory per starting point, reproducible, invertible, and solvable by any integrator you like. Identical distributions at every time; completely different objects to compute with."
+>
+  <Timeline
+    alt="Two trajectories from noise to data. The SDE path takes repeated steps with noise injected at each one; the probability-flow ODE path is a single smooth deterministic curve."
+    span={12}
+    axisLabel="t: noise → data"
+    rows={[
+      { label: 'SDE', note: 'stochastic', blocks: [
+        { at: 0, len: 2, label: 'step+noise', tone: 3 }, { at: 2, len: 2, label: 'step+noise', tone: 3 },
+        { at: 4, len: 2, label: 'step+noise', tone: 3 }, { at: 6, len: 2, label: 'step+noise', tone: 3 },
+        { at: 8, len: 2, label: 'step+noise', tone: 3 }, { at: 10, len: 2, label: 'sample', tone: 2 },
+      ] },
+      { label: 'PF-ODE', note: 'deterministic', blocks: [
+        { at: 0, len: 10, label: 'one smooth trajectory — solvable, invertible', tone: 1 },
+        { at: 10, len: 2, label: 'sample', tone: 2 },
+      ] },
+    ]}
+  />
+</Figure>
 
 $$
 \frac{dx}{dt} = f(x,t) - \tfrac{1}{2} g(t)^2 \nabla_x \log p_t(x),

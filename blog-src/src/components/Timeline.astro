@@ -1,0 +1,104 @@
+---
+/**
+ * Rows of blocks along a shared time axis.
+ *
+ * For anything where the argument is *when* things happen relative to each
+ * other: serial versus overlapped, a pipeline bubble, launch overhead against
+ * kernel duration, prefill handing off to decode. Two rows compared is usually
+ * the whole point, so the component is built for exactly that.
+ */
+interface Block {
+  /** Start, in the same arbitrary units as `span`. */
+  at: number;
+  len: number;
+  label?: string;
+  tone?: 1 | 2 | 3;
+  /** Hatched outline: idle, stalled, wasted. */
+  idle?: boolean;
+}
+interface Row {
+  label: string;
+  blocks: Block[];
+  /** Right-hand summary, e.g. total time. */
+  note?: string;
+}
+interface Props {
+  rows: Row[];
+  /** Total width of the axis in the same units as block `at`/`len`. */
+  span: number;
+  axisLabel?: string;
+  alt: string;
+}
+
+const { rows, span, axisLabel = 'time →', alt } = Astro.props;
+
+const W = 620;
+const L = 104;
+const R = 118;
+const T = 10;
+const rowH = 40;
+const pw = W - L - R;
+const H = T + rows.length * rowH + 30;
+const sx = (v: number) => L + (v / span) * pw;
+---
+
+<svg
+  class="chart diagram"
+  viewBox={`0 0 ${W} ${H}`}
+  role="img"
+  aria-label={alt}
+  preserveAspectRatio="xMidYMid meet"
+>
+  {
+    rows.map((r, i) => {
+      const y = T + i * rowH;
+      return (
+        <>
+          <text class="d-lbl d-end" x={L - 12} y={y + 24}>
+            {r.label}
+          </text>
+          {r.blocks.map((b) => {
+            const bw = Math.max(3, sx(b.at + b.len) - sx(b.at) - 2);
+            // Inter at 9.5px averages a bit over 5px a character. A label wider
+            // than its block would run into its neighbour, so drop it rather
+            // than overlap — the caption carries the detail.
+            const fits = !!b.label && bw > b.label.length * 5.3 + 6;
+            return (
+            <>
+              <rect
+                class={`d-box${b.tone ? ` is-${b.tone}` : ''}${b.idle ? ' is-ghost' : ''}`}
+                x={sx(b.at)}
+                y={y + 6}
+                width={bw}
+                height={28}
+                rx="3"
+              />
+              {fits && (
+                <text class="d-sub d-mid" x={sx(b.at) + bw / 2} y={y + 24}>
+                  {b.label}
+                </text>
+              )}
+            </>
+            );
+          })}
+          {r.note && (
+            <text class="d-sub" x={L + pw + 12} y={y + 24}>
+              {r.note}
+            </text>
+          )}
+        </>
+      );
+    })
+  }
+
+  <line class="d-axis-line" x1={L} x2={L + pw} y1={T + rows.length * rowH + 4} y2={T + rows.length * rowH + 4}
+  ></line>
+  <text class="d-sub" x={L} y={T + rows.length * rowH + 20}>{axisLabel}</text>
+</svg>
+
+<style is:global>
+  .d-axis-line {
+    stroke: var(--rule);
+    stroke-width: 1;
+  }
+</style>

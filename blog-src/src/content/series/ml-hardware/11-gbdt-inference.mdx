@@ -12,6 +12,9 @@ tags:
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Timeline from '../../../components/Timeline.astro';
 
 ## The core mental model
 
@@ -19,8 +22,25 @@ A gradient-boosted tree ensemble is not arithmetic, it is **routing**. There are
 anywhere in inference. Each internal node compares one feature against one constant; the comparison
 selects a child; after $d$ comparisons you arrive at a leaf and read a stored value; the ensemble
 output is the sum of $T$ leaf values. FLOP counting, the instrument that organises Modules 1 through
-3, returns approximately zero and tells you nothing whatsoever about the cost. This is the cleanest
-possible demonstration of Part B's thesis that work and latency are different quantities.
+3, returns approximately zero and tells you nothing whatsoever about the cost. <FigRef for="gbdt">This is the cleanest
+possible demonstration of Part B's thesis that work and latency are different quantities.</FigRef>
+
+<Figure
+  id="gbdt"
+  caption="A tree ensemble read two ways. As work it is hundreds of trees and thousands of comparisons. As latency it is the depth of one tree plus a sum, because every tree is independent and evaluates in parallel — so a hundred trees cost no more time than one. Total work and critical-path depth are not the same quantity, and only one of them is on the deadline."
+>
+  <Timeline
+    alt="Timeline showing many trees evaluating in parallel over the same few levels, followed by a single summation, so ensemble latency is tree depth plus a reduction rather than the sum of all trees."
+    span={10}
+    axisLabel="time →"
+    rows={[
+      { label: 'tree 1', blocks: [{ at: 0, len: 6, label: 'depth 6 compares', tone: 2 }] },
+      { label: 'tree 2', blocks: [{ at: 0, len: 6, label: 'in parallel', tone: 2 }] },
+      { label: '… tree 500', blocks: [{ at: 0, len: 6, label: 'also in parallel', tone: 2 }] },
+      { label: 'sum', note: 'latency = depth + Σ', blocks: [{ at: 6, len: 2, label: 'reduce', tone: 1 }] },
+    ]}
+  />
+</Figure>
 
 The central insight — and it is the one that separates people who have built these from people who
 have only trained them — is that **tree depth is a control-flow artifact, not a data dependency**.

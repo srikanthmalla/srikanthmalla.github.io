@@ -11,6 +11,9 @@ tags: ['KV offloading', 'LMCache', 'Mooncake', 'NIXL', 'KVBM', '3FS', 'llm-d', '
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Stack from '../../../components/Stack.astro';
 
 ## The core mental model
 
@@ -19,9 +22,24 @@ HBM, then CPU DRAM (up to roughly 250 GB per GPU), then shared storage measured 
 visible across the cluster. The economics are straightforward: [llm-d reports](https://llm-d.ai/docs/0.7/architecture/advanced/kv-management/kv-offloader)
 that loading cached blocks is "typically faster than recomputing them — up to 16× faster for long
 prompts", so if you can find a block anywhere cheaper than a prefill, fetching it wins. For K3
-specifically, Module 3's measured 7.95 GB per-GPU pool makes this more than an optimisation: the
+specifically, Module 3's measured 7.95 GB per-GPU pool makes this more than an optimisation: <FigRef for="tiers">the
 on-GPU cache is small relative to a 1M-token window, and anything that raises effective capacity
-without buying GPUs is worth serious attention.
+without buying GPUs is worth serious attention.</FigRef>
+
+<Figure
+  id="tiers"
+  caption="The tiers a block can fall through, and how far each is findable. HBM is per rank, DRAM per node, shared storage across the cluster — and only the last makes a block computed by one replica reusable by another, which is the capability that changes system design rather than tuning it. Loading a cached block beats recomputing it by up to 16× on long prompts."
+>
+  <Stack
+    alt="Three KV storage tiers: GPU HBM at about 8 gigabytes per rank, CPU DRAM up to 250 gigabytes per node, and shared storage in terabytes visible across the cluster."
+    axis="colder, larger, further"
+    layers={[
+      { label: 'GPU HBM', note: '~8 GB measured — rank scope', width: 0.22, tone: 1 },
+      { label: 'CPU DRAM', note: 'up to ~250 GB — node scope', width: 0.58, tone: 2 },
+      { label: 'shared storage', note: 'TB+ — cluster scope, cross-replica reuse', width: 1, tone: 3 },
+    ]}
+  />
+</Figure>
 
 vLLM exposes this through a **connector interface with five named backends** — `native`, `lmcache`,
 `mooncake`, `3fs` and `nixl` — currently configured through a JSON string to `--kv-transfer-config`,

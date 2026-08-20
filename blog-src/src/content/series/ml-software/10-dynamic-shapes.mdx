@@ -11,14 +11,34 @@ tags: ['dynamic shapes', 'symbolic shapes', 'recompilation', 'guards', 'mark_dyn
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Bars from '../../../components/Bars.astro';
 
 ## The core mental model
 
 A compiler wants constants. Knowing a dimension is exactly 512 lets it pick tile sizes, unroll loops,
 prove there is no ragged edge, and compute every stride at compile time. Knowing only that it is
 "some integer" forces guard branches, runtime index arithmetic, and tile choices that must be
-correct for any value. **Specialisation buys speed and costs reuse**, and since compilation is
-expensive, the reuse is what determines whether you ever amortise it.
+correct for any value. **Specialisation buys speed and costs reuse**, <FigRef for="recompile">and since compilation is
+expensive, the reuse is what determines whether you ever amortise it.</FigRef>
+
+<Figure
+  id="recompile"
+  caption="The same traffic under three policies. Specialising on every shape gives the fastest kernel and a compilation for each one, which never amortises against varied traffic. Full dynamism compiles once and gives up the constants the optimiser wanted. Bucketing pads to a handful of sizes — a little wasted compute, a bounded number of compilations, and it is what production stacks actually do."
+>
+  <Bars
+    alt="Bar chart of compilations required: static specialisation needs one per distinct shape, dynamic needs one, and bucketing needs one per bucket."
+    log={false}
+    unit=""
+    xLabel="compilations for a workload with 40 distinct shapes"
+    items={[
+      { label: 'specialise per shape', value: 40, tone: 3, display: '40 — never amortises' },
+      { label: 'bucket to powers of 2', value: 6, tone: 1, display: '6 — pad, then reuse' },
+      { label: 'fully dynamic', value: 1, tone: 2, display: '1 — but slower code' },
+    ]}
+  />
+</Figure>
 
 PyTorch's compromise is **symbolic shapes**. Rather than baking in `batch == 4`, Dynamo introduces a
 symbol `s0` and records the *facts it actually needed*: that `s0 >= 2`, that two tensors share a

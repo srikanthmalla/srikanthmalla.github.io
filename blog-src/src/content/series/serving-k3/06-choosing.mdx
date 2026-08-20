@@ -11,6 +11,9 @@ tags: ['vLLM', 'SGLang', 'benchmarking', 'comparison', 'H200', 'GB300', 'Marlin'
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Bars from '../../../components/Bars.astro';
 
 ## The core mental model
 
@@ -22,8 +25,24 @@ runs natively. The third is single-request throughput on
 [16×H200 with SGLang](https://huggingface.co/moonshotai/Kimi-K3/discussions/136), where MXFP4 goes
 through Marlin's dequantizing W4A16 path, the interconnect is InfiniBand between two nodes rather
 than an NVLink domain, and the report does not indicate speculative decoding was enabled. Nothing is
-wrong with any of them; they are simply not comparable, and the coverage that places them side by side
-is producing a comparison that does not exist.
+wrong with any of them; <FigRef for="spread">they are simply not comparable, and the coverage that places them side by side
+is producing a comparison that does not exist.</FigRef>
+
+<Figure
+  id="spread"
+  caption="The three circulating numbers, on a log axis, with their conditions attached. The 25× spread is hardware and precision path — native MXFP4 in an NVLink domain against Marlin dequantization across two InfiniBand-joined nodes — plus whether speculation was on. The same engine produced numbers at both ends, which is the point: you cannot read an engine choice off this chart."
+>
+  <Bars
+    alt="Log bar chart of reported Kimi K3 decode rates: 16.8 tokens per second on 16 H200s, 111 to 118 on GB300 without speculation, and 370 to 423 with speculative decoding."
+    unit=" tok/s"
+    xLabel="reported decode rate (log) — different machines, different measurements"
+    items={[
+      { label: '16×H200, Marlin', value: 16.8, tone: 3, display: '16.8 — single request' },
+      { label: 'GB300, no spec', value: 114, tone: 2, display: '111–118 — batch 1' },
+      { label: 'GB300 + DSpark', value: 396, tone: 1, display: '370–423 — batch 1' },
+    ]}
+  />
+</Figure>
 
 What that means practically is that **you cannot choose an engine from the published numbers**, and
 you should be suspicious of anyone who says you can. Both engines were developed in collaboration

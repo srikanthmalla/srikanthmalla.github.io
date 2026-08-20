@@ -11,6 +11,9 @@ tags: ['disaggregation', 'prefill decode', 'NIXL', 'Mooncake', 'llm-d', 'cache-a
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Flow from '../../../components/Flow.astro';
 
 ## The core mental model
 
@@ -21,9 +24,29 @@ parallelism. SGLang's measurements make this concrete — **PP8×TP1 chunked pip
 reported at 1.7× the ceiling of TEP8**, and **DCP8 for decode, reported at 7.9× logical KV capacity**.
 Those two configurations cannot coexist in one engine instance. So if you want both, you must run two
 pools and move requests between them, which is disaggregation. vLLM's equivalent arrangement is
-**TEP8 prefill routed to DEP16 decode**, and SGLang's headline aggregate figure — **2,808 tok/s per
+**TEP8 prefill routed to DEP16 decode**, <FigRef for="disagg">and SGLang's headline aggregate figure — **2,808 tok/s per
 GPU** — is quoted for a disaggregated PP8-prefill-plus-TP8-decode configuration rather than for a
-unified one.
+unified one.</FigRef>
+
+<Figure
+  id="disagg"
+  caption="Why the two pools exist and what has to cross between them. Prefill wants pipeline parallelism over long prompts; decode wants context parallelism for KV capacity; the two cannot coexist in one engine instance. The transfer is the price — and on K3 it carries two objects at two granularities, with the KDA half unable to start until prefill finishes."
+>
+  <Flow
+    alt="A request flowing from a prefill pool running PP8 through a NIXL transfer of both MLA pages and KDA state into a decode pool running DCP8."
+    steps={[
+      { label: 'prefill pool', sub: 'PP8×TP1 — 1.7× TEP8', tone: 2 },
+      { label: 'transfer', sub: 'MLA pages + KDA state', tone: 3 },
+      { label: 'decode pool', sub: 'DCP8 — 7.9× logical KV', tone: 1 },
+    ]}
+    branchFrom={1}
+    branchLabel="what makes it harder here"
+    branch={[
+      { label: 'pages stream as produced', sub: 'append-only, pipelineable', tone: 2, ghost: true },
+      { label: 'KDA state cannot', sub: 'only exists once prefill ends', tone: 3, ghost: true },
+    ]}
+  />
+</Figure>
 
 What crosses the boundary is where K3 differs from a normal disaggregated deployment. On a
 conventional model you transfer the KV cache: a contiguous, position-indexed, immutable set of pages,
