@@ -11,6 +11,10 @@ tags: ['SGLang', 'LMSYS', 'DCP', 'decode context parallelism', 'chunked pipeline
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Plot from '../../../components/Plot.astro';
+import Bars from '../../../components/Bars.astro';
 
 ## The core mental model
 
@@ -37,10 +41,29 @@ The third thing is that SGLang publishes a **kernel waterfall** rather than a si
 the most useful artefact either engine produced. Going from a working implementation to ~113 tok/s at
 batch 1 decomposes as: launch elimination and MoE fusion +19.9, NVIDIA compute kernels (fused KDA,
 W4A8 MoE, TMA aggregation) +10.3, communication fusion (CustomAllReduceV2, multicast, NVLS) **+27.6**,
-overlap and prologue fusion +10.4, and further phases to +44.8 cumulative. The largest single line is
-communication, and their explanation of why is the sentence worth taking away from this whole series:
+overlap and prologue fusion +10.4, and further phases to +44.8 cumulative. <FigRef for="waterfall">The largest single line is communication</FigRef>, and their explanation of
+why is the sentence worth taking away from this whole series:
 *"all-reduce is a synchronization point, so a microsecond saved there converts one-for-one into step
 time."*
+
+<Figure
+  id="waterfall"
+  caption="SGLang's published gains to ~113 tok/s at batch 1. Communication fusion is the biggest single line — larger than all the compute-kernel work combined — because at batch 1 there is nothing to overlap a collective against and it happens 93 times per token. It also means this figure is a property of the fabric, not of the model."
+>
+  <Bars
+    alt="Bar chart of SGLang's kernel optimisation gains: launch elimination and MoE fusion 19.9 tokens per second, NVIDIA compute kernels 10.3, communication fusion 27.6, overlap and prologue fusion 10.4, further phases 44.8."
+    log={false}
+    unit=" tok/s"
+    xLabel="tokens/s gained, batch 1"
+    items={[
+      { label: 'launch elim + MoE fusion', value: 19.9, tone: 1 },
+      { label: 'NVIDIA compute kernels', value: 10.3, tone: 1 },
+      { label: 'communication fusion', value: 27.6, tone: 1 },
+      { label: 'overlap + prologue fusion', value: 10.4, tone: 1 },
+      { label: 'further phases', value: 44.8, tone: 1 },
+    ]}
+  />
+</Figure>
 
 <Callout type="bridge" title="DCP is the codesign series' Module 11, arriving as a product feature">
   Sharding KV by token position across ranks is spatial assignment applied to the sequence dimension,

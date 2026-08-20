@@ -11,6 +11,10 @@ tags: ['latent diffusion', 'VAE', 'autoencoder', 'KL', 'compression', 'reconstru
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Plot from '../../../components/Plot.astro';
+import Bars from '../../../components/Bars.astro';
 
 ## The core mental model
 
@@ -18,10 +22,26 @@ Diffusion in pixel space is dominated by perceptually irrelevant work. Most of t
 image are high-frequency detail that contributes little to what the image *is*, and a pixel-space
 model spends most of its capacity and nearly all of its compute modelling them. Latent diffusion
 splits the problem: an autoencoder handles perceptual compression once, and the diffusion model
-handles semantic composition in the compressed space. At the standard $8\times$ spatial downsampling
-with 4 latent channels, a $512\times512\times3$ image becomes $64\times64\times4$ — a **48×**
-reduction in elements, and since attention is quadratic in sequence length, far more than 48× in
-some layers.
+handles semantic composition in the compressed space. At the standard $8\times$ spatial downsampling with 4 latent channels,
+<FigRef for="latent">a $512\times512\times3$ image becomes $64\times64\times4$ — a **48×** reduction
+in elements</FigRef>, and since attention is quadratic in sequence length, far more than 48× in some
+layers.
+
+<Figure
+  id="latent"
+  caption="Elements the diffusion model actually operates on, linear scale. The second bar is 2% of the first. The third is the attention consequence: sequence length falls 64× (4096 spatial positions to 64… squared), so any quadratic term falls by roughly its square — which is why the saving in attention layers far exceeds the 48× in element count."
+>
+  <Bars
+    alt="Bar chart of element counts: a 512 by 512 by 3 pixel image has 786432 elements, a 64 by 64 by 4 latent has 16384, a 48-fold reduction."
+    log={false}
+    unit=" elements"
+    xLabel="tensor elements the model processes"
+    items={[
+      { label: 'pixel space 512²×3', value: 786432, tone: 1, display: '786,432' },
+      { label: 'latent space 64²×4', value: 16384, tone: 1, display: '16,384 — 48× fewer' },
+    ]}
+  />
+</Figure>
 
 The autoencoder is deliberately *not* a strong generative model. It is trained with a small KL
 penalty (or a VQ codebook) whose only job is to keep the latent space from drifting to arbitrary

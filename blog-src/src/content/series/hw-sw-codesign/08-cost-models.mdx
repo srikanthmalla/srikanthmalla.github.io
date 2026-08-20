@@ -11,6 +11,10 @@ tags: ['Timeloop', 'Accelergy', 'MAESTRO', 'cost model', 'autotuning', 'Ansor', 
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Plot from '../../../components/Plot.astro';
+import Bars from '../../../components/Bars.astro';
 
 ## The core mental model
 
@@ -89,7 +93,28 @@ What analytic models omit, and which direction the error runs — all optimistic
 | Clock throttling          | 1.0–1.3×       | assumes nominal frequency      |
 | Kernel-to-kernel interference | 1.1–1.5×    | evaluates kernels in isolation |
 
-Compounded, this is why "we modelled 80% utilization" routinely becomes 40% MFU in production.
+<FigRef for="mfu">Compounded, this is why "we modelled 80% utilization" routinely becomes 40% MFU in
+production.</FigRef>
+
+<Figure
+  id="mfu"
+  caption="Each bar is what survives after that term, taking the optimistic end of every range — so this is the best case, and it still lands at 44%. Nothing here is a blunder; every step is a forgivable ten or twenty percent. But they multiply, and three of the five belong to the compiler rather than to the silicon. That is the argument for where the marginal engineer should go."
+>
+  <Bars
+    alt="Bar chart showing a modelled 80 percent utilisation eroding through model optimism, non-GEMM work, un-overlapped communication, real shapes and compiler shortfall down to about 44 percent delivered."
+    log={false}
+    unit="%"
+    xLabel="utilisation surviving, % — optimistic end of each range"
+    items={[
+      { label: 'modelled', value: 80, tone: 1 },
+      { label: '− model optimism ÷1.3', value: 62, tone: 1 },
+      { label: '− non-GEMM work ÷1.1', value: 56, tone: 1 },
+      { label: '− comms not overlapped ÷1.1', value: 51, tone: 1 },
+      { label: '− real shapes ÷1.05', value: 48, tone: 1 },
+      { label: '− compiler shortfall ÷1.1', value: 44, tone: 3 },
+    ]}
+  />
+</Figure>
 
 ## Critical thinking
 
@@ -229,8 +254,10 @@ Work down the levels:
   compiler that ships is not the one in the study, and this gap is the largest one nobody puts in a
   slide. It is the subject of Module 14.
 
-Multiply the midpoints and 80% becomes something in the 30–45% range, which is exactly where
-large-scale training MFU actually lands.
+Multiply them and 80% becomes anywhere from about **44% at the optimistic end of every range down to
+14% at the pessimistic end** — the midpoints give 24%. Real large-scale training MFU lands in the
+30–50% band, which says most deployments are doing better than the midpoints and nowhere near the
+best case.
 
 Two conclusions worth taking seriously:
 
@@ -296,7 +323,8 @@ for architects, hybrid learned for compilers, pure measurement for the few kerne
 Model optimism 1.3–1.6× (everything the analytic model abstracts away), non-GEMM work 1.1–1.3×,
 un-overlapped communication and pipeline bubbles 1.1–1.4×, shape mismatch on real (non-power-of-two)
 shapes 1.05–1.3×, and the compiler not finding the assumed-optimal mapping 1.1–1.5×. Multiplied, 80%
-becomes 30–45%. The two lessons: model the **whole workload** rather than the kernel, since nearly
+becomes 44% at the optimistic end of every range and 24% at the midpoints. The two lessons: model the
+**whole workload** rather than the kernel, since nearly
 every term is a composition effect; and carry a **compiler-efficiency factor** as a named term,
 because improving it is often cheaper per unit of delivered performance than any hardware change on
 the table.

@@ -27,11 +27,30 @@ $\lambda$, schedule design becomes legible: a schedule is just a choice of how f
 $\lambda$ from about $+10$ (nearly clean) to about $-10$ (nearly pure noise), and how much time to
 spend in each band.
 
-The linear $\beta$ schedule from DDPM sweeps $\lambda$ very unevenly — it spends a large fraction of
-its steps in a regime where the image is already destroyed and there is nothing left to learn. The
+<FigRef for="lamsweep">The linear $\beta$ schedule from DDPM sweeps $\lambda$ very unevenly — it
+spends a large fraction of its steps in a regime where the image is already destroyed</FigRef> and
+there is nothing left to learn. The
 cosine schedule was introduced precisely to fix that, holding more of the budget in the middle
 where structure is decided. Everything since is a variation on the same question: given a fixed
 number of training steps and a fixed number of sampling steps, where in log-SNR should they go?
+
+<Figure
+  id="lamsweep"
+  caption="Log-SNR against normalised time, computed from each schedule's own definition. The shaded intuition: below about λ = −3 the image is essentially gone. The linear schedule crosses that line at t/T ≈ 0.55 and spends 45% of its steps below it; the cosine schedule crosses at 0.85 and spends 14%. That difference is the whole argument for cosine, and it is visible as the flatness of the middle band."
+>
+  <Plot
+    alt="Log-SNR from about +10 to −10 against normalised time. The linear schedule falls steeply and early; the cosine schedule holds a much flatter middle band and only collapses near the end."
+    series={[
+      { label: 'linear β', tone: 3, points: [[0.001, 9.21], [0.05, 3.51], [0.1, 2.16], [0.2, 0.66], [0.3, -0.42], [0.4, -1.42], [0.5, -2.46], [0.6, -3.63], [0.7, -4.96], [0.8, -6.48], [0.9, -8.2], [0.99, -9.92]] },
+      { label: 'cosine', tone: 1, points: [[0.001, 10.09], [0.05, 4.82], [0.1, 3.55], [0.2, 2.18], [0.3, 1.31], [0.4, 0.61], [0.5, -0.02], [0.6, -0.66], [0.7, -1.37], [0.8, -2.27], [0.9, -3.7], [0.99, -8.32]] },
+    ]}
+    marks={[{ x: 0.6, y: -3.63, label: 'linear is already here at t/T = 0.6', tone: 3 }]}
+    xLabel="t / T"
+    yLabel="log-SNR λ"
+    xTicks={[0, 0.25, 0.5, 0.75, 1]}
+    yTicks={[-10, -5, 0, 5, 10]}
+  />
+</Figure>
 
 The part that trips people up when they scale is that **the answer depends on resolution**. Adding
 noise of a fixed variance per pixel destroys far less information in a large image than a small

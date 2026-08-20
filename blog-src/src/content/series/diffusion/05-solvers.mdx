@@ -21,8 +21,31 @@ import Bars from '../../../components/Bars.astro';
 
 Once sampling is integration (Module 4), the step count follows from error analysis rather than
 folklore. A solver of order $p$ has local truncation error $O(h^{p+1})$ per step and global error
-$O(h^p)$. Going from first to second order is therefore not a 2× improvement — at 20 steps it is
-closer to an order of magnitude, which is why DDIM needs 50 steps for what DPM-Solver++ does in 15.
+$O(h^p)$. <FigRef for="order">Going from first to second order is therefore not a 2× improvement — at 20 steps
+it is closer to an order of magnitude, which is why DDIM needs 50 steps for what DPM-Solver++ does in
+15.</FigRef>
+
+<Figure
+  id="order"
+  caption="Global error against step count, from the O(h^p) scaling alone — no empirical fitting, just the two exponents drawn on a log-log axis where they are straight lines of slope −1 and −2. The horizontal distance between the curves at a fixed error is the step-count saving, and it widens as you demand more accuracy."
+>
+  <Plot
+    alt="Log-log plot of global error against number of steps. The first-order line falls with slope minus one, the second-order line with slope minus two, so the second reaches a given error in far fewer steps."
+    series={[
+      { label: 'order 1', tone: 3, points: [[10, 5], [15, 3.33], [20, 2.5], [50, 1], [100, 0.5], [200, 0.25]] },
+      { label: 'order 2', tone: 1, points: [[10, 2.25], [15, 1], [20, 0.5625], [50, 0.09], [100, 0.0225], [200, 0.0056]] },
+    ]}
+    marks={[
+      { x: 50, y: 1, label: 'DDIM, 50 steps', tone: 3, flip: true },
+      { x: 15, y: 1, label: 'DPM-Solver++, 15', tone: 1 },
+    ]}
+    xLabel="steps (NFE)"
+    yLabel="global error, relative"
+    xLog={true}
+    yLog={true}
+    xTicks={[10, 100]}
+  />
+</Figure>
 The entire progress of the sampler literature between 2021 and 2023 is the application of standard
 numerical analysis to a field that had been treating step count as a hyperparameter.
 

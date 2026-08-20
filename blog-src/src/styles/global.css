@@ -653,3 +653,91 @@ html.js .prose .figbox:not([data-open]):not(.is-open) {
     z-index: 1;
   }
 }
+
+/* ---- Diagrams -------------------------------------------------------------
+   Hand-authored inline SVG inside a <Figure>, sharing the chart's tokens so
+   they theme identically. Classes rather than a component, because the whole
+   point of a diagram is that its structure is bespoke.
+--------------------------------------------------------------------------- */
+.d-box {
+  fill: var(--bg-sunken);
+  stroke: var(--rule);
+  stroke-width: 1;
+}
+
+.d-box.is-1 {
+  fill: color-mix(in oklab, var(--fig-1) 16%, var(--bg-sunken));
+  stroke: color-mix(in oklab, var(--fig-1) 55%, var(--rule));
+}
+
+.d-box.is-2 {
+  fill: color-mix(in oklab, var(--fig-2) 16%, var(--bg-sunken));
+  stroke: color-mix(in oklab, var(--fig-2) 55%, var(--rule));
+}
+
+.d-box.is-3 {
+  fill: color-mix(in oklab, var(--fig-3) 16%, var(--bg-sunken));
+  stroke: color-mix(in oklab, var(--fig-3) 55%, var(--rule));
+}
+
+.d-box.is-ghost {
+  fill: none;
+  stroke-dasharray: 4 3;
+}
+
+.d-lbl {
+  font-size: 11px;
+  font-weight: 550;
+  fill: var(--ink-strong);
+}
+
+.d-sub {
+  font-size: 9.5px;
+  fill: var(--ink-muted);
+}
+
+.d-cap {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  fill: var(--ink-faint);
+}
+
+.d-arrow {
+  stroke: var(--ink-faint);
+  stroke-width: 1.5;
+  fill: none;
+}
+
+.d-arrow.is-1 {
+  stroke: var(--fig-1);
+}
+
+.d-arrow.is-3 {
+  stroke: var(--fig-3);
+}
+
+.d-arrow.is-dashed {
+  stroke-dasharray: 4 3;
+}
+
+.d-rule {
+  stroke: var(--rule);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.chart.diagram {
+  min-width: 420px;
+}
+
+/* Text anchoring as classes, so diagram SVG authored inside MDX needs no
+   hyphenated JSX attributes. */
+.d-mid {
+  text-anchor: middle;
+}
+
+.d-end {
+  text-anchor: end;
+}

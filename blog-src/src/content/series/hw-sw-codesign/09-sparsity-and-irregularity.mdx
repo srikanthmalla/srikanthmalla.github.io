@@ -11,6 +11,10 @@ tags: ['sparsity', '2:4 structured', 'unstructured sparsity', 'gather', 'load im
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Plot from '../../../components/Plot.astro';
+import Bars from '../../../components/Bars.astro';
 
 ## The core mental model
 
@@ -30,8 +34,29 @@ charging you much for, while the gather it requires destroys both the memory gra
 array's filling condition, which are what the machine was charging you for.** At 90% sparsity you
 remove 90% of the MACs — worth roughly 0.2 pJ each — and replace contiguous 32-byte sector reads with
 scattered 4-byte accesses that still cost a full sector each, plus index metadata you now have to
-fetch and decode. The FLOPs vanish and the traffic barely moves. Speedups of 2× at 90% sparsity are
-normal; 10× essentially never happens on hardware built for dense tiles.
+fetch and decode. The FLOPs vanish and the traffic barely moves. <FigRef for="sparsity">Speedups of 2× at 90% sparsity are normal; 10× essentially never happens on
+hardware built for dense tiles.</FigRef>
+
+<Figure
+  id="sparsity"
+  caption="FLOPs removed against speedup delivered. The diagonal is what counting FLOPs predicts. 2:4 lands almost on it because it was shaped to the array — fixed ratio, positional metadata, tile shape unchanged. Unstructured 90% removes nine times the arithmetic and delivers less, because the gather destroys memory granularity and the array still cannot be filled."
+>
+  <Plot
+    alt="Speedup against fraction of FLOPs removed. A dashed diagonal shows what FLOP counting predicts. 2:4 structured sparsity sits close to it; block sparsity somewhat below; unstructured 90 percent far below at under 2x."
+    series={[
+      { label: 'what FLOPs predict', tone: 3, dashed: true, points: [[50, 2], [75, 4], [90, 10], [99, 100]] },
+      { label: 'what you get', tone: 1, points: [[50, 1.8], [75, 3], [90, 1.6], [99, 6]] },
+    ]}
+    marks={[
+      { x: 50, y: 1.8, label: '2:4 structured', tone: 1 },
+      { x: 90, y: 1.6, label: 'unstructured 90%', tone: 1 },
+    ]}
+    xLabel="FLOPs removed, %"
+    yLabel="speedup, ×"
+    yLog={true}
+    xTicks={[50, 60, 70, 80, 90, 100]}
+  />
+</Figure>
 
 Which produces the design rule that this module exists for. **Hardware can exploit sparsity only when
 the sparsity pattern is constrained to match the mapping.** NVIDIA's 2:4 structured sparsity is the

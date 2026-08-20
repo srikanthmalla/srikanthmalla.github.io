@@ -9,6 +9,8 @@ tags: ['dataflow', 'weight stationary', 'output stationary', 'row stationary', '
 ---
 
 import Callout from '../../../components/Callout.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
 
@@ -17,12 +19,86 @@ import SelfCheck from '../../../components/SelfCheck.astro';
 "Dataflow" is a grand word for a narrow question: **which tensor do you refuse to re-fetch?** A
 reduction-shaped operation touches three tensors — two inputs and one output that accumulates — and
 the cheap levels of the hierarchy cannot hold all three. So you pick one to hold still and let the
-others stream past it. Hold the weights and you have a weight-stationary design; hold the
-accumulating output and you have output-stationary; hold the input activations and you have
+others stream past it. <FigRef for="dataflow">Hold the weights and you have a weight-stationary design; hold the
+accumulating output and you have output-stationary</FigRef>; hold the input activations and you have
 input-stationary. Eyeriss's row-stationary is a fourth answer that holds a *row* of each, chosen to
 exploit convolution's overlapping windows. This is not a taxonomy imposed on the field from outside —
 it is the enumeration of the choices available, and it is exactly the permutation decision from
 Module 5 made concrete in hardware.
+
+<Figure
+  id="dataflow"
+  caption="The same PE grid under two dataflows. Filled cells are what stays put. Weight-stationary loads the weights once and streams activations across, forwarding partial sums down — each psum moves, but only one PE-hop at a time. Output-stationary pins the accumulator in a register so psums never move at all, and streams both operands in. The wires run in one direction, which is why the choice is cast in RTL rather than chosen per kernel."
+>
+  <svg class="chart diagram" viewBox="0 0 620 232" role="img" aria-label="Two three-by-three PE grids. In the weight-stationary grid the weights are held in the cells, activations flow left to right and partial sums flow downward out of the array. In the output-stationary grid the partial sums are held in the cells and both weights and activations stream in, with nothing leaving until the reduction ends.">
+    <defs>
+      <marker id="dfa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+        <path d="M0 1 L9 5 L0 9 z" fill="context-stroke" />
+      </marker>
+    </defs>
+
+    <text class="d-cap" x="62" y="12">Weight-stationary — TPU MXU</text>
+    <rect class="d-box is-1" x="62" y="46" width="42" height="34" rx="2" />
+    <rect class="d-box is-1" x="108" y="46" width="42" height="34" rx="2" />
+    <rect class="d-box is-1" x="154" y="46" width="42" height="34" rx="2" />
+    <rect class="d-box is-1" x="62" y="84" width="42" height="34" rx="2" />
+    <rect class="d-box is-1" x="108" y="84" width="42" height="34" rx="2" />
+    <rect class="d-box is-1" x="154" y="84" width="42" height="34" rx="2" />
+    <rect class="d-box is-1" x="62" y="122" width="42" height="34" rx="2" />
+    <rect class="d-box is-1" x="108" y="122" width="42" height="34" rx="2" />
+    <rect class="d-box is-1" x="154" y="122" width="42" height="34" rx="2" />
+    <text class="d-lbl d-mid" x="83" y="68">W</text>
+    <text class="d-lbl d-mid" x="129" y="68">W</text>
+    <text class="d-lbl d-mid" x="175" y="68">W</text>
+    <text class="d-lbl d-mid" x="83" y="106">W</text>
+    <text class="d-lbl d-mid" x="129" y="106">W</text>
+    <text class="d-lbl d-mid" x="175" y="106">W</text>
+    <text class="d-lbl d-mid" x="83" y="144">W</text>
+    <text class="d-lbl d-mid" x="129" y="144">W</text>
+    <text class="d-lbl d-mid" x="175" y="144">W</text>
+    <path class="d-arrow is-3" d="M8 63 L58 63" marker-end="url(#dfa)" />
+    <path class="d-arrow is-3" d="M8 101 L58 101" marker-end="url(#dfa)" />
+    <path class="d-arrow is-3" d="M8 139 L58 139" marker-end="url(#dfa)" />
+    <text class="d-sub" x="8" y="54">activations</text>
+    <path class="d-arrow" d="M83 160 L83 186" marker-end="url(#dfa)" />
+    <path class="d-arrow" d="M129 160 L129 186" marker-end="url(#dfa)" />
+    <path class="d-arrow" d="M175 160 L175 186" marker-end="url(#dfa)" />
+    <text class="d-sub d-mid" x="129" y="202">psums hop out, one PE at a time</text>
+    <text class="d-sub d-mid" x="129" y="216">weights never move · wants large batch</text>
+
+    <line class="d-rule" x1="300" y1="0" x2="300" y2="224" />
+
+    <text class="d-cap" x="382" y="12">Output-stationary — GPU tensor core</text>
+    <path class="d-arrow is-1" d="M403 20 L403 42" marker-end="url(#dfa)" />
+    <path class="d-arrow is-1" d="M449 20 L449 42" marker-end="url(#dfa)" />
+    <path class="d-arrow is-1" d="M495 20 L495 42" marker-end="url(#dfa)" />
+    <text class="d-sub" x="512" y="30">weights</text>
+    <rect class="d-box is-2" x="382" y="46" width="42" height="34" rx="2" />
+    <rect class="d-box is-2" x="428" y="46" width="42" height="34" rx="2" />
+    <rect class="d-box is-2" x="474" y="46" width="42" height="34" rx="2" />
+    <rect class="d-box is-2" x="382" y="84" width="42" height="34" rx="2" />
+    <rect class="d-box is-2" x="428" y="84" width="42" height="34" rx="2" />
+    <rect class="d-box is-2" x="474" y="84" width="42" height="34" rx="2" />
+    <rect class="d-box is-2" x="382" y="122" width="42" height="34" rx="2" />
+    <rect class="d-box is-2" x="428" y="122" width="42" height="34" rx="2" />
+    <rect class="d-box is-2" x="474" y="122" width="42" height="34" rx="2" />
+    <text class="d-lbl d-mid" x="403" y="68">Σ</text>
+    <text class="d-lbl d-mid" x="449" y="68">Σ</text>
+    <text class="d-lbl d-mid" x="495" y="68">Σ</text>
+    <text class="d-lbl d-mid" x="403" y="106">Σ</text>
+    <text class="d-lbl d-mid" x="449" y="106">Σ</text>
+    <text class="d-lbl d-mid" x="495" y="106">Σ</text>
+    <text class="d-lbl d-mid" x="403" y="144">Σ</text>
+    <text class="d-lbl d-mid" x="449" y="144">Σ</text>
+    <text class="d-lbl d-mid" x="495" y="144">Σ</text>
+    <path class="d-arrow is-3" d="M328 63 L378 63" marker-end="url(#dfa)" />
+    <path class="d-arrow is-3" d="M328 101 L378 101" marker-end="url(#dfa)" />
+    <path class="d-arrow is-3" d="M328 139 L378 139" marker-end="url(#dfa)" />
+    <text class="d-sub" x="328" y="54">activations</text>
+    <text class="d-sub d-mid" x="449" y="202">psums stay in the register file</text>
+    <text class="d-sub d-mid" x="449" y="216">nothing leaves until the reduction ends</text>
+  </svg>
+</Figure>
 
 The thing that decides it, and that the naming obscures, is **partial sums**. In a reduction of depth
 $K$, each output is touched $K$ times. Weights and inputs are each read once per multiply, but the

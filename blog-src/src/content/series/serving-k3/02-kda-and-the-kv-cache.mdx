@@ -27,7 +27,10 @@ placed roughly every fourth position. The consequence for memory is exactly what
 cache that grows with context is now a quarter of the layers instead of all of them</FigRef>, so a
 million-token context costs something like a quarter of what it would on a uniform full-attention
 model of the same depth. That is the design's whole purpose, and it is why K3 can advertise a 1M
-window without an absurd deployment.
+window without an absurd deployment. You cannot point two requests at
+it, you cannot reconstruct an earlier state from a later one, and if you want to branch you must
+physically copy. Every engine building K3 support had to solve this, and Modules 4 and 5 are largely
+the story of the two different ways they did.
 
 <Figure
   id="kv-growth"
@@ -49,12 +52,59 @@ The consequence for *engineering* is that you now have two kinds of state with i
 semantics living under one scheduler, and almost every serving feature you rely on was built assuming
 only the first kind. A paged KV cache is **append-only**: token $n$'s entry is written once and never
 modified, which is exactly what makes prefix caching trivial — two requests sharing a prefix share
-the physical pages, and a hash of the prefix is a valid cache key. A KDA recurrent state is
-**overwritten in place** at every token, so there is no per-token record to share. The state after
-token $n$ is a destructive function of the state after token $n-1$. You cannot point two requests at
-it, you cannot reconstruct an earlier state from a later one, and if you want to branch you must
-physically copy. Every engine building K3 support had to solve this, and Modules 4 and 5 are largely
-the story of the two different ways they did.
+the physical pages, and a hash of the prefix is a valid cache key. <FigRef for="two-states">A KDA recurrent state is **overwritten in place** at every token, so there
+is no per-token record to share.</FigRef> The state after token $n$ is a destructive function of the
+state after token $n-1$.
+
+<Figure
+  id="two-states"
+  caption="Why one of these can be shared and the other cannot. Every MLA entry still exists after it is written, so a second request simply points at the same pages. The KDA state is one box that each token overwrites — S₂ does not survive S₃ — so the only way to have an earlier state is to have saved a checkpoint of it, and the only way to branch is to copy."
+>
+  <svg class="chart diagram" viewBox="0 0 620 246" role="img" aria-label="Top: MLA paged KV as five boxes written once each, with two requests sharing the first three. Bottom: KDA as a single state overwritten by each token, where intermediate states no longer exist and only a periodic checkpoint survives.">
+    <defs>
+      <marker id="ksa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+        <path d="M0 1 L9 5 L0 9 z" fill="context-stroke" />
+      </marker>
+    </defs>
+
+    <text class="d-cap" x="0" y="12">MLA — paged KV, append-only</text>
+    <rect class="d-box is-2" x="0" y="22" width="66" height="34" rx="3" />
+    <rect class="d-box is-2" x="72" y="22" width="66" height="34" rx="3" />
+    <rect class="d-box is-2" x="144" y="22" width="66" height="34" rx="3" />
+    <rect class="d-box is-2" x="216" y="22" width="66" height="34" rx="3" />
+    <rect class="d-box is-2" x="288" y="22" width="66" height="34" rx="3" />
+    <text class="d-lbl d-mid" x="33" y="44">t₁</text>
+    <text class="d-lbl d-mid" x="105" y="44">t₂</text>
+    <text class="d-lbl d-mid" x="177" y="44">t₃</text>
+    <text class="d-lbl d-mid" x="249" y="44">t₄</text>
+    <text class="d-lbl d-mid" x="321" y="44">t₅</text>
+    <path class="d-arrow" d="M0 64 L0 72 L210 72 L210 64" />
+    <text class="d-sub" x="0" y="86">requests A and B both read these — one copy, free</text>
+    <text class="d-lbl" x="372" y="38">every entry survives</text>
+    <text class="d-sub" x="372" y="52">its write, so it can be shared</text>
+
+    <line class="d-rule" x1="0" y1="108" x2="620" y2="108" />
+
+    <text class="d-cap" x="0" y="132">KDA — one recurrent state, overwritten in place</text>
+    <rect class="d-box is-3" x="0" y="144" width="80" height="38" rx="3" />
+    <text class="d-lbl d-mid" x="40" y="168">S₁</text>
+    <path class="d-arrow is-3" d="M86 163 L132 163" marker-end="url(#ksa)" />
+    <text class="d-sub d-mid" x="109" y="156">t₂</text>
+    <rect class="d-box is-3 is-ghost" x="138" y="144" width="80" height="38" rx="3" />
+    <text class="d-sub d-mid" x="178" y="168">S₂ gone</text>
+    <path class="d-arrow is-3" d="M224 163 L270 163" marker-end="url(#ksa)" />
+    <text class="d-sub d-mid" x="247" y="156">t₃</text>
+    <rect class="d-box is-3" x="276" y="144" width="80" height="38" rx="3" />
+    <text class="d-lbl d-mid" x="316" y="168">S₃</text>
+    <text class="d-sub" x="372" y="160">only the newest state exists — and a running</text>
+    <text class="d-sub" x="372" y="174">request is mutating it right now</text>
+    <rect class="d-box is-1" x="0" y="200" width="80" height="30" rx="3" />
+    <text class="d-lbl d-mid" x="40" y="220">checkpoint</text>
+    <path class="d-arrow is-1 is-dashed" d="M40 200 L40 186" marker-end="url(#ksa)" />
+    <text class="d-sub" x="94" y="214">saved on an interval — the only earlier state you can return</text>
+    <text class="d-sub" x="94" y="228">to, and everything after it must be replayed</text>
+  </svg>
+</Figure>
 
 The third component, **Attention Residuals**, is smaller but shows up in profiles. Instead of the
 usual residual accumulation, every sublayer uses a learned pseudo-query to weight RMS-normalised

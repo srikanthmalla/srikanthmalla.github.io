@@ -19,11 +19,29 @@ import Bars from '../../../components/Bars.astro';
 
 ## The core mental model
 
-Module 5 ended on a hard boundary: better solvers take you from 1000 steps to about 20, and no
-solver takes you to 4. The reason is structural. A solver approximates the *integral of a fixed
+<FigRef for="nfe">Module 5 ended on a hard boundary: better solvers take you from 1000 steps to
+about 20, and no solver takes you to 4.</FigRef> The reason is structural. A solver approximates the *integral of a fixed
 vector field*, and when the trajectory genuinely curves, a coarse discretisation of it is simply
 wrong — that is not a numerical deficiency to engineer around, it is the field being what it is. To
 go below roughly ten steps you must change what is being integrated.
+
+<Figure
+  id="nfe"
+  caption="Network evaluations per image, log scale. The first three are the same model with a better integrator — pure numerical analysis, no retraining. The last two are a different model, because below roughly ten steps you are no longer approximating the same integral. That break is where the horizontal line stops being solver work and starts being distillation."
+>
+  <Bars
+    alt="Log bar chart of network evaluations per image: DDPM ancestral 1000, DDIM 50, DPM-Solver++ 20, progressive distillation 4, consistency or adversarial 1."
+    unit=" NFE"
+    xLabel="network evaluations per image (log)"
+    items={[
+      { label: 'DDPM ancestral', value: 1000, tone: 1 },
+      { label: 'DDIM', value: 50, tone: 1 },
+      { label: 'DPM-Solver++', value: 20, tone: 1 },
+      { label: 'progressive distillation', value: 4, tone: 2 },
+      { label: 'consistency / adversarial', value: 1, tone: 2 },
+    ]}
+  />
+</Figure>
 
 Distillation does exactly that, and the variants differ in what the student is asked to match.
 **Progressive distillation** trains a student to reproduce two teacher steps in one, then repeats,
