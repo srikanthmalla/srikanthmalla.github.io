@@ -11,6 +11,11 @@ tags: ['data parallel', 'tensor parallel', 'pipeline parallel', 'expert parallel
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Roofline from '../../../components/Roofline.astro';
+import Plot from '../../../components/Plot.astro';
+import Bars from '../../../components/Bars.astro';
 
 ## The core mental model
 
@@ -36,13 +41,31 @@ data-dependent sizes, which is Module 9's problem arriving on the network. Put t
 table with their frequencies and the whole design space becomes legible.
 
 And then the placement rule from Module 4 falls out arithmetically rather than as folklore. An H100
-needs roughly 1100 FLOP per byte crossing NVLink and 20,000 per byte crossing a NIC. Tensor
-parallelism communicates $O(BSH)$ bytes for $O(BSH^2)$ FLOPs — about $H$ FLOP per byte, which for
-$H = 8192$ is 8192, comfortably above NVLink's requirement and far below the NIC's. So TP belongs
+<FigRef for="flopbyte">needs roughly 1100 FLOP per byte crossing NVLink and 20,000 per byte crossing
+a NIC.</FigRef> Tensor parallelism communicates $O(BSH)$ bytes for $O(BSH^2)$ FLOPs — about $H$ FLOP
+per byte, which for $H = 8192$ is 8192, comfortably above NVLink's requirement and far below the
+NIC's. So TP belongs
 inside the NVLink domain and nowhere else. Data parallelism communicates the parameters once per step
 against a whole step's arithmetic, which is thousands of FLOP per byte and fits over Ethernet. The
 familiar recipe — TP within a node, PP across nodes, DP outermost — is not a heuristic anyone had to
 discover. It is the only assignment that satisfies both inequalities.
+
+<Figure
+  id="flopbyte"
+  caption="What each strategy supplies against what each network demands, on a log axis. The two muted bars are requirements, not strategies. TP clears NVLink by 7× and misses the NIC by 2.4×, which is the whole placement rule in one picture — and DP clears everything by orders of magnitude, which is why it scales to thousands of nodes."
+>
+  <Bars
+    alt="Log bar chart of FLOP per communicated byte. NVLink requires 1100 and a NIC requires 20000. Tensor parallelism supplies 8192, expert parallelism about 4096, and data parallelism about 12 million."
+    xLabel="FLOP per communicated byte (log)"
+    items={[
+      { label: 'NVLink requires', value: 1100, tone: 3, muted: true, display: '1.1k — requirement' },
+      { label: 'NIC requires', value: 20000, tone: 3, muted: true, display: '20k — requirement' },
+      { label: 'TP supplies (H = 8192)', value: 8192, tone: 1, display: '8.2k' },
+      { label: 'EP supplies (H/k)', value: 4096, tone: 1, display: '4.1k' },
+      { label: 'DP supplies (3·tokens)', value: 12000000, tone: 2, display: '12M' },
+    ]}
+  />
+</Figure>
 
 <Callout type="bridge" title="overlap is double buffering, one level out">
   Module 7 spent capacity to overlap a memory load with compute, and paid $\sqrt2$ in traffic for it.

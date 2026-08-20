@@ -1,0 +1,26 @@
+---
+/**
+ * Inline trigger for a <Figure>. Renders the phrase with a dotted underline;
+ * clicking or tapping it toggles the figure of the same id.
+ *
+ * A <span role="button"> rather than a real <button>: a button is inline-block
+ * whatever `display` you give it, so a trigger phrase that wraps onto a second
+ * line draws one full-width underline instead of one per line fragment. A span
+ * flows as real inline content. Keyboard activation is restored by tabindex plus
+ * the Enter/Space handler in BaseLayout.
+ */
+interface Props {
+  /** Matches the `id` of its <Figure>. */
+  for: string;
+}
+
+const { for: target } = Astro.props;
+---
+
+<span
+  class="figref"
+  role="button"
+  tabindex="0"
+  data-figref={target}
+  aria-controls={`fig-${target}`}
+  aria-expanded="false"><slot /><span class="figref-mark" aria-hidden="true">▸</span></span>

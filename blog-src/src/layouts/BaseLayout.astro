@@ -28,9 +28,12 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
     {description && <meta name="description" content={description} />}
     <link rel="icon" href="data:," />
 
-    {/* Applied before first paint so the dark default never flashes. */}
+    {/* Applied before first paint so the dark default never flashes. The `js`
+        class is what lets figures start collapsed — without it every figure
+        stays visible, so a no-JS reader loses nothing. */}
     <script is:inline>
       (() => {
+        document.documentElement.classList.add('js');
         try {
           const t = localStorage.getItem('refresher:theme');
           if (t === 'light') document.documentElement.classList.add('light');
@@ -233,6 +236,49 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
         rail?.addEventListener('click', (e) => {
           if (e.target.closest('a')) rail.classList.remove('is-open');
         });
+
+        /* ---- figures ---------------------------------------------------- */
+        /* Delegated, so it costs nothing on pages without figures and needs no
+           per-figure wiring. A ref may appear before or after its figure. */
+        document.addEventListener('click', (e) => {
+          const ref = e.target.closest('[data-figref]');
+          if (!ref) return;
+          const id = ref.getAttribute('data-figref');
+          const box = document.getElementById('fig-' + id);
+          if (!box) return;
+
+          const open = box.classList.toggle('is-open');
+          /* Every ref pointing at this figure agrees on the state. */
+          document
+            .querySelectorAll('[data-figref="' + CSS.escape(id) + '"]')
+            .forEach((r) => r.setAttribute('aria-expanded', String(open)));
+
+          if (open) {
+            const r = box.getBoundingClientRect();
+            if (r.bottom > innerHeight || r.top < 0) {
+              box.scrollIntoView({
+                block: 'nearest',
+                behavior: matchMedia('(prefers-reduced-motion: reduce)').matches
+                  ? 'auto'
+                  : 'smooth',
+              });
+            }
+          }
+        });
+
+        /* The trigger is a span, so keyboard activation is ours to provide. */
+        document.addEventListener('keydown', (e) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          const ref = e.target.closest?.('[data-figref]');
+          if (!ref) return;
+          e.preventDefault();
+          ref.click();
+        });
+
+        /* Deep link: /page/#fig-foo opens that figure. */
+        if (location.hash.startsWith('#fig-')) {
+          document.querySelector('[data-figref="' + CSS.escape(location.hash.slice(5)) + '"]')?.click();
+        }
       })();
     </script>
   </body>

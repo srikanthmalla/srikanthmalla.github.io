@@ -1,0 +1,133 @@
+---
+/**
+ * Horizontal bars, usually on a log scale — the memory/interconnect ladders,
+ * energy per access, cost per level. Log is the default because every ladder in
+ * these series spans four or more orders of magnitude, where a linear axis
+ * collapses everything below the top rung into nothing.
+ *
+ * Each bar is direct-labelled with its value, so the axis is a reference rather
+ * than the only way to read a magnitude.
+ */
+interface Item {
+  label: string;
+  value: number;
+  /** Printed at the bar end. Defaults to the value plus `unit`. */
+  display?: string;
+  tone?: 1 | 2 | 3;
+  /** Render recessed, for context rows that are not the point. */
+  muted?: boolean;
+}
+interface Props {
+  items: Item[];
+  unit?: string;
+  log?: boolean;
+  xLabel?: string;
+  alt: string;
+}
+
+const { items, unit = '', log = true, xLabel, alt } = Astro.props;
+
+const vals = items.map((i) => i.value);
+const vmax = Math.max(...vals);
+const vmin = Math.min(...vals);
+
+const W = 620;
+const rowH = 26;
+const T = 10;
+const B = xLabel ? 44 : 26;
+const L = 152;
+const R = 78;
+const H = T + items.length * rowH + B;
+const pw = W - L - R;
+
+const lg = Math.log10;
+const lo = log ? vmin / 2.2 : 0;
+const hi = log ? vmax * 1.15 : vmax * 1.02;
+const sx = (v: number) =>
+  log ? ((lg(v) - lg(lo)) / (lg(hi) - lg(lo))) * pw : ((v - lo) / (hi - lo)) * pw;
+
+const decades = () => {
+  const out: number[] = [];
+  for (let e = Math.ceil(lg(lo)); e <= Math.floor(lg(hi)); e++) out.push(10 ** e);
+  return out;
+};
+const num = (v: number) => {
+  const a = Math.abs(v);
+  if (a >= 1e9) return `${+(v / 1e9).toFixed(1)}G`;
+  if (a >= 1e6) return `${+(v / 1e6).toFixed(1)}M`;
+  if (a >= 1000) return `${+(v / 1000).toFixed(a >= 10000 ? 0 : 1)}k`;
+  if (a >= 1) return `${+v.toFixed(a >= 10 ? 0 : 1)}`;
+  if (a >= 0.01) return `${+v.toFixed(2)}`;
+  return v.toExponential(0);
+};
+const ticks = log ? decades() : [0, hi / 2, hi];
+const toneVar = (t?: number) => `var(--fig-${t ?? 1})`;
+---
+
+<svg
+  class="chart"
+  viewBox={`0 0 ${W} ${H}`}
+  role="img"
+  aria-label={alt}
+  preserveAspectRatio="xMidYMid meet"
+>
+  {
+    ticks.map((t) => (
+      <line class="c-grid" x1={L + sx(t)} x2={L + sx(t)} y1={T} y2={T + items.length * rowH} />
+    ))
+  }
+
+  {
+    items.map((it, i) => {
+      const y = T + i * rowH;
+      const w = Math.max(2, sx(it.value));
+      return (
+        <>
+          <text class="c-rowlbl" x={L - 10} y={y + rowH / 2 + 4} text-anchor="end">
+            {it.label}
+          </text>
+          <rect
+            class={`c-bar${it.muted ? ' is-muted' : ''}`}
+            x={L}
+            y={y + 5}
+            width={w}
+            height={rowH - 12}
+            rx="3"
+            fill={toneVar(it.tone)}
+          />
+          <text class="c-barval" x={L + w + 8} y={y + rowH / 2 + 4} text-anchor="start">
+            {it.display ?? `${num(it.value)}${unit}`}
+          </text>
+        </>
+      );
+    })
+  }
+
+  <line
+    class="c-axis"
+    x1={L}
+    x2={L + pw}
+    y1={T + items.length * rowH}
+    y2={T + items.length * rowH}></line>
+
+  {
+    ticks.map((t) => (
+      <text
+        class="c-tick"
+        x={L + sx(t)}
+        y={T + items.length * rowH + 14}
+        text-anchor="middle"
+      >
+        {num(t)}
+      </text>
+    ))
+  }
+
+  {
+    xLabel && (
+      <text class="c-axlabel" x={L + pw / 2} y={H - 6} text-anchor="middle">
+        {xLabel}
+      </text>
+    )
+  }
+</svg>

@@ -418,3 +418,238 @@ kbd {
 [hidden] {
   display: none !important;
 }
+
+/* ---------------------------------------------------------------------------
+   Figures — click-to-reveal diagrams anchored to a phrase in the prose.
+
+   Chart colours are their own tokens rather than the UI accents: the UI set
+   sits at OKLCH L 0.71-0.76, outside the 0.48-0.67 band that reads correctly as
+   adjacent series marks on the dark surface. Three slots only — a fourth (teal)
+   fails colourblind separation against the red. Every mark is direct-labelled,
+   so identity never rests on colour alone.
+--------------------------------------------------------------------------- */
+:root {
+  --fig-1: #c08600;
+  --fig-2: #6691e1;
+  --fig-3: #d66f6f;
+}
+
+:root.light {
+  --fig-1: #a06a10;
+  --fig-2: #2f5fa8;
+  --fig-3: #a33f3e;
+}
+
+/* ---- the inline trigger ---- */
+.prose .figref {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  text-align: start;
+  border-block-end: 1px dotted color-mix(in oklab, var(--accent) 65%, var(--ink-faint));
+  text-decoration: none;
+  /* A button is inline-block by default, which makes a phrase that wraps onto a
+     second line draw one full-width underline instead of one per line fragment.
+     `inline` lets it flow as real inline content. */
+  display: inline;
+}
+
+.prose .figref:hover,
+.prose .figref[aria-expanded='true'] {
+  border-block-end-style: solid;
+  border-block-end-color: var(--accent);
+  color: var(--ink-strong);
+}
+
+.prose .figref:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.figref-mark {
+  font-size: 0.62em;
+  line-height: 1;
+  vertical-align: 0.18em;
+  margin-inline-start: 0.22em;
+  color: var(--accent);
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+
+.prose .figref[aria-expanded='true'] .figref-mark {
+  transform: rotate(90deg);
+}
+
+/* ---- the panel ---- */
+.prose .figbox {
+  margin-block: 1.75rem;
+  padding: 1rem 1rem 0.75rem;
+  border: 1px solid var(--rule);
+  border-inline-start: 3px solid var(--accent);
+  border-radius: 6px;
+  background: var(--bg-raised);
+}
+
+/* Collapsed only once JS is confirmed, so a no-JS reader still sees every
+   figure. `data-open` opts a figure out of collapsing entirely. */
+html.js .prose .figbox:not([data-open]):not(.is-open) {
+  display: none;
+}
+
+.figbox-plot {
+  overflow-x: auto;
+}
+
+.prose .figbox-cap {
+  margin: 0.6rem 0 0;
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+
+/* ---- chart internals ---- */
+.chart {
+  display: block;
+  width: 100%;
+  min-width: 460px;
+  height: auto;
+  font-family: var(--font-sans);
+}
+
+.c-grid {
+  stroke: var(--rule-soft);
+  stroke-width: 1;
+}
+
+.c-axis {
+  stroke: var(--rule);
+  stroke-width: 1;
+}
+
+.c-tick {
+  font-size: 10px;
+  fill: var(--ink-faint);
+}
+
+.c-axlabel {
+  font-size: 10.5px;
+  font-weight: 500;
+  fill: var(--ink-muted);
+  letter-spacing: 0.01em;
+}
+
+.c-roof {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.c-ridge {
+  stroke: var(--ink-faint);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.c-note,
+.c-region {
+  font-size: 9.5px;
+  fill: var(--ink-faint);
+  letter-spacing: 0.02em;
+}
+
+.c-region {
+  text-transform: uppercase;
+  font-weight: 500;
+  font-size: 9px;
+}
+
+.c-roomlbl {
+  font-size: 10px;
+  font-weight: 550;
+  fill: var(--ink-muted);
+}
+
+.c-ptlbl,
+.c-serieslbl,
+.c-barval {
+  font-size: 10.5px;
+  font-weight: 550;
+  fill: var(--ink-strong);
+}
+
+.c-rowlbl {
+  font-size: 10.5px;
+  fill: var(--ink);
+}
+
+.c-arrowlbl {
+  font-size: 10px;
+  font-weight: 550;
+  fill: var(--fig-1);
+}
+
+/* A 2px surface ring keeps a marker legible where it lands on the roof. */
+.c-dot-ring {
+  fill: none;
+  stroke: var(--bg-raised);
+  stroke-width: 3;
+}
+
+.c-arrow {
+  stroke: var(--fig-1);
+  stroke-width: 2;
+}
+
+.c-line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.c-line.is-dashed {
+  stroke-dasharray: 5 4;
+}
+
+.c-bar.is-muted {
+  opacity: 0.42;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .figref-mark {
+    transition: none;
+  }
+}
+
+/* On a narrow screen the chart is wider than the column and scrolls inside its
+   own box (the page itself never scrolls sideways). A right-edge fade is the
+   affordance that says so — without it the cut-off axis reads as a bug. */
+.prose .figbox {
+  position: relative;
+}
+
+@media (max-width: 680px) {
+  .prose .figbox::after {
+    content: '';
+    position: absolute;
+    inset-block: 1rem auto;
+    inset-inline-end: 1px;
+    width: 2.25rem;
+    height: calc(100% - 1rem);
+    pointer-events: none;
+    border-start-end-radius: 6px;
+    background: linear-gradient(to right, transparent, var(--bg-raised) 78%);
+  }
+
+  .prose .figbox-cap {
+    position: relative;
+    z-index: 1;
+  }
+}

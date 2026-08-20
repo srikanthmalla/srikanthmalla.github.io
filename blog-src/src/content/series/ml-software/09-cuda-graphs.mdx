@@ -11,13 +11,18 @@ tags: ['CUDA Graphs', 'launch overhead', 'reduce-overhead', 'capture', 'replay',
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Roofline from '../../../components/Roofline.astro';
+import Plot from '../../../components/Plot.astro';
+import Bars from '../../../components/Bars.astro';
 
 ## The core mental model
 
 A CUDA Graph is a recorded DAG of kernel launches that you submit as a **single** operation. You
 capture once — running the model in a special mode where launches are recorded rather than executed —
-and thereafter `replay()` issues the whole thing with one driver call. The per-launch cost from
-Module 2, several microseconds each, collapses from $N \times t_{\text{launch}}$ to roughly a
+and thereafter `replay()` issues the whole thing with one driver call. <FigRef for="launch">The per-launch cost from Module 2, several microseconds each</FigRef>, collapses
+from $N \times t_{\text{launch}}$ to roughly a
 constant. For a decode step with 2000 tiny kernels, that is milliseconds of CPU time becoming tens of
 microseconds, and it is the single largest lever available at batch 1.
 
@@ -35,6 +40,24 @@ Those constraints are the reason this module sits where it does. Everything in P
 where the workload will not hold still enough to be captured, and much of Part N is engineering to
 make it hold still anyway. The mental model to carry: **CUDA Graphs convert a program into a fixed
 recording, and the whole difficulty is that real inference workloads are not fixed.**
+
+<Figure
+  id="launch"
+  caption="Per-op cost split between launch overhead and useful work, at the scale where the trade actually bites. A kernel doing 2 µs of work barely notices a 5 µs launch amortised across a graph; a kernel doing 3 µs is more than half overhead. Graph capture removes the launch bar, which is why it is transformative for small ops and irrelevant for large ones."
+>
+  <Bars
+    alt="Bar chart of per-operation launch overhead against kernel duration, showing overhead dominating for short kernels and vanishing for long ones."
+    unit=" µs"
+    log={false}
+    xLabel="microseconds per operation"
+    items={[
+      { label: 'launch overhead', value: 5, tone: 3 },
+      { label: 'tiny elementwise op', value: 3, tone: 2 },
+      { label: 'small GEMM', value: 30, tone: 2 },
+      { label: 'large GEMM', value: 400, tone: 1 },
+    ]}
+  />
+</Figure>
 
 <Callout type="bridge" title="this is the hardware series' fixed-cost argument">
   Launch overhead is a fixed per-op cost, and Amdahl says removing a fixed cost matters exactly when

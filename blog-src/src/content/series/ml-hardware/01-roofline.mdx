@@ -11,6 +11,11 @@ tags:
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Roofline from '../../../components/Roofline.astro';
+import Plot from '../../../components/Plot.astro';
+import Bars from '../../../components/Bars.astro';
 
 ## The core mental model
 
@@ -29,22 +34,74 @@ and therefore its own roof, and a kernel sits somewhere different under each one
 comfortably above the HBM ridge and still be starved by shared-memory bandwidth or L2. The ridge
 point $I^{*} = \pi/\beta$ is where the two roofs meet, and its long-run behavior is the single
 most important fact about the last decade of accelerators: peak FLOPs has grown roughly 3× per
-generation while HBM bandwidth has grown roughly 1.5×, so $I^{*}$ keeps climbing. On an H100 with
-dense fp16 tensor cores it is about **295 FLOPs per byte**. Being compute-bound is now a rare and
-privileged condition, achieved by engineering, not stumbled into. Essentially all of kernel
-optimization is manufacturing reuse until you reach the ridge.
+generation while HBM bandwidth has grown roughly 1.5×, so <FigRef for="ridge-drift">$I^{*}$ keeps
+climbing</FigRef>. On an H100 with dense fp16 tensor cores it is about **295 FLOPs per byte**. Being
+compute-bound is now a rare and privileged condition, achieved by engineering, not stumbled into.
+Essentially all of kernel optimization is manufacturing reuse until you reach the ridge.
+
+<Figure
+  id="ridge-drift"
+  caption="Peak compute and memory bandwidth, indexed to V100 = 1. Compute pulls away, and the gap between the two lines is the ridge point: V100 ≈ 139 FLOP/byte, H100 ≈ 295, B200 ≈ 281. The ridge is the ratio of these two curves, which is why it climbs without anyone deciding it should."
+>
+  <Plot
+    alt="Log plot of peak FLOP/s and HBM bandwidth from V100 to B200, both indexed to V100 equals 1. Peak compute reaches about 18x while bandwidth reaches about 9x, so the ratio roughly doubles."
+    series={[
+      { label: 'peak FLOP/s', tone: 1, points: [[2017, 1], [2020, 2.5], [2022, 7.9], [2024, 18]] },
+      { label: 'HBM bandwidth', tone: 2, points: [[2017, 1], [2020, 2.2], [2022, 3.7], [2024, 8.9]] },
+    ]}
+    xLabel="generation"
+    yLabel="growth, indexed to V100 = 1"
+    yLog={true}
+    xTicks={[2017, 2020, 2022, 2024]}
+    fmtX={(v) => `${v}`}
+  />
+</Figure>
 
 Map that onto inference and the two phases separate cleanly. Prefill is GEMM-shaped: for a square
 fp16 matmul of size $n$, HBM-boundary intensity is $2n^3 / 6n^2 = n/3$, so it crosses the H100
 ridge somewhere around $n \approx 900$ and is solidly compute-bound at realistic sizes. Decode is
-GEMV-shaped: each weight element is read once and used for two FLOPs, giving $I \approx 1$ at
-fp16, roughly 300× below the ridge. The consequence is the number that governs single-stream
-serving: **batch-1 decode latency has a hard floor of model bytes divided by memory bandwidth**,
-and no amount of compute changes it. The clean way to see the whole batching story is that
-**decode intensity is approximately the batch size**, because the weights are read once and
-amortized across $B$ tokens. You need $B \approx 300$ before an H100 stops being memory-bound on
-the weight matmuls, which is exactly why continuous batching exists and exactly why it does
-nothing for the tail of a single request.
+GEMV-shaped: each weight element is read once and used for two FLOPs, giving <FigRef for="rl-h100">$I
+\approx 1$ at fp16, roughly 300× below the ridge</FigRef>. The consequence is the number that governs
+single-stream serving: **batch-1 decode latency has a hard floor of model bytes divided by memory
+bandwidth**, and no amount of compute changes it. The clean way to see the whole batching story is
+that **decode intensity is approximately the batch size**, because the weights are read once and
+amortized across $B$ tokens. <FigRef for="rl-batch">You need $B \approx 300$ before an H100 stops
+being memory-bound</FigRef> on the weight matmuls, which is exactly why continuous batching exists
+and exactly why it does nothing for the tail of a single request.
+
+<Figure
+  id="rl-h100"
+  caption="Where the two inference phases actually sit on an H100. Decode is not a little below the roof — it is two and a half decades below it, pinned to the bandwidth slope. Prefill sits at the ridge. Same weights, same hardware, same arithmetic."
+>
+  <Roofline
+    alt="H100 roofline. Decode at batch 1 sits at intensity 1 and about 3.4 TFLOP/s on the bandwidth slope. Prefill at n=900 sits at the ridge point of 295 FLOP per byte and 989 TFLOP/s."
+    peak={989}
+    bw={3.35}
+    peakLabel="989 TFLOP/s"
+    bwLabel="3.35 TB/s"
+    points={[
+      { x: 1, y: 3.35, label: 'decode, batch 1', tone: 3 },
+      { x: 300, label: 'prefill, n ≈ 900', tone: 2, flip: true },
+    ]}
+  />
+</Figure>
+
+<Figure
+  id="rl-batch"
+  caption="Batching is a move to the right, not up. Each doubling of batch size doubles intensity and slides the point along the bandwidth slope; the machine only stops being memory-bound when the point reaches the ridge at B ≈ 300. Nothing about the kernel changed."
+>
+  <Roofline
+    alt="H100 roofline showing decode at batch 1, 32 and 300. The points climb the bandwidth slope from left to right, reaching the ridge point only at batch 300."
+    peak={989}
+    bw={3.35}
+    points={[
+      { x: 1, y: 3.35, label: 'B = 1', tone: 3 },
+      { x: 32, y: 107, label: 'B = 32', tone: 3 },
+      { x: 300, label: 'B ≈ 300', tone: 1, flip: true },
+    ]}
+    arrows={[{ from: 0, dir: 'upright', label: 'batch more' }]}
+  />
+</Figure>
 
 <Callout type="bridge" title="you already run this model">
   This is the "Speed of Light" section of Nsight Compute: percent of peak compute against percent

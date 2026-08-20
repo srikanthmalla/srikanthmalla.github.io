@@ -11,6 +11,11 @@ tags: ['Kimi Delta Attention', 'linear attention', 'recurrent state', 'MLA', 'At
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Roofline from '../../../components/Roofline.astro';
+import Plot from '../../../components/Plot.astro';
+import Bars from '../../../components/Bars.astro';
 
 ## The core mental model
 
@@ -18,11 +23,27 @@ The single most consequential thing about serving K3 is that **69 of its 93 laye
 cache**. Kimi Delta Attention is a linear-attention mechanism that maintains a *fixed-size recurrent
 state* — a matrix-valued summary updated in place at every token — rather than accumulating a key and
 value vector per position. The remaining 24 layers are gated MLA with a conventional paged KV cache,
-placed roughly every fourth position. The consequence for memory is exactly what you would hope: the
-part of your cache that grows with context is now a quarter of the layers instead of all of them, so
-a million-token context costs something like a quarter of what it would on a uniform full-attention
+placed roughly every fourth position. The consequence for memory is exactly what you would hope: <FigRef for="kv-growth">the part of your
+cache that grows with context is now a quarter of the layers instead of all of them</FigRef>, so a
+million-token context costs something like a quarter of what it would on a uniform full-attention
 model of the same depth. That is the design's whole purpose, and it is why K3 can advertise a 1M
 window without an absurd deployment.
+
+<Figure
+  id="kv-growth"
+  caption="Per-request state against context length, in units of a uniform 93-layer model's cache at 1 M tokens. K3's 24 MLA layers give a line of roughly a quarter the slope, plus a fixed offset for the 69 KDA recurrent states that does not grow at all. The offset is why the hybrid advantage is smallest at short context and largest at long."
+>
+  <Plot
+    alt="State size against context length. A uniform full-attention model rises linearly to 1.0 at one million tokens, while K3 rises to about 0.26 with a small constant offset at zero."
+    series={[
+      { label: 'uniform, 93 layers', tone: 3, points: [[1000, 0.001], [250000, 0.25], [500000, 0.5], [1000000, 1]] },
+      { label: 'K3: 24 MLA + 69 KDA', tone: 1, points: [[1000, 0.02], [250000, 0.085], [500000, 0.149], [1000000, 0.278]] },
+    ]}
+    xLabel="context length, tokens"
+    yLabel="per-request state, relative"
+    xTicks={[0, 250000, 500000, 750000, 1000000]}
+  />
+</Figure>
 
 The consequence for *engineering* is that you now have two kinds of state with incompatible
 semantics living under one scheduler, and almost every serving feature you rely on was built assuming

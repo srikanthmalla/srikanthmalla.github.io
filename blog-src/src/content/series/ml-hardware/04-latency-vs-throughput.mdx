@@ -12,6 +12,11 @@ tags:
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Roofline from '../../../components/Roofline.astro';
+import Plot from '../../../components/Plot.astro';
+import Bars from '../../../components/Bars.astro';
 
 ## The core mental model
 
@@ -33,15 +38,31 @@ design that instantiates $N$ multipliers has latency $t_{\text{mac}} + \lceil \l
 levels of adder tree. For $N = 64$ that is 64 sequential steps against about 7, purchased with 63
 extra multipliers. In a throughput design that trade is obviously bad. Here it is obviously good.
 
-The sharpest inversion is **utilisation**. Queueing theory gives waiting time growing like
-$1/(1-\rho)$, so a server at 50% utilisation has twice its service time in latency, at 80% five
-times, at 95% twenty times. High utilisation is what you want when you are selling compute and the
+The sharpest inversion is **utilisation**. Queueing theory gives <FigRef for="rho">waiting time
+growing like $1/(1-\rho)$</FigRef>, so a server at 50% utilisation has twice its service time in
+latency, at 80% five times, at 95% twenty times. High utilisation is what you want when you are selling compute and the
 worst thing you can do when you are meeting a deadline. A fast path should idle most of the time,
 on purpose, and the idleness is not waste — it is the headroom that keeps the tail bounded when a
 burst arrives. The related trap is that **a barrier's latency is the maximum over its
 participants**, so splitting work across $N$ units and joining converts one sample from the latency
 distribution into the max of $N$ samples. Parallelism deliberately samples the tail. That is fine
 when you are optimising a mean and actively harmful when you are defending a p99.
+
+<Figure
+  id="rho"
+  caption="Waiting time against utilisation, the 1/(1−ρ) shape. Below about 0.5 the curve is nearly flat and extra load is almost free; past 0.8 it turns vertical. This is why systems sized for mean load fail during bursts, and why a latency-critical path is provisioned at ρ ≈ 0.3 — you are buying distance from the wall, not headroom."
+>
+  <Plot
+    alt="Queueing delay against utilisation rho. The curve is flat until about 0.5 then rises steeply, reaching ten times the service time at rho 0.9."
+    series={[
+      { label: '1/(1−ρ)', tone: 1, points: [[0.05, 1.05], [0.2, 1.25], [0.3, 1.43], [0.5, 2], [0.6, 2.5], [0.7, 3.33], [0.8, 5], [0.85, 6.67], [0.9, 10], [0.93, 14.3]] },
+    ]}
+    marks={[{ x: 0.3, y: 1.43, label: 'ρ ≈ 0.3, where you want to sit', tone: 1 }]}
+    xLabel="utilisation ρ"
+    yLabel="delay, multiples of service time"
+    xTicks={[0, 0.2, 0.4, 0.6, 0.8, 1]}
+  />
+</Figure>
 
 <Callout type="bridge" title="you have already lived this">
   Prefill and decode are the two regimes of this axis inside one model. Prefill is a throughput

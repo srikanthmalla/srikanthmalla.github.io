@@ -11,6 +11,11 @@ tags: ['tensor core', 'systolic array', 'MXU', 'SIMT', 'utilization', 'occupancy
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Roofline from '../../../components/Roofline.astro';
+import Plot from '../../../components/Plot.astro';
+import Bars from '../../../components/Bars.astro';
 
 ## The core mental model
 
@@ -75,9 +80,28 @@ Per-chip peaks, to keep the ratios honest — dense, no sparsity multiplier:
 | TPU v5p  | 459 TFLOP/s | —        | 2.8 TB/s | ~164 FLOP/byte     |
 | TPU v6e  | 920 TFLOP/s | —        | 1.6 TB/s | ~575 FLOP/byte     |
 
-The ridge points are the thing to carry: you need on the order of **200–600 FLOP per byte of HBM
-traffic** to reach peak on any modern part, and the number has been rising, because compute scales
-faster than bandwidth. That single trend is what drives the rest of the series.
+The ridge points are the thing to carry: <FigRef for="ridges">you need on the order of 200–600 FLOP
+per byte of HBM traffic</FigRef> to reach peak on any modern part, and the number has been rising,
+because compute scales faster than bandwidth. That single trend is what drives the rest of the series.
+
+<Figure
+  id="ridges"
+  caption="Peak divided by bandwidth, per chip. Nobody chose these numbers — each is the ratio of two independently-scaling quantities, which is why v6e's larger array and modest bandwidth put its ridge at 575 while B200's HBM3e pulls its ridge slightly below H100's."
+>
+  <Bars
+    alt="Bar chart of ridge points in FLOP per byte: TPU v5p 164, TPU v5e 240, B200 280, H100 295, TPU v6e 575."
+    unit=" FLOP/B"
+    log={false}
+    xLabel="arithmetic intensity needed to reach peak"
+    items={[
+      { label: 'TPU v5p', value: 164, tone: 1 },
+      { label: 'TPU v5e', value: 240, tone: 1 },
+      { label: 'B200', value: 280, tone: 1 },
+      { label: 'H100 SXM', value: 295, tone: 1 },
+      { label: 'TPU v6e', value: 575, tone: 1 },
+    ]}
+  />
+</Figure>
 
 What precision buys on the compute axis, and what it costs elsewhere:
 

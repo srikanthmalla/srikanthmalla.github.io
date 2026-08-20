@@ -11,6 +11,11 @@ tags: ['tiling', 'blocking', 'double buffering', 'prefetch', 'working set', 'cap
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Roofline from '../../../components/Roofline.astro';
+import Plot from '../../../components/Plot.astro';
+import Bars from '../../../components/Bars.astro';
 
 ## The core mental model
 
@@ -24,8 +29,8 @@ $T \times T$ tiles. Substituting:
 
 $$\text{traffic} = \Theta\!\left(\frac{N^3}{\sqrt{C}}\right)$$
 
-**Traffic falls as the square root of capacity.** Double the SRAM and traffic drops by
-$\sqrt{2} \approx 1.41\times$, not $2\times$. Quadruple it for a factor of two. This is the single
+<FigRef for="sqrt-law">**Traffic falls as the square root of capacity.**</FigRef> Double the SRAM and
+traffic drops by $\sqrt{2} \approx 1.41\times$, not $2\times$. Quadruple it for a factor of two. This is the single
 most useful closed form in the series and it explains an enormous amount: why on-die memory has to
 grow so aggressively to make a modest difference, why crossing a *threshold* where the whole working
 set fits is worth far more than any incremental capacity increase, and why the answer to "we are
@@ -46,6 +51,24 @@ costs $\sqrt 2$ in traffic. That is the price, and it is almost always worth pay
 overlap you serialise a 400 ns HBM latency against your compute and lose far more than 41%. The
 hardware side of this is `cp.async` on Ampere and TMA on Hopper: machinery whose entire purpose is to
 make the compiler's explicit double-buffered schedule cheap to issue.
+
+<Figure
+  id="sqrt-law"
+  caption="Relative DRAM traffic against capacity, both as multiples of a baseline. The dashed line is the intuition people bring — twice the memory, half the traffic. The solid line is what tiling actually delivers. You need 4× the SRAM to halve traffic and 16× to quarter it, which is why incremental capacity is a weak lever and a threshold where the working set simply fits is the only large win."
+>
+  <Plot
+    alt="Traffic versus capacity. The square root of capacity curve falls from 1 to 0.25 as capacity grows 16 times, while the inverse-capacity line falls from 1 to 0.06."
+    series={[
+      { label: 'actual: 1/√C', tone: 1, points: [[1, 1], [2, 0.707], [4, 0.5], [8, 0.354], [16, 0.25]] },
+      { label: 'the intuition: 1/C', tone: 3, dashed: true, dy: 10, points: [[1, 1], [2, 0.5], [4, 0.25], [8, 0.125], [16, 0.0625]] },
+    ]}
+    xLabel="capacity, multiple of baseline"
+    yLabel="DRAM traffic, relative"
+    xLog={true}
+    xTicks={[1, 2, 4, 8, 16]}
+    yTicks={[0, 0.25, 0.5, 0.75, 1]}
+  />
+</Figure>
 
 <Callout type="trap" title="“more cache will fix our bandwidth problem”">
   By the square-root law it will fix $\sqrt 2$ of it per doubling, and only if the working set was

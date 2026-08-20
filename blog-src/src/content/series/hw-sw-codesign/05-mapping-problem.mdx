@@ -11,6 +11,11 @@ tags: ['mapping', 'loop nest', 'iteration space', 'tiling', 'permutation', 'spat
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Roofline from '../../../components/Roofline.astro';
+import Plot from '../../../components/Plot.astro';
+import Bars from '../../../components/Bars.astro';
 
 ## The core mental model
 
@@ -39,8 +44,8 @@ this vocabulary the field stops being a list of tricks.
 The consequence worth putting in bold: **arithmetic intensity is a property of the mapping, not of
 the algorithm.** A GEMM performs $2MNK$ FLOPs no matter what, but the bytes it moves through any
 given level depend entirely on the tile sizes chosen at that level — from $O(MNK)$ if you re-fetch
-everything to $O(MN + MK + NK)$ if it all fits. The same multiply can sit anywhere from far left to
-far right on a roofline plot. This is why the roofline picture, taken alone, misleads: it invites you
+everything to $O(MN + MK + NK)$ if it all fits. <FigRef for="three-mappings">The same multiply can
+sit anywhere from far left to far right on a roofline plot.</FigRef> This is why the roofline picture, taken alone, misleads: it invites you
 to read operational intensity off the algorithm, when in fact it is the output of a design decision
 you have not made yet. Move the x-axis position, and you have changed which resource binds.
 
@@ -49,6 +54,23 @@ a single convolution layer the count of (tiling × permutation × spatial × bin
 exceeds $10^{10}$, the objective is non-convex with hard cliffs at capacity boundaries, and the
 evaluation function is either an approximate analytic model or an expensive measurement. That is
 Module 8. This module is about what is being searched.
+
+<Figure
+  id="three-mappings"
+  caption="One GEMM, three mappings, on an H100. Identical arithmetic — 2N³ FLOPs in every case. Only the tile size changed, and it moved the operation across the entire plot, from hopelessly memory-bound to comfortably compute-bound. This is why intensity cannot be read off an algorithm."
+>
+  <Roofline
+    alt="H100 roofline with three points for the same GEMM: naive at intensity one sixth, tiled at T=128 giving intensity 32, and fully resident at around 700 FLOP per byte, past the ridge."
+    peak={989}
+    bw={3.35}
+    points={[
+      { x: 0.17, y: 0.57, label: 'naive — nothing resident', tone: 3 },
+      { x: 32, y: 107, label: 'tiled, T = 128', tone: 2 },
+      { x: 700, label: 'everything resident', tone: 1, flip: true },
+    ]}
+    arrows={[{ from: 0, dir: 'right', label: 'tile' }]}
+  />
+</Figure>
 
 <Callout type="trap" title="reading operational intensity off the algorithm">
   "Attention is memory-bound" and "GEMM is compute-bound" are statements about *typical mappings at

@@ -1,0 +1,27 @@
+---
+/**
+ * A collapsible figure. Pairs with <FigRef for="id"> in the prose: the ref is a
+ * dotted-underlined phrase, clicking it reveals this block.
+ *
+ * Figures are authored as siblings of the paragraph rather than inside it,
+ * because an SVG panel nested in a <p> is invalid HTML and browsers reparent it.
+ *
+ * Without JS every figure is simply visible — the collapse is applied by CSS
+ * that only matches once the inline head script has set `.js` on <html>.
+ */
+interface Props {
+  /** Matches the `for` of its <FigRef>. Unique within the module. */
+  id: string;
+  /** One line under the figure. Say what it shows, not that it is a figure. */
+  caption?: string;
+  /** Render expanded and non-collapsible — for figures with no ref. */
+  open?: boolean;
+}
+
+const { id, caption, open = false } = Astro.props;
+---
+
+<figure class="figbox" id={`fig-${id}`} data-figbox={id} data-open={open ? '' : undefined}>
+  <div class="figbox-plot"><slot /></div>
+  {caption && <figcaption class="figbox-cap">{caption}</figcaption>}
+</figure>

@@ -11,6 +11,11 @@ tags: ['codesign', 'abstraction', 'compute', 'memory', 'interconnect', 'balance'
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Roofline from '../../../components/Roofline.astro';
+import Plot from '../../../components/Plot.astro';
+import Bars from '../../../components/Bars.astro';
 
 ## The core mental model
 
@@ -74,9 +79,30 @@ scales with process and wires do not:
 | SRAM read, 1 MB               | ~100 pJ        | ~500×                |
 | **DRAM access, 32 bit**       | **~640 pJ**    | **~3200×**           |
 
-Read the last row against the second: one DRAM fetch pays for roughly three thousand INT8 MACs. If
-a value crosses the DRAM boundary and is used fewer than a few thousand times, the arithmetic it
-enabled was not the expensive part of the operation.
+Read the last row against the second: <FigRef for="energy">one DRAM fetch pays for roughly three
+thousand INT8 MACs</FigRef>. If a value crosses the DRAM boundary and is used fewer than a few
+thousand times, the arithmetic it enabled was not the expensive part of the operation.
+
+<Figure
+  id="energy"
+  caption="Horowitz's 45 nm figures on a linear axis. Every arithmetic bar is a sliver and DRAM runs the width of the plot — that disparity is the argument, and a log axis would hide it. Absolute values have shrunk with process; the ratios have not, because wires do not scale."
+>
+  <Bars
+    alt="Log bar chart of energy per operation at 45 nm. INT8 add 0.03 pJ, INT8 MAC 0.2, FP16 MAC 1.5, FP32 MAC 4.6, SRAM 8 KB read 10, SRAM 1 MB read 100, DRAM access 640 pJ."
+    unit=" pJ"
+    log={false}
+    xLabel="energy per operation, pJ — linear, so the ratio is the picture"
+    items={[
+      { label: 'INT8 add', value: 0.03, tone: 1 },
+      { label: 'INT8 MAC', value: 0.2, tone: 1 },
+      { label: 'FP16 MAC', value: 1.5, tone: 1 },
+      { label: 'FP32 MAC', value: 4.6, tone: 1 },
+      { label: 'SRAM read, 8 KB', value: 10, tone: 1 },
+      { label: 'SRAM read, 1 MB', value: 100, tone: 1 },
+      { label: 'DRAM access, 32 b', value: 640, tone: 1 },
+    ]}
+  />
+</Figure>
 
 The template every module fills in. Any resource, at any level, is described by these fields, and
 the last one is the codesign decision:

@@ -40,6 +40,11 @@ src/
     Probe.astro                   one Critical-thinking question + its answer
     SelfCheck.astro               question visible, answer behind a native <details>
     Search.astro                  overlay; fetches /blog/search.json on first use
+    FigRef.astro                  inline dotted-underline trigger for a Figure
+    Figure.astro                  the collapsible figure panel + caption
+    Roofline.astro                log-log roofline; points, arrows, ridge
+    Plot.astro                    line plot, either axis log, direct-labelled
+    Bars.astro                    horizontal bars, log by default
   layouts/
     BaseLayout.astro              shell, top bar, theme, progress, keyboard nav
     EntryLayout.astro             module header, prose column, pager
@@ -97,6 +102,34 @@ as an appendix rather than as part of the argument:
 Every table in beat 2 opens with a sentence saying what it is for. A section
 that starts on a bare `|` reads as a dump; the lead-in is what makes it a beat.
 
+## Figures
+
+A figure is two components: an inline `<FigRef>` that dotted-underlines a phrase,
+and a `<Figure>` block holding the chart. They pair on `id`, and the ref may sit
+before or after the block.
+
+```mdx
+...so <FigRef for="rl-h100">decode sits 300x below the ridge</FigRef>, which is why...
+
+<Figure id="rl-h100" caption="What the reader should take from it.">
+  <Roofline alt="..." peak={989} bw={3.35} points={[...]} arrows={[...]} />
+</Figure>
+```
+
+The panel **must be a sibling of the paragraph, not inside it** — an SVG nested
+in a `<p>` is invalid HTML and the browser reparents it, and MDX rejects a block
+component opened mid-paragraph outright. Put it after the paragraph ends.
+
+Figures start collapsed only when `html.js` is set, so a reader without JS sees
+every figure expanded rather than none. `<Figure open>` opts out of collapsing.
+
+Chart colours are `--fig-1/2/3`, separate from the UI accents: the UI set sits at
+OKLCH L 0.71-0.76, outside the 0.48-0.67 band that reads correctly as adjacent
+series marks on the dark surface. **Three slots only** — a fourth (teal) fails
+colourblind separation against the red. Validate any change with the dataviz
+skill's `validate_palette.js` against surface `#191c23` (dark) and `#ffffff`
+(light). One data series gets one colour; identity comes from direct labels.
+
 ## Gotchas
 
 - `/.nojekyll` at the repo root is required — Jekyll would strip `_astro/`.
@@ -107,6 +140,11 @@ that starts on a bare `|` reads as a dump; the lead-in is what makes it a beat.
 - Inline `<code>` is `white-space: nowrap`, so a long literal overflows the page
   at 375px. Split it into several short code spans.
 - A `|` inside `$math$` inside a markdown table splits the cell. Use `\lvert`.
+- An unescaped `$` before a digit pairs with the next one and remark-math eats
+  the prose between them. Write `\$5.50`, never `$5.50`.
+- A `<FigRef>` must be a `<span role="button">`, not a `<button>`: a button stays
+  inline-block whatever `display` you set, so a trigger phrase that wraps draws
+  one full-width underline instead of one per line.
 - Font URLs in `global.css` are absolute (`/blog/fonts/...`) and must be updated
   if `base` ever changes.
 - Math is KaTeX via `remark-math` + `rehype-katex`; code is Shiki with a

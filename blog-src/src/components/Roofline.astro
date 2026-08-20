@@ -1,0 +1,260 @@
+---
+/**
+ * A log-log roofline plot.
+ *
+ * The roof is min(peak, bw · I): a bandwidth slope on the left, a compute
+ * ceiling on the right, meeting at the ridge point I = peak / bw. Points are
+ * placed by arithmetic intensity, and arrows say which way a mapping has to
+ * move — right raises intensity, up raises achieved throughput.
+ *
+ * Units are chosen so the ridge falls out directly: peak in TFLOP/s over bw in
+ * TB/s is already FLOP per byte.
+ */
+interface Pt {
+  /** Arithmetic intensity, FLOP per byte. */
+  x: number;
+  /** Achieved TFLOP/s. Omit to sit the point on the roof. */
+  y?: number;
+  label: string;
+  /** 1 amber (the subject), 2 blue, 3 red. */
+  tone?: 1 | 2 | 3;
+  /** Push the label left of the marker instead of right. */
+  flip?: boolean;
+}
+interface Arrow {
+  /** Index into points. */
+  from: number;
+  dir: 'right' | 'up' | 'upright';
+  label?: string;
+}
+interface Props {
+  peak: number;
+  bw: number;
+  peakLabel?: string;
+  bwLabel?: string;
+  points?: Pt[];
+  arrows?: Arrow[];
+  xMin?: number;
+  xMax?: number;
+  /** Accessible summary. Required — the figure is not decorative. */
+  alt: string;
+}
+
+const {
+  peak,
+  bw,
+  peakLabel = `${peak} TFLOP/s peak`,
+  bwLabel = `${bw} TB/s`,
+  points = [],
+  arrows = [],
+  xMin,
+  xMax,
+  alt,
+} = Astro.props;
+
+const ridge = peak / bw;
+
+// ---- domain -----------------------------------------------------------
+const xs = points.map((p) => p.x);
+const lo = xMin ?? (xs.length ? Math.min(...xs) / 3 : ridge / 100);
+const hi = xMax ?? Math.max(ridge * 5, ...(xs.length ? xs : [ridge])) * 1.8;
+
+const roofAt = (x: number) => Math.min(peak, bw * x);
+const ys = points.map((p) => p.y ?? roofAt(p.x));
+// Headroom above the ceiling for the region labels; a little below the lowest
+// mark so it is not sitting on the axis.
+const yLo = Math.min(...ys, roofAt(lo)) / 1.8;
+const yHi = peak * 4;
+
+// ---- geometry ---------------------------------------------------------
+const W = 620,
+  H = 340,
+  L = 58,
+  R = 18,
+  T = 22,
+  B = 48;
+const pw = W - L - R,
+  ph = H - T - B;
+
+const lg = Math.log10;
+const sx = (x: number) => L + ((lg(x) - lg(lo)) / (lg(hi) - lg(lo))) * pw;
+const sy = (y: number) => T + ph - ((lg(y) - lg(yLo)) / (lg(yHi) - lg(yLo))) * ph;
+
+const decades = (a: number, b: number) => {
+  const out: number[] = [];
+  for (let e = Math.ceil(lg(a)); e <= Math.floor(lg(b)); e++) out.push(10 ** e);
+  return out;
+};
+const fmt = (v: number) =>
+  v >= 1000 ? `${v / 1000}k` : v >= 1 ? `${v}` : `${v}`.replace(/^0/, '');
+
+const xTicks = decades(lo, hi);
+const yTicks = decades(yLo, yHi);
+
+// Roof polyline, clipped to the drawn box.
+const roofPts = [
+  [lo, roofAt(lo)],
+  [ridge, peak],
+  [hi, peak],
+]
+  .filter(([, y]) => y >= yLo)
+  .map(([x, y]) => `${sx(x).toFixed(1)},${sy(y).toFixed(1)}`)
+  .join(' ');
+
+const toneVar = (t?: number) => `var(--fig-${t ?? 1})`;
+const uid = Math.abs(
+  [...alt].reduce((h, c) => (h * 33 + c.charCodeAt(0)) | 0, 7),
+).toString(36);
+---
+
+<svg
+  class="chart"
+  viewBox={`0 0 ${W} ${H}`}
+  role="img"
+  aria-label={alt}
+  preserveAspectRatio="xMidYMid meet"
+>
+  <defs>
+    <marker
+      id={`ah-${uid}`}
+      viewBox="0 0 10 10"
+      refX="9"
+      refY="5"
+      markerWidth="6"
+      markerHeight="6"
+      orient="auto-start-reverse"
+    >
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="var(--fig-1)"></path>
+    </marker>
+  </defs>
+
+  {/* grid */}
+  {
+    xTicks.map((t) => (
+      <line class="c-grid" x1={sx(t)} x2={sx(t)} y1={T} y2={T + ph} />
+    ))
+  }
+  {
+    yTicks.map((t) => (
+      <line class="c-grid" x1={L} x2={L + pw} y1={sy(t)} y2={sy(t)} />
+    ))
+  }
+
+  {/* axes */}
+  <line class="c-axis" x1={L} x2={L + pw} y1={T + ph} y2={T + ph}></line>
+  <line class="c-axis" x1={L} x2={L} y1={T} y2={T + ph}></line>
+
+  {
+    xTicks.map((t) => (
+      <text class="c-tick" x={sx(t)} y={T + ph + 15} text-anchor="middle">
+        {fmt(t)}
+      </text>
+    ))
+  }
+  {
+    yTicks.map((t) => (
+      <text class="c-tick" x={L - 7} y={sy(t) + 3.5} text-anchor="end">
+        {fmt(t)}
+      </text>
+    ))
+  }
+
+  <text class="c-axlabel" x={L + pw / 2} y={H - 8} text-anchor="middle"
+    >arithmetic intensity — FLOP per byte</text
+  >
+  <text
+    class="c-axlabel"
+    transform={`rotate(-90 12 ${T + ph / 2})`}
+    x="12"
+    y={T + ph / 2}
+    text-anchor="middle">achieved TFLOP/s</text
+  >
+
+  {/* ridge — label sits beside the dashed line, not on it */}
+  <line
+    class="c-ridge"
+    x1={sx(ridge)}
+    x2={sx(ridge)}
+    y1={sy(peak)}
+    y2={T + ph}></line>
+  <text class="c-note" x={sx(ridge) + 5} y={T + ph - 8} text-anchor="start"
+    >ridge {ridge < 10 ? ridge.toFixed(1) : Math.round(ridge)}</text
+  >
+
+  {/* the roof. Both roof labels hang below their segment: above it is where the
+      region labels and the rising slope already are. */}
+  <polyline class="c-roof" points={roofPts}></polyline>
+  <text class="c-roomlbl" x={L + pw - 4} y={sy(peak) + 15} text-anchor="end"
+    >{peakLabel}</text
+  >
+  <text
+    class="c-roomlbl"
+    x={sx(lo * 1.5)}
+    y={sy(roofAt(lo * 1.5)) - 9}
+    text-anchor="end">{bwLabel}</text
+  >
+
+  {/* memory-bound / compute-bound regions */}
+  <text class="c-region" x={sx(ridge) - 10} y={T + 14} text-anchor="end"
+    >memory-bound</text
+  >
+  <text class="c-region" x={sx(ridge) + 10} y={T + 14} text-anchor="start"
+    >compute-bound</text
+  >
+
+  {/* arrows */}
+  {
+    arrows.map((a) => {
+      const p = points[a.from];
+      if (!p) return null;
+      const px = sx(p.x),
+        py = sy(p.y ?? roofAt(p.x));
+      const dx = a.dir === 'up' ? 0 : 52;
+      const dy = a.dir === 'right' ? 0 : -46;
+      return (
+        <>
+          <line
+            class="c-arrow"
+            x1={px + (dx ? 10 : 0)}
+            y1={py + (dy ? -10 : 0)}
+            x2={px + dx}
+            y2={py + dy}
+            marker-end={`url(#ah-${uid})`}
+          />
+          {a.label && (
+            <text
+              class="c-arrowlbl"
+              x={px + dx + (a.dir === 'up' ? 0 : 6)}
+              y={py + dy + (a.dir === 'up' ? -8 : -6)}
+              text-anchor={a.dir === 'up' ? 'middle' : 'start'}
+            >
+              {a.label}
+            </text>
+          )}
+        </>
+      );
+    })
+  }
+
+  {/* points, drawn last so they sit on top */}
+  {
+    points.map((p) => {
+      const px = sx(p.x),
+        py = sy(p.y ?? roofAt(p.x));
+      return (
+        <>
+          <circle class="c-dot-ring" cx={px} cy={py} r="6.5" />
+          <circle cx={px} cy={py} r="4.5" fill={toneVar(p.tone)} />
+          <text
+            class="c-ptlbl"
+            x={px + (p.flip ? -10 : 10)}
+            y={py + 4}
+            text-anchor={p.flip ? 'end' : 'start'}
+          >
+            {p.label}
+          </text>
+        </>
+      );
+    })
+  }
+</svg>

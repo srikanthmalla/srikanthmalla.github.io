@@ -11,6 +11,11 @@ tags: ['FlashAttention', 'online softmax', 'KV cache', 'prefill', 'decode', 'GQA
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Roofline from '../../../components/Roofline.astro';
+import Plot from '../../../components/Plot.astro';
+import Bars from '../../../components/Bars.astro';
 
 ## The core mental model
 
@@ -19,12 +24,28 @@ question, and because the field spent several years describing those mapping res
 language and thereby obscuring what was actually happening. Standard attention computes
 $\text{softmax}(QK^\top/\sqrt d)V$ by materialising the $S \times S$ score matrix, which for $S =
 8192$ is 128 MB per head in FP16 — far beyond any on-chip capacity, so it is bound to HBM, written
-once and read back at least twice. FlashAttention performs **exactly the same floating-point
-operations** and never materialises it: the reduction is tiled so that a block of scores lives in SRAM,
-is consumed immediately, and is discarded. In Module 5's vocabulary, one tensor's binding changed from
+once and read back at least twice. <FigRef for="flash-rebind">FlashAttention performs **exactly the same floating-point operations** and
+never materialises it</FigRef>: the reduction is tiled so that a block of scores lives in SRAM, is
+consumed immediately, and is discarded. In Module 5's vocabulary, one tensor's binding changed from
 HBM to SRAM, and the tiling changed to make that binding legal. Nothing else. It is a mapping result,
 and calling it an algorithmic breakthrough hides that the technique generalises to any operation with
 a large materialised intermediate.
+
+<Figure
+  id="flash-rebind"
+  caption="Attention at S = 8192, d = 128, on an H100. Standard attention writes and re-reads an S×S score matrix through HBM, giving intensity ≈ d/2 ≈ 64 — memory-bound. FlashAttention moves the same 4S²d FLOPs to intensity ≈ S/2 ≈ 4096 by binding that tensor to SRAM instead. The FLOPs did not move; the point did."
+>
+  <Roofline
+    alt="H100 roofline. Standard attention sits at intensity 64, below the ridge of 295 and memory-bound. FlashAttention sits at intensity 4096, past the ridge and compute-bound."
+    peak={989}
+    bw={3.35}
+    points={[
+      { x: 64, y: 214, label: 'standard attention', tone: 3 },
+      { x: 4096, label: 'FlashAttention', tone: 1, flip: true },
+    ]}
+    arrows={[{ from: 0, dir: 'right', label: 're-bind scores to SRAM' }]}
+  />
+</Figure>
 
 What made that re-binding possible is worth isolating, because it is the one genuinely non-mechanical
 step. You cannot normally tile across a softmax, since softmax needs the maximum and the sum over the

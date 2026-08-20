@@ -11,13 +11,19 @@ tags: ['concurrency', 'throughput', 'latency', 'long context', 'batching', 'KV c
 import Callout from '../../../components/Callout.astro';
 import Probe from '../../../components/Probe.astro';
 import SelfCheck from '../../../components/SelfCheck.astro';
+import Figure from '../../../components/Figure.astro';
+import FigRef from '../../../components/FigRef.astro';
+import Roofline from '../../../components/Roofline.astro';
+import Plot from '../../../components/Plot.astro';
+import Bars from '../../../components/Bars.astro';
 
 ## The core mental model
 
 The most useful concurrency measurement published for K3 comes from the
 [16×H200 community deployment](https://huggingface.co/moonshotai/Kimi-K3/discussions/136): **one
 request yields 16.8 tok/s; fifty-four concurrent requests yield 146.9 tok/s in aggregate**. Aggregate
-throughput rose 8.7×, and per-user speed fell from 16.8 to about **2.7 tok/s — a 6.2× drop**. Both
+<FigRef for="collapse">throughput rose 8.7×, and per-user speed fell from 16.8 to about **2.7 tok/s
+— a 6.2× drop**.</FigRef> Both
 halves of that are the expected behaviour of a batched autoregressive server and neither is a bug, but
 the shape matters: throughput scales strongly sublinearly with concurrency while per-user latency
 degrades roughly linearly, so there is a concurrency level beyond which you are trading a great deal
@@ -42,6 +48,28 @@ tune separately — they are two ways of spending the same budget**, and this is
 important thing to internalise about serving K3. SGLang's DCP8, at a reported 7.9× logical KV
 capacity, is the one technique that changes the budget by an order of magnitude rather than a few
 percent, and even it only helps the context axis.
+
+<Figure
+  id="collapse"
+  caption="The two measured points, with the dashed line showing what perfect amortisation would have given. A dense model would track that line until compute saturates; K3 reaches 8.7× where linear scaling would have given 54×, because every additional request pulls in more distinct experts. The gap between the lines is the MoE batching penalty."
+>
+  <Plot
+    alt="Aggregate throughput against concurrency. Measured points at 1 request giving 16.8 tokens per second and 54 requests giving 146.9. A dashed line shows linear scaling reaching about 900."
+    series={[
+      { label: 'measured', tone: 1, points: [[1, 16.8], [54, 146.9]] },
+      { label: 'if it amortised', tone: 3, dashed: true, points: [[1, 16.8], [54, 907]] },
+    ]}
+    marks={[
+      { x: 1, y: 16.8, label: '16.8 tok/s per user', tone: 1 },
+      { x: 54, y: 146.9, label: '2.7 tok/s per user', tone: 1, flip: true },
+    ]}
+    xLabel="concurrent requests"
+    yLabel="aggregate tokens/s"
+    xLog={true}
+    yLog={true}
+    xTicks={[1, 10, 54]}
+  />
+</Figure>
 
 <Callout type="trap" title="benchmarking at batch 1 and planning at batch 64">
   The published 370 and 423 tok/s figures are batch-1 decode with speculation on an idle machine. The
